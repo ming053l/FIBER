@@ -70,6 +70,19 @@ for s in $DERIVED_SEEDS; do
   run python scripts/train_coordinates.py --tag "$TAG" --arm E_learned  --k "$K" --seed "$s" --epochs "$EPOCHS"
 done
 
+echo "===== P0-5: same operator, second decoder architecture ====="
+# The certified operator is certified BY a decoder class. If the two teachers disagree
+# on the subspace, the geometry is architecture-dependent and must be reported as such.
+run python scripts/compare_teachers.py --tag "$TAG" --seed 0 --k "$K" --skip-fit
+
+echo "===== P0-5: receiver-architecture control (no global pooling) ====="
+# GAP discards where a feature occurred, which is what a LOCAL frame needs, so a global
+# frame could win for a receiver-side reason. Locked method + Haar under both receivers.
+for arm in C2_haar D_spectral E_learned; do
+  run python scripts/train_coordinates.py --tag "$TAG" --arm "$arm" --k "$K" --seed 0 \
+      --epochs "$EPOCHS" --extractor-arch spatial
+done
+
 echo "===== Prompt-assisted reference (diagnostic only; violates the protocol) ====="
 run python scripts/ddim_reference.py --tag "$TAG" --arm C_hadamard --k "$K" --limit 128
 

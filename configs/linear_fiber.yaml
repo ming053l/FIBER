@@ -78,7 +78,13 @@ spectrum:
   # MSE IS MANDATORY: L2 regression converges to the conditional MEAN; L1 converges to
   # the conditional MEDIAN, which is not what the derivation requires.
   teacher_loss: mse
+  # The operator is certified BY a decoder class, so the architecture is part of the
+  # claim (P0-5). `resnet18` pools globally and its output covariance has rank <= 512
+  # regardless of the channel; `spatial` has no global pooling. Both are fitted and the
+  # top-k subspace alignment between them is reported. Until they agree, the wording is
+  # "decoder-certified observability geometry", never "intrinsic".
   teacher_arch: resnet18
+  teacher_arch_control: spatial
 
   # C_cert is INDEFINITE. Any solver that ranks by |eigenvalue| -- every SVD-based
   # routine -- returns the directions the decoder is WORST on as the top-k. The
@@ -114,7 +120,12 @@ spectrum:
   synthetic_test_first: true      # PLAN.md §3.5 — validate on Y = AZ + noise, no GPU
 
 extractor:
+  # The receiver has the SAME global-pooling bias as the teacher: GAP discards where a
+  # feature occurred, which is what a local frame needs, so reading only through GAP
+  # could favour global frames for a receiver-side reason. The locked method and the
+  # Haar reference are additionally evaluated with `arch_control` (P0-5).
   arch: resnet18
+  arch_control: spatial
   pretrained: false               # must not be an ImageNet-semantic shortcut
   in_resolution: 512
   # GAUSSIAN heads, NOT circular. In Level 1 W = QZ ~ N(0,I) is not a torus variable;

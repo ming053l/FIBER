@@ -370,3 +370,48 @@ arm E starts exactly at the gate denominator, and any improvement over Haar is
 unambiguously due to learning rather than to having escaped a bad init. Arm C3 then
 coincides with C2 at initialisation, which is itself the honest statement: at init the
 architecture adds nothing.
+
+
+---
+
+## Pre-Gate blockers (recorded after the P0-4 review; formal Gate 3 may not run until closed)
+
+### B1 — P0-3.2, physical test isolation
+
+`train_coordinates.py` evaluates `val`, `test` and `test_heldout_prompts` in one pass, so
+every candidate's test predictions exist on disk **before** `select_method.py` runs. The
+selection script provably does not read them (`_forbid_test`), and the lock hashes them,
+but the strongest available answer to *"how do you know the test set was not inspected
+before selection?"* is currently "the script does not read it" rather than "those outputs
+did not exist yet".
+
+Required before Gate 3:
+
+* pre-lock runs evaluate `val` ONLY, and must contain no `test|...` arrays at all;
+* `train_coordinates.py` saves the frame and extractor checkpoints;
+* a new `evaluate_locked.py` loads the checkpoints named by `selection.json` and computes
+  the test splits for the first time, hashing its own outputs.
+
+This is a workflow change, not a fix to the current logic, and it is where the audit
+trail becomes falsifiable rather than merely stated.
+
+### B2 — Strict completeness of preregistered seed sets
+
+Selection averages whatever seed files exist. If a registered seed crashes or is deleted,
+the average silently proceeds over the survivors — survivorship bias with no warning.
+Before Gate 3, `select_method.py` must read the registered `seeds:` list from the config
+and hard-fail unless every one is present, for the derived arm and for all 8 Haar draws.
+
+### B3 — Householder reflector capacity versus k
+
+Arm E uses `m = 128` reflectors at every `k`, and `k` sweeps to 256. The claim that
+`m >= k` reflections can represent any `k`-frame was removed for lack of a citation, so
+its converse cannot be assumed either: at `k = 256` the reachable family may be strictly
+smaller than the set of `k`-frames, and `BER_learned > BER_spectral` there could reflect
+capacity rather than geometry.
+
+Cheap synthetic audit, no diffusion: draw `R* ~ Haar(k, d)`, optimise a Householder frame
+against the subspace distance `‖P_phi − P*‖_F` with `P = RᵀR`, and tabulate the achievable
+fit over `k ∈ {16, 64, 128, 256}` and `m ∈ {64, 128, 256, 512}`. If `m = 128` cannot fit
+`k = 256`, either scale `m(k)` or restrict the locked gate to `k = 64` and report the rest
+as a capacity-sensitive ablation.

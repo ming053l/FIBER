@@ -1,0 +1,24 @@
+{
+  "tag": "pilot",
+  "seed": 0,
+  "k": 16,
+  "teachers": {
+    "resnet18": {
+      "D_cert_subspace": 0.16819942003137198,
+      "numerical_positive_rank": 5,
+      "validity_mean_abs_gap": 0.5750404963798579,
+      "validity_pass": false
+    },
+    "spatial": {
+      "D_cert_subspace": 0.8302348454906135,
+      "numerical_positive_rank": 13,
+      "validity_mean_abs_gap": 0.03728890077369043,
+      "validity_pass": true
+    }
+  },
+  "subspace_alignment": 0.08840497179920287,
+  "chance_alignment": 0.0009765625,
+  "alignment_over_chance": 90.52669112238374,
+  "verdict": "ARCHITECTURE-DEPENDENT: the two decoders do not agree on the subspace, so the geometry cannot be attributed to the channel",
+  "wording": "decoder-certified observability geometry (not intrinsic)"
+}

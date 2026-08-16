@@ -23,7 +23,7 @@ from torch.utils.data import DataLoader
 from ..channels import ChannelBank
 from ..diffusion.cache_dataset import FiberDataset
 from ..metrics import coord_pearson, sign_ber
-from ..models import Extractor
+from ..models import build_extractor
 from ..utils.logging import get_logger
 from ..utils.seeding import derive_seed
 
@@ -43,6 +43,7 @@ class TrainConfig:
     w_regression: float = 1.0
     w_sign: float = 1.0
     frame_lr_scale: float = 1.0
+    extractor_arch: str = "resnet18"
 
     @classmethod
     def from_config(cls, cfg) -> "TrainConfig":
@@ -54,6 +55,7 @@ class TrainConfig:
             amp=t["amp"],
             w_regression=heads["regression"]["weight"] if heads["regression"]["enabled"] else 0.0,
             w_sign=heads["sign"]["weight"] if heads["sign"]["enabled"] else 0.0,
+            extractor_arch=cfg["extractor"].get("arch", "resnet18"),
         )
 
 
@@ -99,7 +101,7 @@ def train_extractor(frame, root, bank: ChannelBank, cfg: TrainConfig, *, split="
     stage of arm E only; evaluation always runs with the frame frozen."""
     device = torch.device(device)
     torch.manual_seed(derive_seed("extractor", seed) % (2**31))
-    model = Extractor(k=frame.k).to(device)
+    model = build_extractor(cfg.extractor_arch, k=frame.k).to(device)
     frame = frame.to(device)
     frame.requires_grad_(learn_frame)
 

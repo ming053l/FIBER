@@ -12,7 +12,7 @@ import numpy as np
 import torch
 
 from ..channels import ChannelBank
-from ..models import Teacher
+from ..models import build_teacher
 from ..utils.logging import get_logger
 from ..utils.seeding import derive_seed
 from .loops import TrainConfig, _lr_at, make_loader
@@ -21,6 +21,7 @@ log = get_logger("fiber.teacher")
 
 
 def train_teacher(root, bank: ChannelBank, cfg: TrainConfig, *, d: int = 16384,
+                  arch: str = "resnet18", latent_shape=(4, 64, 64),
                   split: str = "train", crossfit: str | None = None,
                   crossfit_sub: str | None = "A_teacher", device="cuda:0",
                   seed: int = 0, attacks=None, limit: int = 0):
@@ -28,7 +29,7 @@ def train_teacher(root, bank: ChannelBank, cfg: TrainConfig, *, d: int = 16384,
     sample must never serve both roles (P0-1)."""
     device = torch.device(device)
     torch.manual_seed(derive_seed("teacher", seed) % (2**31))
-    model = Teacher(d=d).to(device)
+    model = build_teacher(arch, d=d, latent_shape=latent_shape).to(device)
     opt = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
     scaler = torch.cuda.amp.GradScaler(enabled=cfg.amp)
     history, step = [], 0
@@ -48,7 +49,7 @@ def train_teacher(root, bank: ChannelBank, cfg: TrainConfig, *, d: int = 16384,
             z = batch["z"].to(device, non_blocking=True)
             with torch.cuda.amp.autocast(enabled=cfg.amp):
                 m_hat = model(x)
-            loss = Teacher.loss(m_hat.float(), z)
+            loss = torch.nn.functional.mse_loss(m_hat.float(), z)   # MSE and only MSE
             opt.zero_grad(set_to_none=True)
             scaler.scale(loss).backward()
             scaler.unscale_(opt)

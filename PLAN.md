@@ -232,7 +232,39 @@ far the teacher is from `E[Z|Y]`. `λ_skill` is always the conservative one. The
 `mean|λ_var − λ_skill| < 0.10`; failing it does not stop the run but is reported, and a
 `SpectralFrame` built from a failed fit warns at load time.
 
-### 3.7 Synthetic validation before touching the GPU
+### 3.7 The decoder is part of the claim (P0-5)
+
+`C_cert` is certified **by a decoder class**, so the architecture is not an
+implementation detail. The default teacher is `ResNet18 → global average pool →
+Linear(512, d)`: its centered outputs are `W(h − h̄)` with `h ∈ R^512`, so they cannot
+leave a 512-dimensional subspace no matter what the channel carries — measured, the
+first 512 principal directions hold `> 1 − 1e-9` of its output variance. Global pooling
+also discards *where* a feature occurred, which is exactly what a local frame needs, so
+this decoder is biased toward finding global structure — the same locality axis as R1,
+relocated into the measuring instrument.
+
+Every spectrum is therefore fitted with **two** teachers:
+
+| | `resnet18` | `spatial` |
+|---|---|---|
+| pooling | global average | none |
+| output rank limit | ≤ 512 | none (measured top-512 energy 0.966) |
+
+`scripts/compare_teachers.py` reports `D_cert` for each and the principal-angle
+alignment between their top-`k` subspaces, against the chance level `k/d`. The reading
+is fixed in advance: **high alignment** is evidence the geometry belongs to the channel;
+**low alignment** means it is architecture-dependent and the report says so rather than
+quoting the larger number. Until they agree the wording stays *decoder-certified
+observability geometry*, never *intrinsic*.
+
+**The receiver has the same bias.** `Extractor` is `ResNet18 → GAP → Linear(512, k)`, so
+if GAP cannot read local structure a global frame can win the BER comparison for a
+receiver-side reason. The locked method and the Haar reference are therefore also
+evaluated with `SpatialExtractor` (no GAP, position preserved to the head). If the
+ranking flips, Gate 3A's result is receiver-architecture-dependent and is reported as
+such.
+
+### 3.8 Synthetic validation before touching the GPU
 
 `tests/test_certified_operator.py` (34 tests) checks every claim above against a
 linear-Gaussian channel with closed-form `E[Z|Y]` and `C_obs`: the identity

@@ -62,6 +62,8 @@ def main() -> int:
     ap.add_argument("--crossfit", default=None, help="'A', 'B' or 'none'")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--device", default="cuda:0")
+    ap.add_argument("--extractor-arch", default=None,
+                    help="receiver architecture; `spatial` is the no-GAP control (P0-5)")
     args = ap.parse_args()
 
     cfg = load_config(args.config)
@@ -77,6 +79,8 @@ def main() -> int:
     if args.crossfit is not None:
         xfit_eval = None if args.crossfit.lower() == "none" else args.crossfit
     tcfg = TrainConfig.from_config(cfg)
+    if args.extractor_arch:
+        tcfg.extractor_arch = args.extractor_arch
     if args.epochs:
         tcfg.epochs = args.epochs
     if args.batch_size:
@@ -149,6 +153,7 @@ def main() -> int:
         "arm_spec": arm_spec, "hyperparameters_fingerprint": hp_fp,
         "seed": args.seed, "tag": args.tag,
         "orthonormality_error": ortho, "rows_digest": rows_digest,
+        "extractor_arch": tcfg.extractor_arch,
         "epochs": tcfg.epochs, "final_train_loss": hist[-1]["loss"],
         "train_split": args.train_split, "crossfit": xfit_eval,
         "seconds": round(time.time() - t0, 1),

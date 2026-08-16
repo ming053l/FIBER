@@ -115,3 +115,83 @@ def test_config_records_the_discovery_objective():
     assert CFG["training"]["frame_weight_decay"] == 0.0
     assert CFG["fiber"]["arms"]["E_learned"]["base"] == "haar"
     assert CFG["fiber"]["arms"]["E_learned"]["paired_init"] is True
+
+
+# --------------------------------------------------------------------------
+# P0-5: the decoder architecture must not be what defines the geometry.
+# --------------------------------------------------------------------------
+def _top_512_energy(model, image_size, n=700):
+    """Fraction of the centered output variance carried by the first 512 principal
+    directions. Stated as energy rather than as `matrix_rank`, because the forward pass
+    runs in float32: the mathematically-zero singular values come back around 1e-6 and
+    a rank count then reports 700 instead of 512."""
+    model.eval()
+    with torch.no_grad():
+        out = model(torch.randn(n, 3, *image_size))
+    s = torch.linalg.svdvals((out - out.mean(0)).double())
+    return float(((s**2).cumsum(0) / (s**2).sum())[511])
+
+
+def test_global_teacher_output_lives_in_a_512_dimensional_subspace():
+    """ResNet18 -> GAP -> Linear(512, d): centered outputs are W(h - h_bar) with h in
+    R^512, so they cannot leave a 512-dimensional subspace whatever the channel
+    carries. A spectrum measured only through it is the geometry of that bottleneck."""
+    from fiber.models import Teacher
+
+    assert _top_512_energy(Teacher(d=1024), (64, 64)) > 1 - 1e-9
+
+
+def test_spatial_teacher_is_not_confined_to_that_subspace():
+    from fiber.models import SpatialTeacher
+
+    e = _top_512_energy(SpatialTeacher(latent_shape=(4, 16, 16), width=16, blocks=1),
+                        (128, 128))
+    assert e < 0.99, f"top-512 energy {e:.6f}: the spatial teacher is bottlenecked too"
+
+
+def test_spatial_models_contain_no_global_pooling():
+    from fiber.models import SpatialTeacher
+
+    m = SpatialTeacher(latent_shape=(4, 8, 8), width=8, blocks=1)
+    assert not any(isinstance(mod, (torch.nn.AdaptiveAvgPool2d, torch.nn.AvgPool2d))
+                   for mod in m.modules())
+
+
+def test_spatial_extractor_keeps_position_and_refuses_imagenet_weights():
+    from fiber.models import SpatialExtractor, build_extractor
+
+    with pytest.raises(ValueError, match="forbidden"):
+        SpatialExtractor(k=4, pretrained=True)
+    e = build_extractor("spatial", k=8, reduce_channels=8, spatial=4)
+    out = e(torch.randn(2, 3, 128, 128))
+    assert out["w_hat"].shape == (2, 8) and out["sign_logits"].shape == (2, 8)
+    # a moved feature must change the readout; under GAP it would not
+    x = torch.zeros(1, 3, 128, 128); x[:, :, 10:20, 10:20] = 1
+    y = torch.zeros(1, 3, 128, 128); y[:, :, 90:100, 90:100] = 1
+    e.eval()
+    with torch.no_grad():
+        assert (e(x)["w_hat"] - e(y)["w_hat"]).abs().max() > 1e-4
+
+
+def test_config_registers_both_architectures():
+    assert CFG["spectrum"]["teacher_arch_control"] == "spatial"
+    assert CFG["extractor"]["arch_control"] == "spatial"
+
+
+def test_teacher_and_extractor_factories_reject_unknown_architectures():
+    from fiber.models import build_extractor, build_teacher
+
+    for build in (build_teacher, build_extractor):
+        with pytest.raises(KeyError, match="unknown"):
+            build("resnet50", k=4, d=16)
+
+
+def test_factories_accept_the_union_of_architecture_kwargs():
+    """Callers pass d and latent_shape without knowing which teacher they will get;
+    the factory must not hand an unexpected keyword to either class."""
+    from fiber.models import build_teacher
+
+    for arch in ("resnet18", "spatial"):
+        m = build_teacher(arch, d=256, latent_shape=(4, 4, 4))
+        out = m(torch.randn(2, 3, 64, 64))
+        assert out.shape[0] == 2

@@ -49,6 +49,8 @@ def main() -> int:
     ap.add_argument("--epochs", type=int, default=None)
     ap.add_argument("--batch-size", type=int, default=None)
     ap.add_argument("--report-split", default=None)
+    ap.add_argument("--teacher", default=None, choices=["resnet18", "spatial"],
+                    help="decoder class the operator is certified BY (P0-5)")
     ap.add_argument("--per-attack", action="store_true",
                     help="fixed-decoder operational spectrum per attack (NOT Cov(E[Z|Y,T=t]))")
     ap.add_argument("--limit", type=int, default=0)
@@ -76,7 +78,11 @@ def main() -> int:
 
     t0 = time.time()
     # ---- 1. teacher on A_teacher, MSE only ------------------------------
-    teacher, hist = train_teacher(root, bank, tcfg, d=d, crossfit_sub=xfit["teacher_subsplit"],
+    arch = args.teacher or scfg.get("teacher_arch", "resnet18")
+    teacher, hist = train_teacher(root, bank, tcfg, d=d, arch=arch,
+                                  latent_shape=(cfg["latent"]["channels"],
+                                                cfg["latent"]["height"], cfg["latent"]["width"]),
+                                  crossfit_sub=xfit["teacher_subsplit"],
                                   device=args.device, seed=args.seed, attacks=bank.train,
                                   limit=args.limit)
     log.info("teacher trained on %s in %.1f s (final mse %.4f)",
@@ -105,7 +111,7 @@ def main() -> int:
     summary = {
         "tag": args.tag, "seed": args.seed, "operator": "certified",
         "solver": spec.solver, "k_kept": int(V.shape[0]),
-        "teacher_arch": scfg.get("teacher_arch", "resnet18"), "teacher_loss": "mse",
+        "teacher_arch": arch, "teacher_loss": "mse",
         "teacher_final_mse": hist[-1]["mse"], "teacher_epochs": tcfg.epochs,
         "n_teacher_split": None, "n_operator": int(spec.n_samples),
         "n_report": int(valid["n_heldout"]), "report_split": report_split,
@@ -178,7 +184,7 @@ def main() -> int:
 
     out_dir = Path(cfg["paths"]["data_root"]) / "spectrum"
     out_dir.mkdir(parents=True, exist_ok=True)
-    stem = f"{args.tag}_seed{args.seed}"
+    stem = f"{args.tag}_seed{args.seed}" + ("" if arch == "resnet18" else f"_{arch}")
     torch.save({
         "operator": "certified",
         "eigenvectors": torch.from_numpy(V).float(),
@@ -188,7 +194,8 @@ def main() -> int:
         "lambda_var_heldout": torch.from_numpy(np.asarray(valid["lambda_var"])).float(),
         "eigenvalues_insample": torch.from_numpy(spec.eigenvalues[:k]).float(),
         "validity_pass": summary["validity_pass"], "k": k, "d": d,
-        "teacher_loss": "mse", "seed": args.seed, "commit": summary["commit"],
+        "teacher_loss": "mse", "teacher_arch": arch, "seed": args.seed,
+        "commit": summary["commit"],
     }, out_dir / f"{stem}.pt")
 
     rep = Path(cfg["paths"]["reports_dir"]) / f"spectrum_{stem}.json"
