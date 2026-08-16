@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import time
 from pathlib import Path
@@ -52,6 +53,10 @@ def main() -> int:
     ap.add_argument("--discovery-epochs", type=int, default=None)
     ap.add_argument("--batch-size", type=int, default=None)
     ap.add_argument("--eval-splits", nargs="*", default=["test", "test_heldout_prompts"])
+    # Overrides for smoke-testing the pipeline before the full cache exists.
+    # Leave them alone for real runs: the cross-fit protocol is the experiment.
+    ap.add_argument("--train-split", default="train")
+    ap.add_argument("--crossfit", default=None, help="'A', 'B' or 'none'")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--device", default="cuda:0")
     args = ap.parse_args()
@@ -65,6 +70,9 @@ def main() -> int:
     if args.arm not in cfg["fiber"]["arms"]:
         raise SystemExit(f"unknown arm {args.arm}; have {sorted(cfg['fiber']['arms'])}")
 
+    xfit_eval = cfg["dataset"]["crossfit"]["extractor_split"]
+    if args.crossfit is not None:
+        xfit_eval = None if args.crossfit.lower() == "none" else args.crossfit
     tcfg = TrainConfig.from_config(cfg)
     if args.epochs:
         tcfg.epochs = args.epochs
@@ -83,7 +91,8 @@ def main() -> int:
         dcfg.epochs = args.discovery_epochs or tcfg.epochs
         log.info("[%s] discovery on split A (%d epochs)", args.arm, dcfg.epochs)
         _, frame, dhist = train_extractor(
-            frame, root, bank, dcfg, crossfit=cfg["dataset"]["crossfit"]["discovery_split"],
+            frame, root, bank, dcfg, split=args.train_split,
+            crossfit=cfg["dataset"]["crossfit"]["discovery_split"] if args.crossfit is None else xfit_eval,
             device=args.device, seed=args.seed, learn_frame=True, attacks=bank.train,
             limit=args.limit)
         meta["discovery"] = {"epochs": dcfg.epochs, "history": dhist[-3:],
@@ -98,7 +107,7 @@ def main() -> int:
     # ---- evaluation extractor: split B, identical budget for every arm
     log.info("[%s] evaluation extractor on split B (%d epochs)", args.arm, tcfg.epochs)
     model, frame, hist = train_extractor(
-        frame, root, bank, tcfg, crossfit=cfg["dataset"]["crossfit"]["extractor_split"],
+        frame, root, bank, tcfg, split=args.train_split, crossfit=xfit_eval,
         device=args.device, seed=args.seed, learn_frame=False, attacks=bank.train,
         limit=args.limit)
 
@@ -119,13 +128,16 @@ def main() -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     stem = f"{args.arm}_k{k}_s{args.seed}"
     np.savez_compressed(out_dir / f"{stem}.npz", **arrays)
-    torch.save({"frame_rows_sha": hash(tuple(frame.rows().flatten()[:64].tolist())),
+    rows = frame.rows().detach().cpu().contiguous()
+    rows_digest = hashlib.blake2s(rows.numpy().tobytes(), digest_size=16).hexdigest()
+    torch.save({"rows_digest": rows_digest, "rows": rows,
                 "state_dict": frame.state_dict()}, out_dir / f"{stem}_frame.pt")
     summary = {
         "arm": args.arm, "type": cfg["fiber"]["arms"][args.arm]["type"], "k": k,
         "seed": args.seed, "tag": args.tag,
-        "orthonormality_error": ortho,
+        "orthonormality_error": ortho, "rows_digest": rows_digest,
         "epochs": tcfg.epochs, "final_train_loss": hist[-1]["loss"],
+        "train_split": args.train_split, "crossfit": xfit_eval,
         "seconds": round(time.time() - t0, 1),
         "results": results, **extra, **meta,
     }

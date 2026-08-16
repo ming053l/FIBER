@@ -31,6 +31,7 @@ log = get_logger("eval")
 RANDOM_TYPES = {"signed_permutation", "hadamard"}
 DERIVED_TYPES = {"spectral_topk", "householder"}
 SANITY_TYPES = {"identity"}
+REFERENCE_TYPES = {"ddim_inversion_reference"}
 
 
 def load_runs(out_dir: Path, k: int | None) -> list[dict]:
@@ -117,12 +118,18 @@ def main() -> int:
         header = "| arm | seed | " + " | ".join(attacks) + " | mean |"
         lines.append(header)
         lines.append("|" + "---|" * (len(attacks) + 3))
+        has_ref = any(r["type"] in REFERENCE_TYPES for r in rk)
         for r in sorted(rk, key=lambda r: (r["arm"], r["seed"])):
             res = r["results"].get(args.split, {})
             vals = [res.get(a, {}).get("sign_ber", float("nan")) for a in attacks]
-            lines.append(f"| {r['arm']} | {r['seed']} | " +
+            mark = " †" if r["type"] in REFERENCE_TYPES else ""
+            lines.append(f"| {r['arm']}{mark} | {r['seed']} | " +
                          " | ".join(f"{v:.4f}" for v in vals) +
                          f" | {np.nanmean(vals):.4f} |")
+        if has_ref:
+            lines.append("\n† prompt-assisted DDIM inversion — **violates the receiver "
+                         "protocol** (it uses the prompt). Diagnostic only: it separates "
+                         "'weak channel' from 'weak extractor'. Never a baseline, never in a gate.")
 
     # ---------------- Gates 3A / 3B -------------------------------------
     k_gate = args.k or (ks[-1] if len(ks) == 1 else int(cfg["fiber"]["robust_dims"]))
@@ -131,6 +138,10 @@ def main() -> int:
 
     def stems_of(types):
         return [s for s, m in mats.items() if m["run"]["type"] in types]
+
+    # Reference runs are excluded from every gate by construction: they are not in
+    # RANDOM_TYPES or DERIVED_TYPES, and this assert keeps it that way.
+    assert not (RANDOM_TYPES | DERIVED_TYPES) & REFERENCE_TYPES
 
     random_stems, derived_stems = stems_of(RANDOM_TYPES), stems_of(DERIVED_TYPES)
     lines.append(f"\n## Gate 3A — existence of observable coordinates (k = {k_gate})\n")
@@ -143,10 +154,23 @@ def main() -> int:
     else:
         n_derived_arms = len({mats[s]["run"]["arm"] for s in derived_stems})
         alpha = 0.05 / max(n_derived_arms, 1)     # the gate takes min over arms
+        by_family = defaultdict(list)
+        for s in random_stems:
+            by_family[mats[s]["run"]["arm"]].append(s)
+
         conditions, per_arm = {}, defaultdict(dict)
         for g in groups:
             rand_stack = np.stack([mats[s]["per_group"][g] for s in random_stems])
-            reference = rand_stack.mean(axis=0)               # E_Q[BER], per sample
+            # The reference is the STRONGEST random family, not the pool average.
+            # Arms B and C are different families -- a signed permutation is local,
+            # a Hadamard row is global -- and R1 says the local one loses for a
+            # trivial reason. Averaging it into the reference would hand the derived
+            # arms a free win. Per family we average over its seeds (E_Q[BER]); the
+            # gate then runs against whichever family is hardest to beat.
+            family_means = {a: np.mean([mats[s]["per_group"][g] for s in ss], axis=0)
+                            for a, ss in by_family.items()}
+            ref_family = min(family_means, key=lambda a: family_means[a].mean())
+            reference = family_means[ref_family]
             best_draw = float(rand_stack.mean(axis=1).min())
             for s in derived_stems:
                 res = paired_bootstrap(reference, mats[s]["per_group"][g],
@@ -155,6 +179,8 @@ def main() -> int:
                 per_arm[g][s] = gate3a_condition(res, cfg["gate3a"])
             best = min(per_arm[g], key=lambda s: mats[s]["per_group"][g].mean())
             conditions[g] = {**per_arm[g][best], "selected_arm": best,
+                             "reference_family": ref_family,
+                             "random_pooled_mean": float(rand_stack.mean()),
                              "random_mean": float(reference.mean()),
                              "random_spread": float(rand_stack.mean(axis=1).std()),
                              "random_best_draw": best_draw,
@@ -165,14 +191,19 @@ def main() -> int:
         lines.append(f"**Verdict: {verdict['verdict']}** "
                      f"({verdict['n_passed']}/{verdict['n_required']} channel groups, "
                      f"Bonferroni alpha = {alpha:.3f} over {n_derived_arms} derived arms)\n")
-        lines.append("| group | E_Q[BER] random | spread | best draw | derived | BER | ΔBER | CI95 | rel | pass |")
-        lines.append("|" + "---|" * 10)
+        lines.append("| group | reference family | E_Q[BER] | spread | best draw | derived | BER | ΔBER | CI95 | rel | pass |")
+        lines.append("|" + "---|" * 11)
         for g, c in conditions.items():
             lines.append(
-                f"| {g} | {c['random_mean']:.4f} | ±{c['random_spread']:.4f} | "
+                f"| {g} | {c['reference_family']} | {c['random_mean']:.4f} | ±{c['random_spread']:.4f} | "
                 f"{c['random_best_draw']:.4f} | {c['selected_arm']} | {c['treatment']:.4f} | "
                 f"{c['mean_delta']:+.4f} | [{c['ci_low']:+.4f}, {c['ci_high']:+.4f}] | "
                 f"{c['relative_reduction']*100:.1f}% | {'yes' if c['passed'] else 'no'} |")
+        lines.append("\nThe random reference is the **strongest random family** per group "
+                     "(seed-averaged), not the pool average: arm B is local and arm C is "
+                     "global, and R1 says the local one loses for a trivial reason. The best "
+                     "single draw is shown for context but is not the reference — a gate "
+                     "against one lucky draw would be indefensible in either direction.\n")
         lines.append("\nThe gate needs all three of `CI95(Δ) > 0`, relative reduction ≥ "
                      f"{cfg['gate3a']['target_relative_reduction']*100:.0f}%, absolute "
                      f"reduction ≥ {cfg['gate3a']['min_absolute_reduction']}, in ≥ "

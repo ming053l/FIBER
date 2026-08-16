@@ -2,8 +2,17 @@
 
 **Learning Measure-Preserving Robust Coordinates for Full-Image Diffusion Steganography**
 
-Status: **Phase 0 — not yet implemented.** See [PLAN.md](PLAN.md) for the implementation
-plan, acceptance criteria and risk register.
+Status: **Gate 0 PASSED** ([reports/phase0.md](reports/phase0.md)); Phase 1 caching in
+progress. See [PLAN.md](PLAN.md) for the implementation plan, acceptance criteria and
+risk register.
+
+| Phase | State |
+|---|---|
+| §3.5 synthetic spectrum validation (no GPU) | done — `tests/test_spectrum_synthetic.py` |
+| Gate 0 — environment | **PASS**: DDIM, `eta=0`, `init_noise_sigma=1.0`, `z` round-trips with max abs error `0.0`, 100 samples zero NaN, generation bit-identical across runs (8/8 pairs) |
+| Phase 1 — cached native dataset | pilot 2k/256/256/256 caching; `scripts/cache_native_dataset.py` |
+| Phase 2 — denominators + first `Ĉ_obs` | code ready, not run |
+| Phase 3 — 5 arms, cross-fit, gates 3A/3B | code ready, not run |
 
 ---
 
@@ -94,18 +103,43 @@ any global transform for a trivial locality reason (PLAN.md R1).
 
 ```
 FIBER/
-├── configs/            # sd15, channels, linear_fiber, nonlinear_fiber
+├── configs/            # sd15, channels, linear_fiber
 ├── src/fiber/
-│   ├── diffusion/      # frozen generator wrapper, cached dataset builder
-│   ├── channels/       # jpeg / resize / noise / blur (non-differentiable, real codecs)
-│   ├── transforms/     # identity, hadamard, orthogonal, torus_coupling, fiber_flow
-│   ├── models/         # extractor
-│   ├── coding/         # partition, ecc, crypto
-│   ├── metrics/        # ber, distribution, reconstruction
-│   └── utils/
-├── scripts/            # cache_native_dataset, train_*, eval_*
-├── tests/              # invertibility + distribution unit tests
+│   ├── diffusion/      # frozen G, prompt pool, cache builder + dataset, DDIM inversion
+│   ├── channels/       # jpeg / webp / resize / noise / blur — real codecs, seeded
+│   ├── transforms/     # identity, signperm, hadamard, spectral, householder
+│   ├── spectrum/       # C_obs estimator (randomized SVD / exact Gram, cross-fit)
+│   ├── models/         # extractor (2 heads) + teacher (E[Z|Y])
+│   ├── training/       # cross-fit train/eval loops
+│   ├── metrics/        # sign BER, paired bootstrap, gate thresholds
+│   └── utils/          # config, seeding, logging
+├── scripts/            # phase0_env_audit, cache_native_dataset,
+│                       # fit_observability_spectrum, train_coordinates,
+│                       # eval_coordinates, ddim_reference
+├── tests/              # 112 tests, all CPU except the cached-dataset ones
 └── reports/            # one markdown per phase, committed
+```
+
+### Transforms are k-frames, not matrices
+
+`d = 16384`, so a dense `Q` is a 1 GB object — and only the `k` robust
+coordinates are ever read. Every arm is therefore a **frame** `R ∈ R^{k×d}` with
+`R Rᵀ = I_k`, exposing `project(z) = Rz` and its adjoint `expand(a) = Rᵀa`. Any
+such `R` extends to an orthogonal `Q`, so measure preservation is unaffected,
+and the Gate 3A orthonormality check `‖R Rᵀ − I‖_∞ < 1e-5` costs `O(k²d)`
+without ever forming `Q`.
+
+### Running it
+
+```bash
+conda activate invcisd
+pip install -e .
+pytest -q                                                    # 112 tests, ~40 s, no GPU
+python scripts/phase0_env_audit.py                           # Gate 0
+python scripts/cache_native_dataset.py --pilot               # Phase 1 (~1 h)
+python scripts/fit_observability_spectrum.py --tag pilot --per-attack
+python scripts/train_coordinates.py --tag pilot --arm C_hadamard --k 64 --seed 0
+python scripts/eval_coordinates.py --tag pilot --k 64        # gates 3A / 3B
 ```
 
 Data and generated images live on `/ssd2/ming/FIBER` (`/ssd1` has ~120 GB free);
