@@ -302,7 +302,8 @@ def main() -> int:
     # `base_seed`, so the D1 comparator is D_spectral at exactly that seed -- averaging
     # D1 over all its seeds would compare "several different subspaces, averaged"
     # against "rotations of one subspace" while claiming to hold the subspace fixed.
-    rot_runs = [m["run"] for m in mats.values() if m["run"]["type"] in BASIS_ONLY_TYPES]
+    rot_runs = [m["run"] for m in mats.values() if m["run"]["type"] in BASIS_ONLY_TYPES
+                and m["run"].get("analysis_scope", "p0_7_basis") == "p0_7_basis"]
     if rot_runs:
         base_seeds = {r.get("base_seed", 0) for r in rot_runs}
         if len(base_seeds) > 1:
@@ -311,6 +312,8 @@ def main() -> int:
         base_seed = base_seeds.pop()
 
         def in_p0_7(run) -> bool:
+            if run.get("analysis_scope", "p0_7_basis") != "p0_7_basis":
+                return False
             if run["type"] in BASIS_ONLY_TYPES:
                 return True
             # the single spectral run whose subspace the rotations actually use

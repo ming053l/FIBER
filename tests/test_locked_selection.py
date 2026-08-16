@@ -346,3 +346,75 @@ def test_basis_spread_marginalises_the_receiver_seed(tmp_path):
     # receiver jitter cancels within a basis: 0.40 and 0.50 -> spread 0.05, not 0.0707
     assert abs(d2["basis_spread"] - 0.05) < 0.005, \
         "the spread still contains extractor training noise"
+
+
+# --------------------------------------------------------------------------
+# B0: a run's identity must be complete, and each analysis must read only its
+# own runs. Otherwise the results directory contaminates itself.
+# --------------------------------------------------------------------------
+from train_coordinates import run_stem as _run_stem  # noqa: E402
+
+
+def test_run_stem_separates_receiver_architecture_and_seed():
+    """The concrete failure: the P0-5 receiver control reran C2/D/E at seed 0 with a
+    spatial extractor under the SAME stem, silently overwriting the Gate runs."""
+    base = _run_stem("D_spectral", 64, 0, "resnet18", 0)
+    assert base != _run_stem("D_spectral", 64, 0, "spatial", 0)
+    assert base != _run_stem("D_spectral", 64, 0, "resnet18", 1)
+    assert base != _run_stem("D_spectral", 64, 1, "resnet18", 0)
+    assert len({_run_stem("A", 64, s, a, r) for s in (0, 1) for a in ("resnet18", "spatial")
+                for r in (0, 1)}) == 8
+
+
+def _scoped_run(dirpath, arm, rtype, seed, val, test, scope="gate",
+                receiver_seed=None, structure_seed=None):
+    _write_run(dirpath, arm, rtype, seed, val, test)
+    jf = dirpath / f"{arm}_k{K}_s{seed}.json"
+    blob = json.loads(jf.read_text())
+    blob["analysis_scope"] = scope
+    blob["structure_seed"] = seed if structure_seed is None else structure_seed
+    blob["receiver_seed"] = seed if receiver_seed is None else receiver_seed
+    jf.write_text(json.dumps(blob))
+    return jf
+
+
+def test_receiver_control_runs_never_enter_gate_selection(tmp_path):
+    """A spatial-receiver control with a spectacular BER must not be read as a
+    replication of the primary method."""
+    d = tmp_path / "results"
+    d.mkdir()
+    _scoped_run(d, "C2_haar", "haar", 0, 0.50, 0.50)
+    _scoped_run(d, "D_spectral", "spectral_topk", 0, 0.40, 0.40)
+    _scoped_run(d, "D_spectral_sp", "spectral_topk", 0, 0.01, 0.01,
+                scope="receiver_control")
+    sel = tmp_path / "selection.json"
+    assert _run("select_method.py", "--tag", "unit", "--results-dir", str(d),
+                "--out", str(sel)).returncode == 0
+    blob = json.loads(sel.read_text())
+    cands = {c["arm"]: c["val_sign_ber"] for c in blob["candidates"]}
+    assert "D_spectral_sp" not in cands, "a receiver control entered the Gate pool"
+    assert abs(cands["D_spectral"] - 0.40) < 0.02
+
+
+def test_structural_seeds_are_weighted_equally_regardless_of_replication_count(tmp_path):
+    """seed 0 has two receiver replications (0.20, 0.60), seed 1 has one (0.50).
+    The method score must be (0.40 + 0.50)/2 = 0.45, not the flat (0.20+0.60+0.50)/3."""
+    d = tmp_path / "results"
+    d.mkdir()
+    _scoped_run(d, "C2_haar", "haar", 0, 0.50, 0.50)
+    for name, val, struct, rseed in (("a", 0.20, 0, 0), ("b", 0.60, 0, 1), ("c", 0.50, 1, 0)):
+        jf = _scoped_run(d, f"D_spectral_{name}", "spectral_topk", 0, val, val,
+                         structure_seed=struct, receiver_seed=rseed)
+        blob = json.loads(jf.read_text())
+        blob["arm"] = "D_spectral"
+        jf.write_text(json.dumps(blob))
+
+    sel = tmp_path / "selection.json"
+    assert _run("select_method.py", "--tag", "unit", "--results-dir", str(d),
+                "--out", str(sel)).returncode == 0
+    blob = json.loads(sel.read_text())
+    cand = next(c for c in blob["candidates"] if c["arm"] == "D_spectral")
+    assert cand["receiver_replications"] == {"0": 2, "1": 1}
+    assert abs(cand["val_sign_ber"] - 0.45) < 0.005, \
+        f"flat file average leaked in: {cand['val_sign_ber']:.4f}"
+    assert abs(cand["val_sign_ber_per_structure_seed"]["0"] - 0.40) < 0.005

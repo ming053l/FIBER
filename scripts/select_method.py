@@ -30,6 +30,7 @@ from fiber.utils.logging import get_logger
 log = get_logger("select")
 
 SELECTION_SPLIT = "val"
+GATE_SCOPE = "gate"
 # Gate 3A asks whether an observable SUBSPACE exists, so only subspace-discovery
 # families are selectable: spectral_topk (closed-form) and householder (differentiable).
 #
@@ -91,6 +92,11 @@ def load_val_runs(out_dir: Path) -> list[dict]:
     runs = []
     for jf in sorted(out_dir.glob("*.json")):
         meta = json.loads(jf.read_text())
+        if meta.get("analysis_scope", GATE_SCOPE) != GATE_SCOPE:
+            # receiver-architecture controls and P0-7 basis runs are separate analyses;
+            # letting them into the candidate pool would mix a spatial-receiver result
+            # into a ResNet-receiver method, or overweight one structural seed
+            continue
         res = meta.get("results", {})
         if SELECTION_SPLIT not in res:
             log.warning("%s has no %s results, skipping (rerun the arm so selection has "
@@ -121,11 +127,20 @@ def select(runs: list[dict], attacks: list[str]) -> dict:
     scored = []
     for (arm, k, hp), rs in sorted(by_candidate.items()):
         rtype = rs[0]["type"]
+        # Hierarchical: average receiver replications WITHIN a structural seed, then
+        # average structural seeds. A flat mean over files would weight a structural
+        # seed by how many receiver replications it happens to have.
+        by_structure: dict[int, list[float]] = defaultdict(list)
+        for r in rs:
+            by_structure[r.get("structure_seed", r["seed"])].append(val_mean_ber(r, attacks))
+        per_seed = {s_: float(np.mean(v)) for s_, v in by_structure.items()}
         scored.append({
             "arm": arm, "k": k, "type": rtype, "hyperparameters_fingerprint": hp,
             "runs": [run_stem(r) for r in rs],
-            "seeds": sorted(r["seed"] for r in rs),
-            "val_sign_ber": float(np.mean([val_mean_ber(r, attacks) for r in rs])),
+            "seeds": sorted(per_seed),
+            "receiver_replications": {str(s_): len(v) for s_, v in by_structure.items()},
+            "val_sign_ber_per_structure_seed": per_seed,
+            "val_sign_ber": float(np.mean(list(per_seed.values()))),
             "is_derived": rtype in DERIVED_TYPES,
         })
     derived = [c for c in scored if c["is_derived"]]

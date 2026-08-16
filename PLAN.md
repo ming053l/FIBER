@@ -543,6 +543,19 @@ decided on `val` by `scripts/select_method.py`, which writes
 `scripts/eval_coordinates.py` then *reads* that artifact and refuses to run without it;
 it cannot select a family, a seed, a `k` or a reference, and it refuses `--split val`.
 
+**A run's identity is `(arm, k, structure seed, receiver architecture, receiver seed)`**
+and it carries an explicit `analysis_scope`. Anything less and the results directory
+contaminates itself: the P0-5 receiver control reran C2/D/E at seed 0 with a spatial
+extractor under the same stem as the primary receiver, silently overwriting the Gate
+runs, after which the selector would have read a spatial-receiver result as a
+replication of the ResNet one. Gate selection reads `analysis_scope = gate` only;
+`receiver_control` and `p0_7_basis` runs belong to their own analyses.
+
+Replications aggregate **hierarchically**: receiver repetitions are averaged within a
+structural seed before structural seeds are averaged. A flat mean over files would
+weight a structural seed by how many receiver repetitions it happened to have — with
+seed 0 at `(0.20, 0.60)` and seed 1 at `(0.50)`, the score is `0.45`, not `0.4333`.
+
 The lock names **exact runs, with content hashes** — `selected_runs`,
 `reference_runs` and `context_runs` — not a family plus a seed count. Identifying only
 `(arm, k)` would mean a run dropped into the results directory after selection joins

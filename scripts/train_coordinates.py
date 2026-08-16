@@ -31,6 +31,20 @@ from fiber.utils.seeding import set_determinism
 log = get_logger("arm")
 
 
+BASIS_ONLY_TYPES = {"rotated_random", "rotated_learned"}
+
+
+def run_stem(arm: str, k: int, seed: int, extractor_arch: str, receiver_seed: int) -> str:
+    """A run's identity is (arm, k, structure seed, receiver architecture, receiver seed).
+
+    Anything less and runs overwrite each other on disk. Concretely, before this the
+    P0-5 receiver control reran C2/D/E at seed 0 with `--extractor-arch spatial` under
+    the SAME stem as the primary receiver, so it silently replaced the Gate runs and the
+    selector then treated a spatial-receiver result as a replication of the ResNet one.
+    """
+    return f"{arm}_k{k}_s{seed}_rx{extractor_arch}_r{receiver_seed}"
+
+
 def build_arm_frame(cfg, arm: str, k: int, seed: int, tag: str, d: int):
     spec = dict(cfg["fiber"]["arms"][arm])
     if spec["type"] in ("rotated_random", "rotated_learned"):
@@ -78,6 +92,10 @@ def main() -> int:
     ap.add_argument("--crossfit", default=None, help="'A', 'B' or 'none'")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--device", default="cuda:0")
+    ap.add_argument("--scope", default=None,
+                    choices=["gate", "receiver_control", "p0_7_basis"],
+                    help="which analysis this run belongs to; the Gate selector reads "
+                         "ONLY gate-scope runs")
     ap.add_argument("--receiver-seed", type=int, default=None,
                     help="P0-7.1: separate the receiver's randomness from the BASIS "
                          "seed, so a D2 spread can be attributed to the basis")
@@ -110,6 +128,16 @@ def main() -> int:
     # seed for both makes a D2 spread a mixture of basis variability and extractor
     # training noise, which cannot then be attributed to the coding basis.
     receiver_seed = args.seed if args.receiver_seed is None else args.receiver_seed
+    arm_type = cfg["fiber"]["arms"][args.arm]["type"]
+    scope = args.scope
+    if scope is None:
+        # A control run must never default into the Gate pool.
+        if tcfg.extractor_arch != cfg["extractor"].get("arch", "resnet18"):
+            scope = "receiver_control"
+        elif arm_type in BASIS_ONLY_TYPES:
+            scope = "p0_7_basis"
+        else:
+            scope = "gate"
     frame, extra = build_arm_frame(cfg, args.arm, k, args.seed, args.tag, d)
     learnable = any(p.requires_grad for p in frame.parameters()) or \
         cfg["fiber"]["arms"][args.arm]["type"] == "householder"
@@ -168,9 +196,7 @@ def main() -> int:
 
     out_dir = Path(cfg["paths"]["data_root"]) / "results" / args.tag
     out_dir.mkdir(parents=True, exist_ok=True)
-    stem = f"{args.arm}_k{k}_s{args.seed}"
-    if args.receiver_seed is not None:
-        stem += f"_r{receiver_seed}"
+    stem = run_stem(args.arm, k, args.seed, tcfg.extractor_arch, receiver_seed)
     np.savez_compressed(out_dir / f"{stem}.npz", **arrays)
     rows = frame.rows().detach().cpu().contiguous()
     rows_digest = hashlib.blake2s(rows.numpy().tobytes(), digest_size=16).hexdigest()
@@ -185,8 +211,10 @@ def main() -> int:
         "arm": args.arm, "type": cfg["fiber"]["arms"][args.arm]["type"], "k": k,
         "arm_spec": arm_spec, "hyperparameters_fingerprint": hp_fp,
         "seed": args.seed, "tag": args.tag,
-        # `seed` is the arm's structure seed; these name what it actually varies
-        "basis_seed": args.seed, "receiver_seed": receiver_seed,
+        # `seed` is the arm's structure seed; these name what it actually varies, and
+        # `analysis_scope` keeps control runs out of the Gate candidate pool
+        "structure_seed": args.seed, "basis_seed": args.seed,
+        "receiver_seed": receiver_seed, "analysis_scope": scope,
         "orthonormality_error": ortho, "rows_digest": rows_digest,
         "extractor_arch": tcfg.extractor_arch,
         "epochs": tcfg.epochs, "final_train_loss": hist[-1]["loss"],

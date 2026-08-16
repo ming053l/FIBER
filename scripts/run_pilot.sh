@@ -74,16 +74,19 @@ echo "===== P0-7: same subspace, different coding basis ====="
 # `--seed` is the BASIS; `--receiver-seed` is the extractor. Marginalising the receiver
 # within each basis is what makes the reported spread attributable to the basis.
 RECEIVER_SEEDS=${RECEIVER_SEEDS:-"0 1"}
+# --scope p0_7_basis: these are extra receiver replications of ONE subspace, not Gate
+# replications. Without the scope the selector would weight spectral seed 0 by how many
+# receiver repetitions it happens to have.
 for r in $RECEIVER_SEEDS; do
   run python scripts/train_coordinates.py --tag "$TAG" --arm D_spectral --k "$K" \
-      --seed 0 --receiver-seed "$r" --epochs "$EPOCHS"
+      --seed 0 --receiver-seed "$r" --epochs "$EPOCHS" --scope p0_7_basis
   for s in 0 1 2 3; do
     run python scripts/train_coordinates.py --tag "$TAG" --arm D2_rot_rand --k "$K" \
-        --seed "$s" --receiver-seed "$r" --epochs "$EPOCHS"
+        --seed "$s" --receiver-seed "$r" --epochs "$EPOCHS" --scope p0_7_basis
   done
   for s in 0 1; do
     run python scripts/train_coordinates.py --tag "$TAG" --arm D3_rot_learn --k "$K" \
-        --seed "$s" --receiver-seed "$r" --epochs "$EPOCHS"
+        --seed "$s" --receiver-seed "$r" --epochs "$EPOCHS" --scope p0_7_basis
   done
 done
 
@@ -96,8 +99,10 @@ echo "===== P0-5: receiver-architecture control (no global pooling) ====="
 # GAP discards where a feature occurred, which is what a LOCAL frame needs, so a global
 # frame could win for a receiver-side reason. Locked method + Haar under both receivers.
 for arm in C2_haar D_spectral E_learned; do
+  # --scope receiver_control keeps these out of the Gate candidate pool, and the stem
+  # carries the receiver architecture so they cannot overwrite the primary runs.
   run python scripts/train_coordinates.py --tag "$TAG" --arm "$arm" --k "$K" --seed 0 \
-      --epochs "$EPOCHS" --extractor-arch spatial
+      --epochs "$EPOCHS" --extractor-arch spatial --scope receiver_control
 done
 
 echo "===== Prompt-assisted reference (diagnostic only; violates the protocol) ====="
