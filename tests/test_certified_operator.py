@@ -8,6 +8,7 @@ in closed form and every claim below is checked against ground truth:
 """
 import numpy as np
 import pytest
+import torch
 
 from fiber.spectrum.certified import (CertifiedObservabilityOperator, fit_certified,
                                       quadratic_form, teacher_validity, variance_form)
@@ -531,3 +532,19 @@ def test_positive_rank_is_named_as_numerical_not_statistical():
     c = subspace_certificate(*_null_case(256, 32))
     assert "numerical_positive_rank" in c
     assert c["numerical_positive_rank"] == c["certified_positive_rank"]
+
+
+def test_principal_cosines_expose_structure_a_mean_would_hide():
+    """Two subspaces sharing one direction strongly and none otherwise have the same
+    MEAN alignment as two sharing every direction weakly. The spectrum separates them."""
+    from fiber.spectrum import principal_cosines, subspace_alignment
+
+    rng = np.random.default_rng(0)
+    d, k = 64, 4
+    Q = np.linalg.qr(rng.standard_normal((d, 3 * k)))[0]
+    A = Q[:, :k].T
+    shared_one = np.concatenate([Q[:, :1], Q[:, k:k + k - 1]], axis=1).T
+    a = principal_cosines(torch.from_numpy(A), torch.from_numpy(shared_one))
+    assert a[0] > 0.99 and a[-1] < 0.01
+    assert abs(subspace_alignment(torch.from_numpy(A),
+                                  torch.from_numpy(shared_one)) - float(a.mean())) < 1e-9

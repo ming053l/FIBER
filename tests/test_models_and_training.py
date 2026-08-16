@@ -173,9 +173,36 @@ def test_spatial_extractor_keeps_position_and_refuses_imagenet_weights():
         assert (e(x)["w_hat"] - e(y)["w_hat"]).abs().max() > 1e-4
 
 
-def test_config_registers_both_architectures():
-    assert CFG["spectrum"]["teacher_arch_control"] == "spatial"
+def test_config_registers_the_architecture_controls():
+    """The primary teacher control shares the trunk, so the isolated variable is the
+    pooling rather than the whole network."""
+    assert CFG["spectrum"]["teacher_arch_control"] == "spatial_sharedtrunk"
+    assert CFG["spectrum"]["teacher_arch_control2"] == "spatial"
     assert CFG["extractor"]["arch_control"] == "spatial"
+    assert CFG["spectrum"]["alignment_tol"] == 0.5
+
+
+def test_shared_trunk_teacher_really_shares_the_trunk():
+    from fiber.models import SharedTrunkSpatialTeacher, Teacher
+
+    g, sh = Teacher(d=1024), SharedTrunkSpatialTeacher(latent_shape=(4, 16, 16))
+    # compare SHAPES in order: the modules are the same objects but nn.Sequential
+    # renames them ("0.weight" vs "conv1.weight")
+    gt = [tuple(p.shape) for p in g.trunk.parameters()]
+    st = [tuple(p.shape) for p in sh.trunk.parameters()]
+    assert gt and gt == st, "the control changes more than the head"
+    assert not any(isinstance(m, torch.nn.AdaptiveAvgPool2d) for m in sh.modules())
+
+
+def test_spatial_extractor_is_capacity_comparable_to_the_global_one():
+    """A spatial receiver with far more parameters would confound 'keeps position'
+    with 'has more capacity'. Measured ratio 1.09 at k=64."""
+    from fiber.models import build_extractor
+
+    n = {a: sum(p.numel() for p in build_extractor(a, k=64).parameters())
+         for a in ("resnet18", "spatial")}
+    ratio = n["spatial"] / n["resnet18"]
+    assert 0.8 < ratio < 1.25, f"capacity ratio {ratio:.2f} confounds the control"
 
 
 def test_teacher_and_extractor_factories_reject_unknown_architectures():

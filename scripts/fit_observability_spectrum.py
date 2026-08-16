@@ -49,7 +49,8 @@ def main() -> int:
     ap.add_argument("--epochs", type=int, default=None)
     ap.add_argument("--batch-size", type=int, default=None)
     ap.add_argument("--report-split", default=None)
-    ap.add_argument("--teacher", default=None, choices=["resnet18", "spatial"],
+    ap.add_argument("--teacher", default=None,
+                    choices=["resnet18", "spatial", "spatial_sharedtrunk"],
                     help="decoder class the operator is certified BY (P0-5)")
     ap.add_argument("--per-attack", action="store_true",
                     help="fixed-decoder operational spectrum per attack (NOT Cov(E[Z|Y,T=t]))")
@@ -112,6 +113,9 @@ def main() -> int:
         "tag": args.tag, "seed": args.seed, "operator": "certified",
         "solver": spec.solver, "k_kept": int(V.shape[0]),
         "teacher_arch": arch, "teacher_loss": "mse",
+        "teacher_parameters": sum(p.numel() for p in teacher.parameters()),
+        "teacher_trunk_parameters": sum(p.numel() for n, p in teacher.named_parameters()
+                                        if n.startswith("trunk")),
         "teacher_final_mse": hist[-1]["mse"], "teacher_epochs": tcfg.epochs,
         "n_teacher_split": None, "n_operator": int(spec.n_samples),
         "n_report": int(valid["n_heldout"]), "report_split": report_split,
@@ -197,6 +201,12 @@ def main() -> int:
         "teacher_loss": "mse", "teacher_arch": arch, "seed": args.seed,
         "commit": summary["commit"],
     }, out_dir / f"{stem}.pt")
+
+    # Report-split outputs, so the cross-decoder certificate matrix can be computed
+    # without re-running either teacher.
+    torch.save({"F_rep": F_rep, "Z_rep": Z_rep, "teacher_arch": arch,
+                "report_split": report_split},
+               out_dir / f"{stem}_report_outputs.pt")
 
     rep = Path(cfg["paths"]["reports_dir"]) / f"spectrum_{stem}.json"
     rep.parent.mkdir(parents=True, exist_ok=True)

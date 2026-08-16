@@ -1,7 +1,8 @@
 from .extractor import Extractor, Teacher
-from .spatial import SpatialExtractor, SpatialTeacher
+from .spatial import SharedTrunkSpatialTeacher, SpatialExtractor, SpatialTeacher
 
-TEACHERS = {"resnet18": Teacher, "spatial": SpatialTeacher}
+TEACHERS = {"resnet18": Teacher, "spatial": SpatialTeacher,
+            "spatial_sharedtrunk": SharedTrunkSpatialTeacher}
 EXTRACTORS = {"resnet18": Extractor, "spatial": SpatialExtractor}
 
 
@@ -29,5 +30,6 @@ def build_extractor(arch: str = "resnet18", **kw):
     return cls(**_accepted(cls, kw))
 
 
-__all__ = ["Extractor", "Teacher", "SpatialTeacher", "SpatialExtractor",
+__all__ = ["Extractor", "Teacher", "SpatialTeacher", "SharedTrunkSpatialTeacher",
+           "SpatialExtractor",
            "build_teacher", "build_extractor", "TEACHERS", "EXTRACTORS"]

@@ -201,6 +201,19 @@ def fit_spectrum(M: torch.Tensor, k: int, cfg: dict | None = None, seed: int = 0
                           n_iter=int(cfg.get("num_power_iters", 4)), seed=seed, strict=strict)
 
 
+def principal_cosines(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
+    """cos^2 of the principal angles between the row-spaces of A and B, descending.
+
+    The MEAN of these is `subspace_alignment`, and a mean can hide structure: a few
+    directions agreeing strongly looks the same as every direction agreeing weakly, and
+    those are different scientific statements. Report the spectrum.
+    """
+    Qa, _ = torch.linalg.qr(A.double().T)
+    Qb, _ = torch.linalg.qr(B.double().T)
+    s = torch.linalg.svdvals(Qa.T @ Qb)
+    return s.pow(2)      # svdvals is already descending
+
+
 def subspace_alignment(A: torch.Tensor, B: torch.Tensor) -> float:
     """Mean squared cosine of the principal angles between row-spaces of A and B.
     1.0 = same subspace, ~k/d = unrelated. Used to compare per-attack spectra."""

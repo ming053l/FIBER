@@ -103,3 +103,43 @@ class SpatialExtractor(nn.Module):
         if self.head_sign is not None:
             out["sign_logits"] = self.head_sign(h)
         return out
+
+
+class SharedTrunkSpatialTeacher(nn.Module):
+    """The GAP-vs-spatial comparison with the TRUNK held fixed.
+
+    `SpatialTeacher` is a different network end to end, so a disagreement with the
+    global teacher shows the geometry is architecture-dependent but cannot say the
+    global pooling caused it. This one keeps the identical ResNet18 trunk and changes
+    only the head:
+
+        global :  trunk -> global average pool -> Linear(512, d)
+        this   :  trunk -> 1x1 conv -> upsample to the latent grid -> 3x3 conv -> d
+
+    so the isolated variable is whether spatial position survives to the output.
+
+    The two heads are NOT parameter-matched and cannot be: a dense GAP+FC head needs
+    512*d weights to address d outputs while a convolutional head shares weights across
+    positions. Parameter counts are reported with every comparison rather than implied
+    to be equal.
+    """
+
+    def __init__(self, latent_shape=(4, 64, 64), width: int = 64, pretrained: bool = False):
+        super().__init__()
+        if pretrained:
+            raise ValueError("pretrained=True is forbidden for the teacher")
+        from torchvision.models import resnet18
+        net = resnet18(weights=None)
+        self.trunk = nn.Sequential(net.conv1, net.bn1, net.relu, net.maxpool,
+                                   net.layer1, net.layer2, net.layer3, net.layer4)
+        self.latent_shape = tuple(latent_shape)
+        self.d = int(torch.tensor(self.latent_shape).prod())
+        self.reduce = nn.Sequential(nn.Conv2d(512, width, 1, bias=False),
+                                    nn.BatchNorm2d(width), nn.ReLU(inplace=True))
+        self.head = nn.Conv2d(width, self.latent_shape[0], 3, padding=1)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        h = self.reduce(self.trunk(x))
+        h = nn.functional.interpolate(h, size=self.latent_shape[1:], mode="bilinear",
+                                      align_corners=False)
+        return self.head(h).reshape(x.shape[0], -1)

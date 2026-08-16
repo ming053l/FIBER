@@ -31,7 +31,10 @@ from pathlib import Path
 
 import torch
 
-from fiber.spectrum import subspace_alignment
+import torch as _torch
+
+from fiber.spectrum import principal_cosines, subspace_alignment
+from fiber.spectrum.certified import subspace_certificate
 from fiber.utils.config import load_config
 from fiber.utils.logging import get_logger
 
@@ -53,7 +56,7 @@ def main() -> int:
     cfg = load_config(args.config)
     spec_dir = Path(cfg["paths"]["data_root"]) / "spectrum"
     archs = [cfg["spectrum"].get("teacher_arch", "resnet18"),
-             cfg["spectrum"].get("teacher_arch_control", "spatial")]
+             cfg["spectrum"].get("teacher_arch_control", "spatial_sharedtrunk")]
 
     paths = {}
     for arch in archs:
@@ -81,9 +84,30 @@ def main() -> int:
 
     a, b = archs
     k = min(args.k, blobs[a]["eigenvectors"].shape[0], blobs[b]["eigenvectors"].shape[0])
-    align = subspace_alignment(blobs[a]["eigenvectors"][:k], blobs[b]["eigenvectors"][:k])
+    Va, Vb = blobs[a]["eigenvectors"][:k], blobs[b]["eigenvectors"][:k]
+    align = subspace_alignment(Va, Vb)
+    cos2 = principal_cosines(Va, Vb)
     d = int(cfg["latent"]["dim"])
     chance = k / d          # mean squared cosine between unrelated k-subspaces
+
+    validity = {arch: bool(summaries[arch].get("validity_pass", False)) for arch in archs}
+    both_valid = all(validity.values())
+    tau = float(cfg["spectrum"].get("alignment_tol", 0.5))
+
+    # A teacher that failed its own validity check has an eigenspace that may be
+    # nothing but noise, so a low alignment cannot distinguish "the geometry is
+    # architecture-dependent" from "one decoder was not fitted". Validity gates the
+    # comparison; alignment is only read once both decoders are admissible.
+    if not both_valid:
+        verdict = ("INCONCLUSIVE: " + ", ".join(f"{arch} validity {'PASS' if v else 'FAIL'}"
+                                                for arch, v in validity.items())
+                   + " -- a decoder that fails its validity check has an eigenspace that "
+                     "may be noise, so alignment says nothing about the channel")
+    elif align >= tau:
+        verdict = "ARCHITECTURE-STABLE: both decoders admissible and they agree"
+    else:
+        verdict = ("ARCHITECTURE-DEPENDENT: both decoders admissible and they do NOT "
+                   "agree, so the geometry cannot be attributed to the channel")
 
     out = {
         "tag": args.tag, "seed": args.seed, "k": k,
@@ -92,27 +116,71 @@ def main() -> int:
             "numerical_positive_rank": summaries[arch].get("numerical_positive_rank",
                                                            summaries[arch].get("certified_positive_rank")),
             "validity_mean_abs_gap": summaries[arch].get("validity_mean_abs_gap"),
-            "validity_pass": summaries[arch].get("validity_pass"),
+            "validity_pass": validity[arch],
+            # capacity is a confound if left unreported; the two heads cannot be
+            # parameter-matched by construction (dense GAP+FC vs weight-shared conv)
+            "parameters": summaries[arch].get("teacher_parameters"),
+            "trunk_parameters": summaries[arch].get("teacher_trunk_parameters"),
         } for arch in archs},
+        "both_valid": both_valid,
+        "alignment_threshold": tau,
         "subspace_alignment": align,
         "chance_alignment": chance,
         "alignment_over_chance": align / chance if chance else float("nan"),
-        "verdict": ("consistent across decoder architectures" if align > 0.5 else
-                    "ARCHITECTURE-DEPENDENT: the two decoders do not agree on the "
-                    "subspace, so the geometry cannot be attributed to the channel"),
+        # a mean can hide "a few directions agree strongly" vs "all agree weakly"
+        "principal_cos2": {
+            "top1": float(cos2[0]), "top5_mean": float(cos2[:5].mean()),
+            "median": float(cos2.median()), "min": float(cos2[-1]),
+            "spectrum": [float(v) for v in cos2],
+        },
+        "verdict": verdict,
         "wording": "decoder-certified observability geometry (not intrinsic)",
     }
+
+    # ---- 2x2 cross-decoder restricted certificate ------------------------
+    # D(V_i ; f_j): the subspace one decoder discovered, certified by the other. High
+    # off-diagonals are stronger evidence of shared channel structure than eigenspace
+    # alignment alone; a high-diagonal / low-off-diagonal pattern is decoder
+    # specialisation.
+    outputs = {}
+    for arch, path in paths.items():
+        op = path.with_name(path.stem + "_report_outputs.pt")
+        if op.exists():
+            outputs[arch] = torch.load(op, map_location="cpu", weights_only=True)
+    if len(outputs) == len(archs):
+        V = {a: Va, b: Vb}
+        matrix = {}
+        for vi in archs:
+            for fj in archs:
+                cert = subspace_certificate(outputs[fj]["Z_rep"].numpy(),
+                                            outputs[fj]["F_rep"].numpy(),
+                                            V[vi].numpy())
+                matrix[f"V[{vi}]|f[{fj}]"] = cert["D_cert_subspace"]
+        out["cross_decoder_certificate"] = matrix
+        diag = [matrix[f"V[{x}]|f[{x}]"] for x in archs]
+        off = [matrix[f"V[{x}]|f[{y}]"] for x in archs for y in archs if x != y]
+        out["cross_decoder_ratio"] = (float(_torch.tensor(off).mean() /
+                                            max(float(_torch.tensor(diag).mean()), 1e-9)))
+    else:
+        out["cross_decoder_certificate"] = None
     rep = Path(cfg["paths"]["reports_dir"]) / f"teacher_comparison_{args.tag}_seed{args.seed}.json"
     rep.parent.mkdir(parents=True, exist_ok=True)
     rep.write_text(json.dumps(out, indent=2, default=float))
 
     for arch in archs:
         t = out["teachers"][arch]
-        log.info("%-9s D_cert %-8s rank %-5s validity %s", arch,
+        log.info("%-20s D_cert %-8s rank %-5s validity %-5s params %.2fM", arch,
                  f"{t['D_cert_subspace']:.3f}" if t["D_cert_subspace"] is not None else "n/a",
-                 t["numerical_positive_rank"], t["validity_pass"])
-    log.info("top-%d subspace alignment %.4f (chance %.4f, %.1fx) -> %s",
-             k, align, chance, out["alignment_over_chance"], out["verdict"])
+                 t["numerical_positive_rank"], t["validity_pass"],
+                 (t["parameters"] or 0) / 1e6)
+    pc = out["principal_cos2"]
+    log.info("top-%d alignment %.4f (chance %.4f, %.1fx) | cos^2 top1 %.3f top5 %.3f "
+             "median %.3f", k, align, chance, out["alignment_over_chance"],
+             pc["top1"], pc["top5_mean"], pc["median"])
+    if out.get("cross_decoder_certificate"):
+        for kk, vv in out["cross_decoder_certificate"].items():
+            log.info("  %-34s D_cert %.3f", kk, vv)
+    log.info("VERDICT: %s", out["verdict"])
     log.info("wrote %s", rep)
     return 0
 

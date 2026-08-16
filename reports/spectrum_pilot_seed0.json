@@ -6,6 +6,8 @@
   "k_kept": 16,
   "teacher_arch": "resnet18",
   "teacher_loss": "mse",
+  "teacher_parameters": 19581504,
+  "teacher_trunk_parameters": 11176512,
   "teacher_final_mse": 1.228038877248764,
   "teacher_epochs": 1,
   "n_teacher_split": null,
@@ -39,6 +41,6 @@
   "insample_positive_mass": 255.6170726773102,
   "insample_negative_mass": 268.34312237041763,
   "insample_spectrum_complete": true,
-  "commit": "cc15d09",
+  "commit": "75af32b",
   "seconds": 2.9
 }

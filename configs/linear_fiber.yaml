@@ -84,7 +84,11 @@ spectrum:
   # top-k subspace alignment between them is reported. Until they agree, the wording is
   # "decoder-certified observability geometry", never "intrinsic".
   teacher_arch: resnet18
-  teacher_arch_control: spatial
+  # Primary control shares the ResNet trunk and changes only the head, so the isolated
+  # variable is whether spatial position survives -- an end-to-end different network
+  # could show architecture dependence but not attribute it to the pooling.
+  teacher_arch_control: spatial_sharedtrunk
+  teacher_arch_control2: spatial          # independent conv pyramid, second opinion
 
   # C_cert is INDEFINITE. Any solver that ranks by |eigenvalue| -- every SVD-based
   # routine -- returns the directions the decoder is WORST on as the top-k. The
@@ -115,6 +119,11 @@ spectrum:
   # EXACT teacher at N=200, d=4096) and are used only to choose directions.
   report_split: val
   validity_tol: 0.10              # gate on mean |lambda_var - lambda_skill|
+  # Architecture dependence may only be DECLARED when both decoders pass validity: a
+  # decoder that failed it has an eigenspace that may be noise, so a low alignment
+  # cannot separate "architecture-dependent" from "not fitted". Below this threshold,
+  # with both admissible, the geometry is reported as architecture-dependent.
+  alignment_tol: 0.5
   fit_on: train_attack_mixture    # one spectrum for the main arm...
   report_per_attack: true         # ...plus the fixed-decoder operational spectrum per attack
   synthetic_test_first: true      # PLAN.md §3.5 — validate on Y = AZ + noise, no GPU

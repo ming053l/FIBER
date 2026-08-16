@@ -7,18 +7,55 @@
       "D_cert_subspace": 0.16819942003137198,
       "numerical_positive_rank": 5,
       "validity_mean_abs_gap": 0.5750404963798579,
-      "validity_pass": false
+      "validity_pass": false,
+      "parameters": 19581504,
+      "trunk_parameters": 11176512
     },
-    "spatial": {
-      "D_cert_subspace": 0.8302348454906135,
-      "numerical_positive_rank": 13,
-      "validity_mean_abs_gap": 0.03728890077369043,
-      "validity_pass": true
+    "spatial_sharedtrunk": {
+      "D_cert_subspace": 0.660174016064194,
+      "numerical_positive_rank": 7,
+      "validity_mean_abs_gap": 0.12597719823089765,
+      "validity_pass": false,
+      "parameters": 11211716,
+      "trunk_parameters": 11176512
     }
   },
-  "subspace_alignment": 0.08840497179920287,
+  "both_valid": false,
+  "alignment_threshold": 0.5,
+  "subspace_alignment": 0.10459079105137548,
   "chance_alignment": 0.0009765625,
-  "alignment_over_chance": 90.52669112238374,
-  "verdict": "ARCHITECTURE-DEPENDENT: the two decoders do not agree on the subspace, so the geometry cannot be attributed to the channel",
-  "wording": "decoder-certified observability geometry (not intrinsic)"
+  "alignment_over_chance": 107.10097003660849,
+  "principal_cos2": {
+    "top1": 0.26192897439255597,
+    "top5_mean": 0.22210825202838924,
+    "median": 0.07534613791062443,
+    "min": 0.000370165125421801,
+    "spectrum": [
+      0.26192897439255597,
+      0.2563772239547018,
+      0.22617414049303844,
+      0.19660891437406608,
+      0.16945200692758394,
+      0.14356493568354328,
+      0.10960000647760575,
+      0.09028323401651132,
+      0.07534613791062443,
+      0.05106998503921431,
+      0.04509749273868676,
+      0.031717485084359155,
+      0.010302440685011696,
+      0.0050206084595473335,
+      0.0005389054595356376,
+      0.000370165125421801
+    ]
+  },
+  "verdict": "INCONCLUSIVE: resnet18 validity FAIL, spatial_sharedtrunk validity FAIL -- a decoder that fails its validity check has an eigenspace that may be noise, so alignment says nothing about the channel",
+  "wording": "decoder-certified observability geometry (not intrinsic)",
+  "cross_decoder_certificate": {
+    "V[resnet18]|f[resnet18]": 0.16819942787669118,
+    "V[resnet18]|f[spatial_sharedtrunk]": 0.06271772631387,
+    "V[spatial_sharedtrunk]|f[resnet18]": 0.04780555473028795,
+    "V[spatial_sharedtrunk]|f[spatial_sharedtrunk]": 0.6601740330987265
+  },
+  "cross_decoder_ratio": 0.13342204689979553
 }
