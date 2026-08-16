@@ -170,3 +170,86 @@ def test_hierarchical_interval_is_reported_beside_the_paired_one(crossed_runs, t
     for cond in report["gate3a"]["conditions"].values():
         assert len(cond["hierarchical_ci"]) == 2
         assert cond["hierarchical_ci"][0] <= cond["hierarchical_ci"][1]
+
+
+# --------------------------------------------------------------------------
+# P0-3.1: the lock must name EXACT runs. Identifying only (arm, k) means a run
+# dropped into the results directory after selection silently joins the average.
+# --------------------------------------------------------------------------
+def _lock(runs_dir, tmp_path):
+    sel = tmp_path / "selection.json"
+    p = _run("select_method.py", "--tag", "unit", "--results-dir", str(runs_dir),
+             "--out", str(sel))
+    assert p.returncode == 0, p.stderr
+    return sel
+
+
+def _gate(runs_dir, sel, tmp_path, name="gate.md", config=None):
+    out = tmp_path / name
+    args = ["--tag", "unit", "--results-dir", str(runs_dir), "--selection", str(sel),
+            "--split", "test", "--out", str(out)]
+    if config:
+        args += ["--config", str(config)]
+    return _run("eval_coordinates.py", *args), out
+
+
+def test_a_seed_added_after_the_lock_cannot_change_the_result(crossed_runs, tmp_path):
+    """The concrete hole: lock on seeds [0,1], then drop in a spectacular seed 2."""
+    sel = _lock(crossed_runs, tmp_path)
+    p, out = _gate(crossed_runs, sel, tmp_path, "before.md")
+    assert p.returncode == 0, p.stderr
+    before = out.with_suffix(".json").read_text()
+
+    _write_run(crossed_runs, "D_spectral", "spectral_topk", 2, val_ber=0.10, test_ber=0.05)
+    _write_run(crossed_runs, "C2_haar", "haar", 2, val_ber=0.90, test_ber=0.90)
+    p2, out2 = _gate(crossed_runs, sel, tmp_path, "after.md")
+    assert p2.returncode == 0, p2.stderr
+    assert json.loads(before) == json.loads(out2.with_suffix(".json").read_text()), \
+        "a post-lock run changed the locked result"
+
+
+def test_locked_run_content_change_is_detected(crossed_runs, tmp_path):
+    sel = _lock(crossed_runs, tmp_path)
+    blob = json.loads(sel.read_text())
+    stem = blob["selected_runs"][0]["stem"]
+    _write_run(crossed_runs, "D_spectral", "spectral_topk",
+               int(stem.rsplit("_s", 1)[1]), val_ber=0.11, test_ber=0.11)
+    p, _ = _gate(crossed_runs, sel, tmp_path, "tampered.md")
+    assert p.returncode != 0
+    assert "changed since the lock" in (p.stdout + p.stderr)
+
+
+def test_protocol_config_change_after_the_lock_hard_fails(crossed_runs, tmp_path):
+    """A lock that survives a protocol edit is not a lock."""
+    sel = _lock(crossed_runs, tmp_path)
+    cfgdir = tmp_path / "configs"
+    cfgdir.mkdir()
+    for name in ("linear_fiber.yaml", "sd15.yaml", "channels.yaml"):
+        (cfgdir / name).write_text(Path("configs") / name and (Path("configs") / name).read_text())
+    leaf = cfgdir / "linear_fiber.yaml"
+    leaf.write_text(leaf.read_text().replace("robust_dims: 64", "robust_dims: 128"))
+    p, _ = _gate(crossed_runs, sel, tmp_path, "cfg.md", config=leaf)
+    assert p.returncode != 0
+    assert "protocol config changed" in (p.stdout + p.stderr)
+
+
+def test_same_arm_and_k_with_different_hyperparameters_are_separate_candidates(tmp_path):
+    d = tmp_path / "results"
+    d.mkdir()
+    _write_run(d, "C2_haar", "haar", 0, 0.50, 0.50)
+    for seed, (nref, ber) in enumerate([(128, 0.42), (256, 0.30)]):
+        _write_run(d, "E_learned", "householder", seed, val_ber=ber, test_ber=ber)
+        jf = d / f"E_learned_k{K}_s{seed}.json"
+        blob = json.loads(jf.read_text())
+        blob["arm_spec"] = {"type": "householder", "num_reflectors": nref}
+        blob["hyperparameters_fingerprint"] = f"hp{nref}"
+        jf.write_text(json.dumps(blob))
+
+    sel = _lock(d, tmp_path)
+    blob = json.loads(sel.read_text())
+    hp_seen = {c["hyperparameters_fingerprint"] for c in blob["candidates"]
+               if c["arm"] == "E_learned"}
+    assert hp_seen == {"hp128", "hp256"}, "hyperparameter variants were averaged together"
+    assert blob["selected"]["hyperparameters_fingerprint"] == "hp256"
+    assert len(blob["selected_runs"]) == 1
+    assert blob["selected_runs"][0]["stem"] == f"E_learned_k{K}_s1"

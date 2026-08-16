@@ -432,6 +432,15 @@ decided on `val` by `scripts/select_method.py`, which writes
 `reports/selection_<tag>.json` with the commit SHA and config fingerprint.
 `scripts/eval_coordinates.py` then *reads* that artifact and refuses to run without it;
 it cannot select a family, a seed, a `k` or a reference, and it refuses `--split val`.
+
+The lock names **exact runs, with content hashes** — `selected_runs`,
+`reference_runs` and `context_runs` — not a family plus a seed count. Identifying only
+`(arm, k)` would mean a run dropped into the results directory after selection joins
+the average through the filesystem, which is the same post-hoc mutation an argmin would
+make. Runs at the same `arm` and `k` but different hyperparameters are distinct
+candidates, keyed by a hyperparameter fingerprint carried by the run itself. The
+evaluator also recomputes the protocol fingerprint and hard-fails on a mismatch: a lock
+that survives a protocol edit is not a lock.
 Seeds are replications, never a selection axis: metrics are seed-averaged before the
 bootstrap. `tests/test_locked_selection.py` constructs artifacts where the val winner
 and the test winner are different arms and asserts the locked one is reported.

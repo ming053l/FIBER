@@ -135,8 +135,14 @@ def main() -> int:
     rows_digest = hashlib.blake2s(rows.numpy().tobytes(), digest_size=16).hexdigest()
     torch.save({"rows_digest": rows_digest, "rows": rows,
                 "state_dict": frame.state_dict()}, out_dir / f"{stem}_frame.pt")
+    # The arm's own hyperparameters travel WITH the run, so selection can tell two
+    # runs of the same arm and k apart, and the lock can name exactly one of them.
+    arm_spec = {kk: vv for kk, vv in cfg["fiber"]["arms"][args.arm].items() if kk != "seeds"}
+    hp_fp = hashlib.blake2s(json.dumps(arm_spec, sort_keys=True, default=str).encode(),
+                            digest_size=8).hexdigest()
     summary = {
         "arm": args.arm, "type": cfg["fiber"]["arms"][args.arm]["type"], "k": k,
+        "arm_spec": arm_spec, "hyperparameters_fingerprint": hp_fp,
         "seed": args.seed, "tag": args.tag,
         "orthonormality_error": ortho, "rows_digest": rows_digest,
         "epochs": tcfg.epochs, "final_train_loss": hist[-1]["loss"],

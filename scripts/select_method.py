@@ -40,11 +40,42 @@ def _forbid_test(key: str) -> str:
     return key
 
 
+PROTOCOL_BLOCKS = ("model", "latent", "vae", "dataset", "fiber", "extractor", "training",
+                   "spectrum", "gate3a", "attacks", "train_attacks", "eval_attacks")
+
+
 def config_fingerprint(cfg) -> str:
-    keep = {k: cfg[k] for k in ("model", "latent", "vae", "dataset", "fiber", "extractor",
-                                "training", "spectrum") if k in cfg}
+    """Everything that defines the protocol. The test evaluator recomputes this and
+    hard-fails on a mismatch: a lock that survives a protocol edit is not a lock."""
+    keep = {k: cfg[k] for k in PROTOCOL_BLOCKS if k in cfg}
     return hashlib.blake2s(json.dumps(keep, sort_keys=True, default=str).encode(),
                            digest_size=8).hexdigest()
+
+
+def run_stem(r: dict) -> str:
+    """Identify a run without requiring the loader to have attached a path, so select()
+    stays unit-testable on plain summaries."""
+    npz = r.get("_npz")
+    return Path(npz).stem if npz else f"{r['arm']}_k{r['k']}_s{r['seed']}"
+
+
+def file_digest(path: Path) -> str:
+    return hashlib.blake2s(Path(path).read_bytes(), digest_size=16).hexdigest()
+
+
+def run_manifest(runs: list[dict]) -> list[dict]:
+    """Name the EXACT runs, with content hashes. The test evaluator loads these and
+    nothing else, so a run added to the results directory after the lock cannot change
+    the reported result."""
+    out = []
+    for r in sorted(runs, key=lambda r: (r["arm"], r["k"], r["seed"])):
+        jf = Path(r["_npz"]).with_suffix(".json")
+        out.append({
+            "stem": run_stem(r), "arm": r["arm"], "k": r["k"], "seed": r["seed"],
+            "hyperparameters_fingerprint": r.get("hyperparameters_fingerprint", "legacy"),
+            "json_sha": file_digest(jf), "npz_sha": file_digest(r["_npz"]),
+        })
+    return out
 
 
 def load_val_runs(out_dir: Path) -> list[dict]:
@@ -72,15 +103,18 @@ def val_mean_ber(run: dict, attacks: list[str]) -> float:
 
 def select(runs: list[dict], attacks: list[str]) -> dict:
     """Lowest seed-averaged val sign BER among the data-derived families."""
+    # Same arm and same k but different hyperparameters are DIFFERENT candidates;
+    # averaging them together would hide which configuration was actually chosen.
     by_candidate: dict[tuple, list[dict]] = defaultdict(list)
     for r in runs:
-        by_candidate[(r["arm"], r["k"])].append(r)
+        by_candidate[(r["arm"], r["k"], r.get("hyperparameters_fingerprint", "legacy"))].append(r)
 
     scored = []
-    for (arm, k), rs in sorted(by_candidate.items()):
+    for (arm, k, hp), rs in sorted(by_candidate.items()):
         rtype = rs[0]["type"]
         scored.append({
-            "arm": arm, "k": k, "type": rtype,
+            "arm": arm, "k": k, "type": rtype, "hyperparameters_fingerprint": hp,
+            "runs": [run_stem(r) for r in rs],
             "seeds": sorted(r["seed"] for r in rs),
             "val_sign_ber": float(np.mean([val_mean_ber(r, attacks) for r in rs])),
             "is_derived": rtype in DERIVED_TYPES,
@@ -109,7 +143,10 @@ def main() -> int:
 
     chosen = select(runs, bank.eval)
     winner = chosen["winner"]
+    winner_runs = [r for r in runs if run_stem(r) in set(winner["runs"])]
     ref_runs = [r for r in runs if r["type"] == PRIMARY_RANDOM_TYPE and r["k"] == winner["k"]]
+    locked_stems = {run_stem(r) for r in winner_runs} | {run_stem(r) for r in ref_runs}
+    context_runs = [r for r in runs if r["k"] == winner["k"] and run_stem(r) not in locked_stems]
     if not ref_runs:
         raise SystemExit(f"no {PRIMARY_RANDOM_TYPE} runs at k={winner['k']}: the gate "
                          "denominator is a uniformly random subspace (P0-2)")
@@ -122,9 +159,19 @@ def main() -> int:
         "selected": {
             "arm": winner["arm"], "family": winner["type"], "k": winner["k"],
             "seeds": winner["seeds"],
-            "hyperparameters": cfg["fiber"]["arms"].get(winner["arm"], {}),
+            "hyperparameters": winner_runs[0].get("arm_spec",
+                                                   cfg["fiber"]["arms"].get(winner["arm"], {})),
+            "hyperparameters_fingerprint": winner["hyperparameters_fingerprint"],
             "val_sign_ber": winner["val_sign_ber"],
         },
+        # THE lock: exact runs with content hashes, not a family plus a seed count.
+        # `context_runs` covers everything else the report displays -- controls, the
+        # identity sanity arm, the DDIM reference -- because the invariant is that
+        # NOTHING added after the lock changes the test output, not merely that the
+        # gate statistic is unchanged.
+        "selected_runs": run_manifest(winner_runs),
+        "reference_runs": run_manifest(ref_runs),
+        "context_runs": run_manifest(context_runs),
         "random_reference": {
             "arm": ref_runs[0]["arm"], "type": PRIMARY_RANDOM_TYPE,
             "seeds": sorted(r["seed"] for r in ref_runs),

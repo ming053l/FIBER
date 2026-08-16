@@ -23,6 +23,7 @@ is the interval matching the claim about E_{Q~Haar}[BER].
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from collections import defaultdict
 from pathlib import Path
@@ -35,6 +36,10 @@ from fiber.metrics import (gate3a_condition, gate3a_verdict, hierarchical_paired
 from fiber.utils.config import load_config
 from fiber.utils.logging import get_logger
 
+import sys as _sys  # noqa: E402
+_sys.path.insert(0, str(Path(__file__).resolve().parent))
+from select_method import config_fingerprint, file_digest  # noqa: E402
+
 log = get_logger("eval")
 
 RANDOM_TYPES = {"haar", "signed_permutation", "hadamard", "random_householder"}
@@ -44,13 +49,27 @@ REFERENCE_TYPES = {"ddim_inversion_reference"}
 assert not (RANDOM_TYPES | DERIVED_TYPES) & REFERENCE_TYPES
 
 
-def load_runs(out_dir: Path, k: int) -> list[dict]:
+def load_locked_runs(out_dir: Path, manifest: list[dict], role: str) -> list[dict]:
+    """Load EXACTLY the runs the lock names, verifying their content hashes.
+
+    Globbing the directory instead would mean a run added after the lock silently
+    joins the average -- the same post-hoc mutation the lock exists to prevent, just
+    arriving through the filesystem rather than through an argmin.
+    """
     runs = []
-    for jf in sorted(out_dir.glob("*.json")):
+    for entry in manifest:
+        jf = out_dir / f"{entry['stem']}.json"
+        npz = jf.with_suffix(".npz")
+        if not jf.exists() or not npz.exists():
+            raise SystemExit(f"locked {role} run {entry['stem']} is missing from {out_dir}")
+        for path, key in ((jf, "json_sha"), (npz, "npz_sha")):
+            if entry.get(key) and file_digest(path) != entry[key]:
+                raise SystemExit(
+                    f"{path.name} changed since the lock ({key} mismatch). The selection "
+                    "artifact refers to specific run CONTENT; re-select if the runs were "
+                    "regenerated.")
         meta = json.loads(jf.read_text())
-        if meta.get("k") != k or not jf.with_suffix(".npz").exists():
-            continue
-        meta["_npz"] = jf.with_suffix(".npz")
+        meta["_npz"] = npz
         runs.append(meta)
     return runs
 
@@ -117,27 +136,50 @@ def main() -> int:
     locked_k = int(sel["selected"]["k"])
     ref_arm = sel["random_reference"]["arm"]
 
+    # A lock that survives a protocol edit is not a lock.
+    now_fp = config_fingerprint(cfg)
+    if sel.get("config_fingerprint") and sel["config_fingerprint"] != now_fp:
+        raise SystemExit(
+            f"protocol config changed since selection ({sel['config_fingerprint']} -> "
+            f"{now_fp}). Re-run scripts/select_method.py on val; the lock does not carry "
+            "across a protocol change.")
+
     out_dir = Path(args.results_dir or (Path(cfg["paths"]["data_root"]) / "results" / args.tag))
-    runs = load_runs(out_dir, locked_k)
-    if not runs:
-        raise SystemExit(f"no runs at the locked k={locked_k} in {out_dir}")
-    mats, groups = group_matrix(runs, args.split, bank.eval, bank)
+    if "selected_runs" not in sel or "reference_runs" not in sel:
+        raise SystemExit("selection artifact predates the exact-run lock (P0-3.1): "
+                         "re-run scripts/select_method.py")
+    locked_runs = load_locked_runs(out_dir, sel["selected_runs"], "selected")
+    ref_runs = load_locked_runs(out_dir, sel["reference_runs"], "reference")
+    # Controls and sanity arms are locked too. Discovering them by glob would let a run
+    # added after the lock change the report -- the gate number would survive, but the
+    # control table and the "a control beat the locked arm" flag would not.
+    context_runs = load_locked_runs(out_dir, sel.get("context_runs", []), "context")
+
+    mats, groups = group_matrix(locked_runs + ref_runs + context_runs, args.split,
+                                bank.eval, bank)
+    locked_set = {f"{r['arm']}_s{r['seed']}" for r in locked_runs}
+    ref_set = {f"{r['arm']}_s{r['seed']}" for r in ref_runs}
 
     def stems_where(pred):
         return [s for s, m in mats.items() if pred(m["run"])]
 
-    locked_stems = stems_where(lambda r: r["arm"] == locked_arm)
-    haar_stems = stems_where(lambda r: r["arm"] == ref_arm)
+    locked_stems = [s for s in mats if s in locked_set]
+    haar_stems = [s for s in mats if s in ref_set]
     if not locked_stems:
         raise SystemExit(f"locked arm {locked_arm} has no runs on {args.split}")
     if not haar_stems:
         raise SystemExit(f"reference arm {ref_arm} has no runs on {args.split}")
-    control_stems = stems_where(lambda r: r["type"] in RANDOM_TYPES and r["arm"] != ref_arm)
+    control_stems = [s for s in mats
+                     if s not in locked_set and s not in ref_set
+                     and mats[s]["run"]["type"] in RANDOM_TYPES]
 
     report = {"tag": args.tag, "split": args.split, "k": locked_k,
               "selection": {"file": str(sel_path), "arm": locked_arm,
                             "commit": sel.get("commit"),
-                            "config_fingerprint": sel.get("config_fingerprint")},
+                            "config_fingerprint": sel.get("config_fingerprint"),
+                            "config_fingerprint_now": now_fp,
+                            "locked_runs": [e["stem"] for e in sel["selected_runs"]],
+                            "locked_reference_runs": [e["stem"] for e in sel["reference_runs"]]},
               "n_locked_seeds": len(locked_stems), "n_haar_draws": len(haar_stems)}
     lines = [f"# FIBER — locked evaluation, `{args.tag}`, split `{args.split}`\n",
              f"Method locked on **val** by `{sel_path.name}` "
@@ -145,7 +187,9 @@ def main() -> int:
              f"- locked arm: **{locked_arm}**, k = {locked_k}, "
              f"seeds {sel['selected']['seeds']} (replications, never selected over)",
              f"- denominator: **{ref_arm}** ({sel['random_reference']['type']}), "
-             f"seeds {sel['random_reference']['seeds']}\n",
+             f"seeds {sel['random_reference']['seeds']}",
+             f"- exact locked runs: `{', '.join(e['stem'] for e in sel['selected_runs'])}`",
+             f"- exact reference runs: `{', '.join(e['stem'] for e in sel['reference_runs'])}`\n",
              "This script cannot choose any of the above; it reads them.\n"]
 
     # ---------------- descriptive table (no selection happens here) -------
