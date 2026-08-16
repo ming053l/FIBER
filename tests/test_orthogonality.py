@@ -95,12 +95,13 @@ def test_registry_builds_every_arm_type():
 # ==========================================================================
 import numpy as np  # noqa: E402
 
-from fiber.transforms import HaarRandomFrame, RandomHouseholderFrame  # noqa: E402
+from fiber.transforms import (FrozenHouseholderOnHaarFrame,  # noqa: E402
+                              HaarRandomFrame)
 
 
 def test_haar_and_random_householder_are_orthonormal():
     for f in (HaarRandomFrame(D, K, seed=1),
-              RandomHouseholderFrame(D, K, num_reflectors=16, seed=1)):
+              FrozenHouseholderOnHaarFrame(D, K, num_reflectors=16, seed=1)):
         assert f.orthonormality_error() < TOL
 
 
@@ -151,18 +152,18 @@ def test_haar_entry_signs_are_unbiased():
     assert means.abs().max() < 3.5 * (1.0 / 64) ** 0.5 / 3000**0.5 * 3
 
 
-def test_random_householder_is_the_learned_arm_frozen_at_init():
+def test_frozen_control_is_the_learned_arm_at_initialisation():
     """Architecture-matched control: same parameterisation, same reflector count,
-    same initial draw. Only the optimisation differs."""
+    same initial draw, same Haar base. Only the optimisation differs."""
     learned = HouseholderFrame(D, K, num_reflectors=16, seed=3)
-    frozen = RandomHouseholderFrame(D, K, num_reflectors=16, seed=3)
+    frozen = FrozenHouseholderOnHaarFrame(D, K, num_reflectors=16, seed=3)
     assert torch.equal(learned.V.detach(), frozen.V)
     assert sum(p.numel() for p in frozen.parameters()) == 0
     z = torch.randn(8, D)
     assert torch.allclose(learned.project(z), frozen.project(z), atol=1e-6)
 
 
-def test_random_householder_is_not_a_haar_sample():
+def test_unbased_householder_product_is_not_a_haar_sample():
     """A product of m reflections is only close to uniform once m is comparable to d,
     so arm C3 must never stand in for the primary random reference (arm C2).
 
@@ -176,7 +177,8 @@ def test_random_householder_is_not_a_haar_sample():
     d, n = 64, 400
     means = {}
     for m in (4, 16, 64):
-        rows = torch.stack([RandomHouseholderFrame(d, 1, num_reflectors=m, seed=s).rows()[0]
+        rows = torch.stack([HouseholderFrame(d, 1, num_reflectors=m, seed=s,
+                                             base=None, paired_init=False).rows()[0]
                             for s in range(n)]).double()
         means[m] = float((rows[:, 0] ** 2).mean())
     uniform = 1.0 / d
@@ -187,6 +189,60 @@ def test_random_householder_is_not_a_haar_sample():
 
 def test_registry_exposes_both_new_arms():
     for spec in ({"type": "haar"},
-                 {"type": "random_householder", "num_reflectors": 8}):
+                 {"type": "frozen_householder_on_haar", "num_reflectors": 8}):
         f = build_frame(spec, d=D, k=K, seed=2)
         assert f.orthonormality_error() < TOL
+
+
+# ==========================================================================
+# P0-4: arm E starts EXACTLY at the gate denominator, not near it.
+# ==========================================================================
+def test_learned_frame_initialises_exactly_at_the_haar_base():
+    """R_E = Q_phi H with Q_phi(0) = I exactly, because the reflectors start as
+    identical adjacent pairs and H(v)H(v) = I. 'Near identity' would leave arm E
+    starting somewhere the gate denominator is not."""
+    for seed in (0, 1, 2):
+        e = HouseholderFrame(D, K, num_reflectors=16, seed=seed)
+        h = HaarRandomFrame(D, K, seed=seed)
+        assert (e.rows() - h.rows()).abs().max() < 1e-6
+        assert e.orthonormality_error() < TOL
+
+
+def test_paired_initialisation_requires_an_even_reflector_count():
+    with pytest.raises(ValueError, match="even reflector count"):
+        HouseholderFrame(D, K, num_reflectors=15, paired_init=True)
+
+
+def test_one_gradient_step_leaves_the_haar_point_and_reduces_the_loss():
+    """An exact Haar start must not be a fixed point of the optimiser."""
+    torch.manual_seed(0)
+    frame = HouseholderFrame(D, K, num_reflectors=16, seed=4)
+    haar = HaarRandomFrame(D, K, seed=4)
+    z = torch.randn(64, D)
+    target = torch.randn(64, K)
+    opt = torch.optim.AdamW(frame.parameters(), lr=1e-2, weight_decay=0.0)
+
+    before = float(((frame.project(z) - target) ** 2).mean())
+    opt.zero_grad()
+    torch.nn.functional.mse_loss(frame.project(z), target).backward()
+    assert frame.V.grad is not None and float(frame.V.grad.abs().max()) > 0
+    opt.step()
+
+    after = float(((frame.project(z) - target) ** 2).mean())
+    assert after < before, "the Haar initialisation is a fixed point"
+    assert (frame.rows() - haar.rows()).abs().max() > 1e-4, "the frame did not move"
+    assert frame.orthonormality_error() < TOL, "orthogonality lost after a step"
+
+
+def test_frozen_control_coincides_with_haar_by_construction():
+    """C3 == C2 at the same seed. Not a defect: at initialisation the parameterisation
+    contributes nothing, so any arm-E gain is attributable to learning."""
+    frozen = FrozenHouseholderOnHaarFrame(D, K, num_reflectors=16, seed=5)
+    haar = HaarRandomFrame(D, K, seed=5)
+    assert (frozen.rows() - haar.rows()).abs().max() < 1e-6
+
+
+def test_base_can_be_disabled_for_the_diagnostic():
+    """base=None reproduces the pre-P0-4 arm: first k rows of the raw product."""
+    f = HouseholderFrame(D, K, num_reflectors=16, seed=0, base=None, paired_init=False)
+    assert not f.has_base and f.orthonormality_error() < TOL

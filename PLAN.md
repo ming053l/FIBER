@@ -286,9 +286,9 @@ experiment, not a supplementary control.
 | **C2** | **Haar random `k`-frame** | **gate denominator** | **8 seeds** |
 | B | random signed permutation (local) | control | 8 seeds |
 | C | structured orthogonal `P₂ H D P₁` (Walsh–Hadamard, global) | control | 8 seeds |
-| C3 | random Householder, `m = 128` frozen at init | architecture-matched control for E | 3 seeds |
+| C3 | arm E's parameterisation and starting point, frozen | architecture-matched control for E | 1 seed |
 | D | top-k of the **certified** operator `C_cert` | data-derived | 3 seeds (teacher init) |
-| E | learned `Q_φ`, Householder product | data-derived | 3 seeds |
+| E | learned `R_E = Q_φ H`, `H` a frozen Haar frame | data-derived | 3 seeds |
 
 **The denominator is Haar (P0-2).** A uniformly random `k`-dimensional subspace is the
 null the scientific claim is against: `derived > Haar` is evidence that the frozen
@@ -296,17 +296,27 @@ channel has anisotropic observability, whereas `derived > Hadamard` would only s
 directions beat one structured family. Sampling is `A ~ N(0,1)^{d×k}`, thin QR, times
 `sign(diag R)` — Haar-ness must not depend on an undocumented LAPACK convention.
 
-Arm C3 is matched to arm E in parameterisation, reflector count and initial draw, so
-it separates *the Householder parameterisation helps* from *learning selects better
-directions*. Measured at the configured size (`scripts/diagnose_frames.py`, 100 draws,
-`d = 16384`, `m = 128`) it is not merely non-uniform but **nearly the identity**:
-`E[r₀²] = 0.969` and participation ratio `1.1`, against Haar's `5.8e-5` and `5470`.
-R1 therefore applies to it, and its expected behaviour is arm A's.
+**Arm E starts at the denominator, exactly (P0-4).** `R_E = Q_φ H` with `H` a frozen
+Haar frame and `Q_φ ∈ O(d)` a Householder product whose reflectors are initialised in
+identical adjacent pairs. Since `H(v)H(v) = I`, `Q_φ(0) = I` exactly — measured
+`‖R_E(0) − H‖_∞ = 2.2e-8` at float32 — so arm E begins *at* `C2` rather than near it.
+Both members of each pair are independent parameters that merely start equal, and a
+single gradient step separates them and moves the frame off the Haar point (asserted).
 
-The same measurement says arm **E starts at identity**, which is a confound: a failure
-there would be indistinguishable from a bad initialisation. The fix, landing with P0-4,
-is to parameterise `R_E = Householder_φ(H)` on a frozen Haar frame `H`, so arm E begins
-exactly at the gate denominator and any gain over Haar is attributable to learning.
+Without the base, measurement says arm E would start at **identity**:
+`scripts/diagnose_frames.py` at `d = 16384, m = 128` gives `E[r₀²] = 0.969` and
+participation ratio `1.1` for a raw random-reflector product, against Haar's `5.8e-5`
+and `5470`. Each reflection displaces `e₀` by about `2/√d`, so `m` of them cover only
+`√m·2/√d = 0.18`; a heuristic mixing-scale argument (`√m·2/√d ~ 1`) puts the crossover
+near `m ~ d/4` — an order-of-magnitude estimate, not a theorem about Householder mixing
+times. Starting at identity is the one point R1 says loses for a trivial locality
+reason, so an arm-E failure would have been indistinguishable from an optimiser that
+never escaped a bad start.
+
+**Arm C3 therefore coincides with C2 at initialisation, by construction.** That is the
+honest statement rather than a defect: at initialisation the parameterisation
+contributes nothing, so any arm-E gain is attributable to learning. It is retained at
+one seed as an executable check that the base and the paired init hold.
 
 The four families also quantify R1's locality axis directly — participation ratio
 `1.0` (signed permutation), `1.1` (random Householder), `5470` (Haar), `16384`
@@ -327,6 +337,20 @@ integer part. Circular heads belong in Phase 4/5, after `U = Φ(Z)`.
 |---|---|---|---|
 | regression | `Ŵ` | MSE | diagnostic; also the teacher's objective (§3.3) |
 | **sign** | `b_j = 1[W_j > 0]` | BCE | **primary communication metric — sign BER** |
+
+**Discovery optimises MSE only (P0-4).** `1[W>0]` is a hard threshold: in PyTorch it
+returns a bool tensor, so the autograd graph ends there and the frame's gradient is
+`None` — absent, not small. A joint discovery stage carrying a sign weight would look
+like sign-BER optimisation while being MSE-only, so `train_extractor` **raises** if
+`learn_frame=True` is combined with a non-zero sign weight. The sign head is trained
+afterwards, on the frozen frame, and is what the communication metric reads.
+
+Consequently Gate 3B compares *closed-form operator estimation* against *direct
+differentiable subspace optimisation* — both after the same MMSE-shaped objective. The
+Rev-2 prediction that the learned arm should win *because it optimises sign BER
+directly* is withdrawn. Frame parameters also carry `weight_decay = 0`: `H(v)` depends
+only on `v/‖v‖`, so decay does not regularise the transform, it only shrinks `‖v‖`
+toward where the reflection is numerically undefined.
 
 Pearson `ρ(W_j, Ŵ_j)` and per-coordinate MSE are diagnostics only.
 
@@ -479,7 +503,7 @@ Compare `BER_learned` against `BER_spectral` under the same cross-fit protocol.
 
 | Outcome | Story |
 |---|---|
-| learned > spectral | "learning robust communication coordinates" — and §3.4(2) explains why |
+| learned > spectral | direct differentiable optimisation finds more than the closed-form estimator |
 | learned ≈ spectral | "the **Generative Observability Spectrum** is discoverable in closed form" |
 | spectral > learned | believe the spectral result; the optimisation is the weak part |
 

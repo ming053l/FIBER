@@ -92,13 +92,17 @@ def main() -> int:
     if learnable:
         dcfg = TrainConfig(**{**tcfg.__dict__})
         dcfg.epochs = args.discovery_epochs or tcfg.epochs
+        # Discovery is MSE-only (P0-4). The sign head is trained afterwards, on the
+        # frozen frame, and is what the communication metric reads.
+        dcfg.w_sign = 0.0
         log.info("[%s] discovery on split A (%d epochs)", args.arm, dcfg.epochs)
         _, frame, dhist = train_extractor(
             frame, root, bank, dcfg, split=args.train_split,
             crossfit=cfg["dataset"]["crossfit"]["discovery_split"] if args.crossfit is None else xfit_eval,
             device=args.device, seed=args.seed, learn_frame=True, attacks=bank.train,
             limit=args.limit)
-        meta["discovery"] = {"epochs": dcfg.epochs, "history": dhist[-3:],
+        meta["discovery"] = {"epochs": dcfg.epochs, "objective": "mse",
+                             "history": dhist[-3:],
                              "orthonormality_error": frame.orthonormality_error()}
         # the discovery extractor is thrown away here, on purpose (PLAN.md §4)
 

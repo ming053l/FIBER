@@ -3,7 +3,7 @@ from __future__ import annotations
 from .base import Frame
 from .haar import HaarRandomFrame
 from .hadamard import HadamardFrame
-from .householder import HouseholderFrame, RandomHouseholderFrame
+from .householder import FrozenHouseholderOnHaarFrame, HouseholderFrame
 from .identity import IdentityFrame
 from .signperm import SignedPermutationFrame
 from .spectral import SpectralFrame
@@ -13,7 +13,8 @@ FRAMES = {
     "signed_permutation": SignedPermutationFrame,
     "hadamard": HadamardFrame,
     "haar": HaarRandomFrame,
-    "random_householder": RandomHouseholderFrame,
+    "frozen_householder_on_haar": FrozenHouseholderOnHaarFrame,
+    "random_householder": FrozenHouseholderOnHaarFrame,   # deprecated alias
     "spectral_topk": SpectralFrame,
     "householder": HouseholderFrame,
 }

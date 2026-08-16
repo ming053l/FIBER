@@ -103,11 +103,23 @@ def train_extractor(frame, root, bank: ChannelBank, cfg: TrainConfig, *, split="
     frame = frame.to(device)
     frame.requires_grad_(learn_frame)
 
+    if learn_frame and cfg.w_sign:
+        # A hard sign target has NO gradient path to the frame: (w > 0) returns a bool
+        # tensor, so the autograd graph is severed and frame.grad is None -- not small,
+        # absent. Discovery is therefore an MSE objective and is labelled as one, rather
+        # than appearing to optimise sign BER while silently optimising MSE (P0-4).
+        raise ValueError(
+            "learn_frame=True with a non-zero sign weight: the hard sign target 1[W>0] "
+            "contributes no gradient to the frame, so this would look like sign-BER "
+            "optimisation while actually being MSE-only. Set w_sign=0 for discovery.")
     groups = [{"params": list(model.parameters()), "lr": cfg.lr, "lr_scale": 1.0}]
     frame_params = [p for p in frame.parameters() if p.requires_grad]
     if learn_frame and frame_params:
+        # weight_decay=0 on the frame: H(v) depends only on v/||v||, so decay does not
+        # regularise the transform at all -- it just shrinks ||v|| toward the numerically
+        # unstable point where the reflection is undefined.
         groups.append({"params": frame_params, "lr": cfg.lr * cfg.frame_lr_scale,
-                       "lr_scale": cfg.frame_lr_scale})
+                       "lr_scale": cfg.frame_lr_scale, "weight_decay": 0.0})
     elif learn_frame:
         raise ValueError("learn_frame=True but the frame has no trainable parameters")
     opt = torch.optim.AdamW(groups, lr=cfg.lr, weight_decay=cfg.weight_decay)

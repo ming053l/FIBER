@@ -73,3 +73,45 @@ def test_config_pins_the_receiver_protocol():
     assert tm["receiver_sees"] == ["received_image"]
     assert tm["prompt_is_public"] is False
     assert tm["ddim_inversion_reference"]["role"] == "capacity_diagnostic_only"
+
+
+# --------------------------------------------------------------------------
+# P0-4: the learned frame is trained by MSE, and the code says so.
+# --------------------------------------------------------------------------
+def test_hard_sign_target_severs_the_gradient_to_the_frame():
+    """`(w > 0)` returns a bool tensor, so the autograd graph ends there: the frame's
+    grad is None, not small. Any claim that the learned arm optimises sign BER would
+    therefore be false."""
+    from fiber.transforms import HouseholderFrame
+
+    for objective in ("bce", "mse"):
+        frame = HouseholderFrame(256, 16, num_reflectors=8, seed=0)
+        w = frame.project(torch.randn(32, 256))
+        pred = torch.randn(32, 16, requires_grad=True)
+        loss = (F.binary_cross_entropy_with_logits(pred, (w > 0).float())
+                if objective == "bce" else F.mse_loss(pred, w))
+        loss.backward()
+        if objective == "bce":
+            assert frame.V.grad is None
+        else:
+            assert frame.V.grad is not None and float(frame.V.grad.abs().max()) > 0
+
+
+def test_discovery_refuses_a_sign_weight():
+    """Guards the interpretation against regression: joint discovery with w_sign > 0
+    would look like sign-BER optimisation while being MSE-only."""
+    from fiber.channels import ChannelBank
+    from fiber.training.loops import TrainConfig, train_extractor
+    from fiber.transforms import HouseholderFrame
+
+    cfg = TrainConfig(w_sign=1.0, epochs=1)
+    with pytest.raises(ValueError, match="no gradient"):
+        train_extractor(HouseholderFrame(256, 8, num_reflectors=4), "/nonexistent",
+                        ChannelBank(CFG), cfg, learn_frame=True, device="cpu")
+
+
+def test_config_records_the_discovery_objective():
+    assert CFG["training"]["discovery_objective"] == "mse"
+    assert CFG["training"]["frame_weight_decay"] == 0.0
+    assert CFG["fiber"]["arms"]["E_learned"]["base"] == "haar"
+    assert CFG["fiber"]["arms"]["E_learned"]["paired_init"] is True

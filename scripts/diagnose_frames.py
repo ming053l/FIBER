@@ -16,7 +16,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from fiber.transforms import (HaarRandomFrame, HadamardFrame, RandomHouseholderFrame,
+from fiber.transforms import (HaarRandomFrame, HadamardFrame, HouseholderFrame,
                               SignedPermutationFrame)
 from fiber.utils.config import load_config
 from fiber.utils.logging import get_logger
@@ -45,11 +45,14 @@ def main() -> int:
 
     cfg = load_config(args.config)
     d = int(cfg["latent"]["dim"])
-    m = int(cfg["fiber"]["arms"]["C3_rand_hh"]["num_reflectors"])
+    m = int(cfg["fiber"]["arms"]["C3_frozen_hh"]["num_reflectors"])
 
     builders = {
         "haar": lambda s: HaarRandomFrame(d, 1, seed=s),
-        f"random_householder_m{m}": lambda s: RandomHouseholderFrame(d, 1, num_reflectors=m, seed=s),
+        # base=None reproduces the pre-P0-4 arm E: a Householder product of random
+        # reflectors with no Haar base. Kept as the diagnostic that motivated the change.
+        f"householder_no_base_m{m}": lambda s: HouseholderFrame(
+            d, 1, num_reflectors=m, seed=s, base=None, paired_init=False),
         "hadamard": lambda s: HadamardFrame(d, 1, seed=s),
         "signed_permutation": lambda s: SignedPermutationFrame(d, 1, seed=s),
     }
@@ -64,16 +67,19 @@ def main() -> int:
                  name, out[name]["mean_leading_coord_energy"],
                  out[name]["mean_max_coord_energy"], out[name]["participation_ratio"])
 
-    rhh = out[f"random_householder_m{m}"]
+    rhh = out[f"householder_no_base_m{m}"]
     out["conclusion"] = {
-        "random_householder_is_near_identity": rhh["participation_ratio"] < 2.0,
+        "unbased_householder_is_near_identity": rhh["participation_ratio"] < 2.0,
         "note": (f"With m={m} reflections in d={d}, each reflection moves e_0 by about "
                  f"2/sqrt(d) = {2/d**0.5:.4f}, so a random walk of m steps displaces it by "
                  f"~sqrt(m)*2/sqrt(d) = {(m**0.5)*2/d**0.5:.3f}. The product is therefore "
                  "essentially the identity at initialisation; reaching a Haar-like draw "
-                 f"would need m ~ d/4 = {d//4} reflections. This is a statement about the "
-                 "INITIALISATION, not about representational capacity: m >= k Householder "
-                 "reflections can represent any k-frame exactly."),
+                 f"would need m ~ d/4 = {d//4} reflections -- a heuristic mixing-scale estimate "
+                 "from sqrt(m)*2/sqrt(d) ~ 1, not a theorem about Householder mixing "
+                 "times. This concerns the INITIALISATION, not representational capacity: "
+                 "the parameterisation is designed to move the represented k-frame through "
+                 "orthogonal transformations. Arm E therefore uses a frozen Haar base with "
+                 "an exactly-identity residual (P0-4)."),
     }
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     Path(args.out).write_text(json.dumps(out, indent=2))

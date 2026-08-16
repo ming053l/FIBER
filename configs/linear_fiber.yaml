@@ -54,13 +54,20 @@ fiber:
     # Controls, reported alongside but never the gate denominator.
     B_signperm:   {type: signed_permutation, seeds: [0,1,2,3,4,5,6,7]}   # local
     C_hadamard:   {type: hadamard, structure: P2_H_D_P1, seeds: [0,1,2,3,4,5,6,7]}  # global, structured
-    # Architecture-matched control for arm E: identical parameterisation, reflector
-    # count and init draw, frozen. Separates "the parameterisation helps" from
-    # "learning selects better directions". m=128 << d=16384, so it is NOT uniform.
-    C3_rand_hh:   {type: random_householder, num_reflectors: 128, seeds: [0,1,2]}
+    # Arm E's architecture AND starting point, frozen. With the Haar base and the
+    # paired initialisation this is bit-identical to C2 at the same seed -- which is
+    # the point: at init the parameterisation contributes nothing, so any arm-E gain
+    # is learning. Kept as an executable check that the base and paired init hold.
+    C3_frozen_hh: {type: frozen_householder_on_haar, num_reflectors: 128,
+                   base: haar, paired_init: true, seeds: [0]}
     # The Observability Spectrum. Top-k eigenvectors of C_obs.
     D_spectral:   {type: spectral_topk, seeds: [0,1,2]}
-    E_learned:    {type: householder, num_reflectors: 128, seeds: [0,1,2]}
+    # R_E = Q_phi H with H a FROZEN Haar frame and Q_phi(0) = I EXACTLY (reflectors
+    # initialised in identical pairs, H(v)H(v) = I). So arm E starts at the gate
+    # denominator instead of at identity, which measurement showed is where a
+    # random-reflector Householder product actually begins (P0-4).
+    E_learned:    {type: householder, num_reflectors: 128, base: haar,
+                   paired_init: true, seeds: [0,1,2]}
 
 spectrum:
   # P0-1. The estimated object is the DECODER-CERTIFIED operator
@@ -137,6 +144,12 @@ training:
   grad_clip: 1.0
   amp: true
   joint_training: true            # discovery stage only; alternating if unstable
+  # Discovery optimises MSE ONLY. A hard sign target 1[W>0] has no gradient path to
+  # the frame, so including it would look like sign-BER optimisation while actually
+  # being MSE-only (P0-4). Frame parameters also get weight_decay = 0: H(v) depends
+  # only on v/||v||, so decay does not regularise the transform.
+  discovery_objective: mse
+  frame_weight_decay: 0.0
 
 eval:
   primary_metric: sign_ber

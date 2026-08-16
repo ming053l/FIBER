@@ -7,31 +7,31 @@
     "participation_ratio": 5461.333333333333
   },
   "haar": {
-    "mean_leading_coord_energy": 5.81917580376795e-05,
-    "mean_max_coord_energy": 0.0010212904254027454,
-    "participation_ratio": 5470.037435031133,
-    "n_draws": 100
+    "mean_leading_coord_energy": 5.408930688173813e-05,
+    "mean_max_coord_energy": 0.001028215358310331,
+    "participation_ratio": 5470.460818790438,
+    "n_draws": 60
   },
-  "random_householder_m128": {
-    "mean_leading_coord_energy": 0.9692990882439712,
-    "mean_max_coord_energy": 0.9692990882439712,
-    "participation_ratio": 1.0644115124352376,
-    "n_draws": 100
+  "householder_no_base_m128": {
+    "mean_leading_coord_energy": 0.9697184880162453,
+    "mean_max_coord_energy": 0.9697184880162453,
+    "participation_ratio": 1.063488373950883,
+    "n_draws": 60
   },
   "hadamard": {
     "mean_leading_coord_energy": 6.103515625e-05,
     "mean_max_coord_energy": 6.103515625e-05,
     "participation_ratio": 16384.0,
-    "n_draws": 100
+    "n_draws": 60
   },
   "signed_permutation": {
     "mean_leading_coord_energy": 0.0,
     "mean_max_coord_energy": 1.0,
     "participation_ratio": 1.0,
-    "n_draws": 100
+    "n_draws": 60
   },
   "conclusion": {
-    "random_householder_is_near_identity": true,
-    "note": "With m=128 reflections in d=16384, each reflection moves e_0 by about 2/sqrt(d) = 0.0156, so a random walk of m steps displaces it by ~sqrt(m)*2/sqrt(d) = 0.177. The product is therefore essentially the identity at initialisation; reaching a Haar-like draw would need m ~ d/4 = 4096 reflections. This is a statement about the INITIALISATION, not about representational capacity: m >= k Householder reflections can represent any k-frame exactly."
+    "unbased_householder_is_near_identity": true,
+    "note": "With m=128 reflections in d=16384, each reflection moves e_0 by about 2/sqrt(d) = 0.0156, so a random walk of m steps displaces it by ~sqrt(m)*2/sqrt(d) = 0.177. The product is therefore essentially the identity at initialisation; reaching a Haar-like draw would need m ~ d/4 = 4096 reflections -- a heuristic mixing-scale estimate from sqrt(m)*2/sqrt(d) ~ 1, not a theorem about Householder mixing times. This concerns the INITIALISATION, not representational capacity: the parameterisation is designed to move the represented k-frame through orthogonal transformations. Arm E therefore uses a frozen Haar base with an exactly-identity residual (P0-4)."
   }
 }
