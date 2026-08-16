@@ -18,11 +18,18 @@ from .base import Frame
 
 class HouseholderFrame(Frame):
     def __init__(self, d: int, k: int, num_reflectors: int = 128, seed: int = 0,
-                 init_scale: float = 1.0, **_):
+                 init_scale: float = 1.0, trainable: bool = True, **_):
         super().__init__(d, k)
+        # The seed string is deliberately shared with the frozen control arm, so
+        # RandomHouseholderFrame(seed=s) IS this frame at initialisation. That makes
+        # the control architecture-matched in the strict sense: same parameterisation,
+        # same reflector count, same init draw -- only the optimisation differs.
         g = torch.Generator().manual_seed(derive_seed("householder", d, k, seed) % (2**63 - 1))
         v = torch.randn(num_reflectors, d, generator=g) * init_scale
-        self.V = nn.Parameter(v)
+        if trainable:
+            self.V = nn.Parameter(v)
+        else:
+            self.register_buffer("V", v)
         self.num_reflectors = int(num_reflectors)
         self.eps = 1e-12
 
@@ -45,3 +52,17 @@ class HouseholderFrame(Frame):
         out = torch.zeros(*a.shape[:-1], self.d, device=a.device, dtype=a.dtype)
         out[..., : self.k] = a
         return self._apply_reflections(out, reverse=True)
+
+
+class RandomHouseholderFrame(HouseholderFrame):
+    """Arm C3 — the learned arm's architecture, frozen at its random initialisation.
+
+    Separates "the Householder parameterisation itself helps" from "learning selects
+    better directions". Note this is NOT a Haar sample: a product of m reflections
+    from Gaussian directions is only approximately uniform, and for m < d it cannot
+    be. That is the point -- it is matched to arm E, not to arm C2.
+    """
+
+    def __init__(self, d: int, k: int, num_reflectors: int = 128, seed: int = 0, **kw):
+        kw.pop("trainable", None)
+        super().__init__(d, k, num_reflectors=num_reflectors, seed=seed, trainable=False, **kw)

@@ -4,6 +4,11 @@
 # The pilot is a rehearsal, so its coverage is deliberately smaller than the
 # protocol in linear_fiber.yaml. NO SILENT CAPS -- what is reduced, and why:
 #
+#   NOTE: P0-2 made Haar the gate denominator, and the review defines a smaller
+#   P0_TRIAGE (k=64, five representative channels) that must run BEFORE any full
+#   sweep. This script is the pilot sweep; scripts/run_triage.sh supersedes it as
+#   the gate on whether the full protocol is worth its ~31 GPU-hours.
+#
 #   random draws   8 -> 3 per family   (config asks 8; 3 still gives a spread)
 #   derived seeds  3 -> 2
 #   k sweep        {16,32,64,128,256} -> {16,64,256}
@@ -47,13 +52,14 @@ done
 echo "===== Phase 2b: denominators, k sweep, identity + random only ====="
 for k in $KSWEEP; do
   run python scripts/train_coordinates.py --tag "$TAG" --arm A_identity --k "$k" --seed 0 --epochs "$EPOCHS"
+  run python scripts/train_coordinates.py --tag "$TAG" --arm C2_haar    --k "$k" --seed 0 --epochs "$EPOCHS"
   run python scripts/train_coordinates.py --tag "$TAG" --arm B_signperm --k "$k" --seed 0 --epochs "$EPOCHS"
   run python scripts/train_coordinates.py --tag "$TAG" --arm C_hadamard --k "$k" --seed 0 --epochs "$EPOCHS"
 done
 
 echo "===== Phase 3: all arms at k=$K, cross-fit ====="
 for s in $RANDOM_SEEDS; do
-  for arm in B_signperm C_hadamard; do
+  for arm in C2_haar B_signperm C_hadamard C3_rand_hh; do
     # k=64 seed 0 is already done by the sweep above
     [ "$K" = "64" ] && [ "$s" = "0" ] && continue
     run python scripts/train_coordinates.py --tag "$TAG" --arm "$arm" --k "$K" --seed "$s" --epochs "$EPOCHS"

@@ -45,10 +45,19 @@ fiber:
     # Sanity only. Identity loses to any global transform for a trivial locality
     # reason, so NO gate ever compares against it (PLAN.md R1).
     A_identity:   {type: identity, seeds: [0]}
-    # Random arms need many draws: "learned > random" from ONE random subspace is
-    # indefensible. Report E_Q[BER], the spread, and the best draw.
-    B_signperm:   {type: signed_permutation, seeds: [0,1,2,3,4,5,6,7]}
-    C_hadamard:   {type: hadamard, structure: P2_H_D_P1, seeds: [0,1,2,3,4,5,6,7]}
+    # PRIMARY random reference (P0-2). A uniformly random k-dimensional subspace is
+    # the null the scientific claim is actually against: "derived > Haar" is evidence
+    # that the channel has anisotropic observability, whereas "derived > Hadamard"
+    # would only say it beats one structured family. Many draws: "learned > random"
+    # from ONE random subspace is indefensible. Report E_Q[BER], spread, best draw.
+    C2_haar:      {type: haar, seeds: [0,1,2,3,4,5,6,7]}
+    # Controls, reported alongside but never the gate denominator.
+    B_signperm:   {type: signed_permutation, seeds: [0,1,2,3,4,5,6,7]}   # local
+    C_hadamard:   {type: hadamard, structure: P2_H_D_P1, seeds: [0,1,2,3,4,5,6,7]}  # global, structured
+    # Architecture-matched control for arm E: identical parameterisation, reflector
+    # count and init draw, frozen. Separates "the parameterisation helps" from
+    # "learning selects better directions". m=128 << d=16384, so it is NOT uniform.
+    C3_rand_hh:   {type: random_householder, num_reflectors: 128, seeds: [0,1,2]}
     # The Observability Spectrum. Top-k eigenvectors of C_obs.
     D_spectral:   {type: spectral_topk, seeds: [0,1,2]}
     E_learned:    {type: householder, num_reflectors: 128, seeds: [0,1,2]}
@@ -140,8 +149,14 @@ eval:
 
 # ---- Gates.  3A decides whether the science holds; 3B only decides the story. ----
 gate3a:
-  # min(BER_spectral, BER_learned) < BER_random, in >=3 of 5 channel groups
-  comparison: data_derived_vs_random
+  # min(BER_spectral, BER_learned) < BER_haar, in >=3 of 5 channel groups.
+  # The denominator is the HAAR family specifically, not "whichever random family is
+  # hardest to beat": the claim is about anisotropy against a uniform subspace. The
+  # other random families are reported as controls, and a control beating the derived
+  # arm is flagged prominently -- picking the weakest random family as denominator
+  # would be exactly the kind of free win this gate exists to prevent.
+  primary_random_reference: C2_haar
+  comparison: data_derived_vs_haar
   min_conditions_improved: 3
   paired_ci_lower_bound: 0.0      # CI95(delta BER) > 0
   target_relative_reduction: 0.20

@@ -6,9 +6,17 @@ coordinate is spatially local while a Hadamard row is a global functional, so
 identity loses to any global transform for a trivial reason that is not evidence
 for FIBER. Identity is printed for context and excluded from every gate.
 
-The random reference is E_Q[BER] over ALL random draws (arms B and C, every
-seed), with the spread and the best single draw reported alongside: claiming
-"learned > random" from one random subspace is indefensible.
+The gate denominator is the HAAR family (P0-2), averaged over its draws, with the
+spread and the best single draw alongside: claiming "learned > random" from one
+random subspace is indefensible. Haar specifically -- a uniformly random
+k-dimensional subspace -- because "derived > Haar" is evidence that the channel has
+anisotropic observability, while "derived > Hadamard" would only say it beats one
+structured family.
+
+Signed permutation, Hadamard and random-Householder are CONTROLS, reported next to
+the gate. If any control beats the derived arm, that is flagged in the report:
+otherwise choosing the weakest random family as denominator would hand the derived
+arm a free win, which is precisely what this gate exists to prevent.
 
     python scripts/eval_coordinates.py --tag pilot --k 64
 """
@@ -28,7 +36,8 @@ from fiber.utils.logging import get_logger
 
 log = get_logger("eval")
 
-RANDOM_TYPES = {"signed_permutation", "hadamard"}
+RANDOM_TYPES = {"haar", "signed_permutation", "hadamard", "random_householder"}
+PRIMARY_RANDOM_TYPE = "haar"      # the gate denominator (P0-2)
 DERIVED_TYPES = {"spectral_topk", "householder"}
 SANITY_TYPES = {"identity"}
 REFERENCE_TYPES = {"ddim_inversion_reference"}
@@ -157,34 +166,40 @@ def main() -> int:
         by_family = defaultdict(list)
         for s in random_stems:
             by_family[mats[s]["run"]["arm"]].append(s)
+        haar_stems = [s for s in random_stems
+                      if mats[s]["run"]["type"] == PRIMARY_RANDOM_TYPE]
+        if not haar_stems:
+            raise SystemExit(
+                f"no {PRIMARY_RANDOM_TYPE} runs at k={k_gate}: Gate 3A's denominator is a "
+                "uniformly random subspace (P0-2). Run arm C2_haar before evaluating.")
 
         conditions, per_arm = {}, defaultdict(dict)
         for g in groups:
-            rand_stack = np.stack([mats[s]["per_group"][g] for s in random_stems])
-            # The reference is the STRONGEST random family, not the pool average.
-            # Arms B and C are different families -- a signed permutation is local,
-            # a Hadamard row is global -- and R1 says the local one loses for a
-            # trivial reason. Averaging it into the reference would hand the derived
-            # arms a free win. Per family we average over its seeds (E_Q[BER]); the
-            # gate then runs against whichever family is hardest to beat.
-            family_means = {a: np.mean([mats[s]["per_group"][g] for s in ss], axis=0)
-                            for a, ss in by_family.items()}
-            ref_family = min(family_means, key=lambda a: family_means[a].mean())
-            reference = family_means[ref_family]
+            rand_stack = np.stack([mats[s]["per_group"][g] for s in haar_stems])
+            # Denominator is the HAAR family, seed-averaged. Not "the strongest random
+            # family" -- that framing lets the gate quietly pick whichever null is
+            # hardest to beat, and it answers a weaker question. Controls are reported
+            # beside it and flagged if any of them beats the derived arm.
+            reference = rand_stack.mean(axis=0)
             best_draw = float(rand_stack.mean(axis=1).min())
+            control_means = {a: float(np.mean([mats[s]["per_group"][g] for s in ss]))
+                             for a, ss in by_family.items()}
             for s in derived_stems:
                 res = paired_bootstrap(reference, mats[s]["per_group"][g],
                                        resamples=int(cfg["eval"]["bootstrap_resamples"]),
                                        seed=0, alpha=alpha)
                 per_arm[g][s] = gate3a_condition(res, cfg["gate3a"])
             best = min(per_arm[g], key=lambda s: mats[s]["per_group"][g].mean())
+            derived_ber = float(mats[best]["per_group"][g].mean())
+            beaten_by = {a: m for a, m in control_means.items() if m < derived_ber}
             conditions[g] = {**per_arm[g][best], "selected_arm": best,
-                             "reference_family": ref_family,
-                             "random_pooled_mean": float(rand_stack.mean()),
+                             "reference_family": PRIMARY_RANDOM_TYPE,
                              "random_mean": float(reference.mean()),
                              "random_spread": float(rand_stack.mean(axis=1).std()),
                              "random_best_draw": best_draw,
-                             "n_random_draws": len(random_stems)}
+                             "n_random_draws": len(haar_stems),
+                             "control_means": control_means,
+                             "controls_beating_derived": beaten_by}
         verdict = gate3a_verdict(conditions, cfg["gate3a"])
         report["gate3a"] = {**verdict, "alpha_per_arm": alpha, "conditions": conditions}
 
@@ -199,11 +214,24 @@ def main() -> int:
                 f"{c['random_best_draw']:.4f} | {c['selected_arm']} | {c['treatment']:.4f} | "
                 f"{c['mean_delta']:+.4f} | [{c['ci_low']:+.4f}, {c['ci_high']:+.4f}] | "
                 f"{c['relative_reduction']*100:.1f}% | {'yes' if c['passed'] else 'no'} |")
-        lines.append("\nThe random reference is the **strongest random family** per group "
-                     "(seed-averaged), not the pool average: arm B is local and arm C is "
-                     "global, and R1 says the local one loses for a trivial reason. The best "
-                     "single draw is shown for context but is not the reference — a gate "
+        lines.append("\nThe denominator is the **Haar** family, seed-averaged: a uniformly "
+                     "random k-dimensional subspace is the null the claim is against. "
+                     "`derived > Hadamard` would only say the directions beat one structured "
+                     "family. The best single draw is context, not the reference — a gate "
                      "against one lucky draw would be indefensible in either direction.\n")
+        flagged = {g: c["controls_beating_derived"] for g, c in conditions.items()
+                   if c["controls_beating_derived"]}
+        if flagged:
+            lines.append("\n> **A control beats the selected derived arm.** Reported here "
+                         "rather than buried: if a structured random family is stronger than "
+                         "the data-derived one, the Haar comparison alone overstates the "
+                         "result.\n")
+            for g, ctrls in flagged.items():
+                lines.append(f">   - {g}: " + ", ".join(f"{a} {m:.4f}" for a, m in
+                                                        sorted(ctrls.items(), key=lambda x: x[1])))
+            lines.append("")
+        else:
+            lines.append("\nNo control family beat the selected derived arm in any group.\n")
         lines.append("\nThe gate needs all three of `CI95(Δ) > 0`, relative reduction ≥ "
                      f"{cfg['gate3a']['target_relative_reduction']*100:.0f}%, absolute "
                      f"reduction ≥ {cfg['gate3a']['min_absolute_reduction']}, in ≥ "

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from .base import Frame
+from .haar import HaarRandomFrame
 from .hadamard import HadamardFrame
-from .householder import HouseholderFrame
+from .householder import HouseholderFrame, RandomHouseholderFrame
 from .identity import IdentityFrame
 from .signperm import SignedPermutationFrame
 from .spectral import SpectralFrame
@@ -11,6 +12,8 @@ FRAMES = {
     "identity": IdentityFrame,
     "signed_permutation": SignedPermutationFrame,
     "hadamard": HadamardFrame,
+    "haar": HaarRandomFrame,
+    "random_householder": RandomHouseholderFrame,
     "spectral_topk": SpectralFrame,
     "householder": HouseholderFrame,
 }

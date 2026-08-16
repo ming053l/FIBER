@@ -280,16 +280,32 @@ experiment, not a supplementary control.
 
 ### 5.1 Arms
 
-| Arm | Transform | Draws |
-|---|---|---|
-| A | `Q = I` | 1 (sanity only — see R1) |
-| B | random signed permutation | **5–10 seeds** |
-| C | structured orthogonal `P₂ H D P₁` (Walsh–Hadamard) | **5–10 seeds** |
-| D | **Observability Spectrum**, top-k eigenvectors of `Ĉ_obs` | 3 seeds (teacher init) |
-| E | learned `Q_φ`, Householder product | 3 seeds |
+| Arm | Transform | Role | Draws |
+|---|---|---|---|
+| A | `Q = I` | sanity only — see R1 | 1 |
+| **C2** | **Haar random `k`-frame** | **gate denominator** | **8 seeds** |
+| B | random signed permutation (local) | control | 8 seeds |
+| C | structured orthogonal `P₂ H D P₁` (Walsh–Hadamard, global) | control | 8 seeds |
+| C3 | random Householder, `m = 128` frozen at init | architecture-matched control for E | 3 seeds |
+| D | top-k of the **certified** operator `C_cert` | data-derived | 3 seeds (teacher init) |
+| E | learned `Q_φ`, Householder product | data-derived | 3 seeds |
 
-Random arms report `E_Q[BER]`, the spread, and the best draw. Claiming
-"learned > random" from a single random subspace is indefensible.
+**The denominator is Haar (P0-2).** A uniformly random `k`-dimensional subspace is the
+null the scientific claim is against: `derived > Haar` is evidence that the frozen
+channel has anisotropic observability, whereas `derived > Hadamard` would only say the
+directions beat one structured family. Sampling is `A ~ N(0,1)^{d×k}`, thin QR, times
+`sign(diag R)` — Haar-ness must not depend on an undocumented LAPACK convention.
+
+Arm C3 is matched to arm E in parameterisation, reflector count and initial draw, so
+it separates *the Householder parameterisation helps* from *learning selects better
+directions*. It is **not** a uniform sample: with `m = 128` against `d = 16384`,
+`E[r₀²]` sits far above `1/d`, which is why it is a control for E rather than a random
+baseline.
+
+Random arms report `E_Q[BER]`, the spread, and the best draw. Claiming "learned >
+random" from a single random subspace is indefensible. Every control is reported beside
+the gate, and a control beating the selected derived arm is flagged in the report —
+choosing the weakest random family as denominator would be a free win.
 
 ### 5.2 Heads — Gaussian, not circular
 

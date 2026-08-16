@@ -87,3 +87,106 @@ def test_registry_builds_every_arm_type():
                  {"type": "householder", "num_reflectors": 8}]:
         f = build_frame(spec, d=D, k=K, seed=1)
         assert f.orthonormality_error() < TOL
+
+
+# ==========================================================================
+# P0-2: a genuinely uniform random subspace, and an architecture-matched
+# random control for the learned arm.
+# ==========================================================================
+import numpy as np  # noqa: E402
+
+from fiber.transforms import HaarRandomFrame, RandomHouseholderFrame  # noqa: E402
+
+
+def test_haar_and_random_householder_are_orthonormal():
+    for f in (HaarRandomFrame(D, K, seed=1),
+              RandomHouseholderFrame(D, K, num_reflectors=16, seed=1)):
+        assert f.orthonormality_error() < TOL
+
+
+def test_haar_preserves_the_gaussian_measure():
+    torch.manual_seed(0)
+    w = HaarRandomFrame(D, K, seed=2).project(torch.randn(20000, D))
+    cov = w.T @ w / w.shape[0]
+    assert w.mean().abs() < 0.05
+    assert (cov - torch.eye(K)).abs().max() < 0.12
+
+
+def _haar_rows(n_draws, d, k=1):
+    return torch.stack([HaarRandomFrame(d, k, seed=s).rows()[0] for s in range(n_draws)])
+
+
+def test_haar_sampling_is_isotropic():
+    """E[r_i r_j] = delta_ij / d for a uniform direction on the sphere."""
+    d, n = 64, 3000
+    rows = _haar_rows(n, d).double()
+    second = rows.T @ rows / n
+    assert (second.diag() - 1.0 / d).abs().max() < 0.004
+    off = second - torch.diag(second.diag())
+    assert off.abs().max() < 0.006
+
+
+def test_haar_is_random_where_hadamard_is_structured():
+    """Isotropy alone does NOT separate Haar from Hadamard: a Hadamard row also has
+    E[r_i r_j] = delta_ij/d, because every entry is exactly +-1/sqrt(d). The
+    distinguishing statistic is the SPREAD of a squared entry, which is
+    Beta(1/2, (d-1)/2) for Haar and identically zero for Hadamard."""
+    d, n = 64, 3000
+    haar_sq = (_haar_rows(n, d)[:, 0] ** 2).double()
+    beta_var = 2 * (d - 1) / (d**2 * (d + 2))
+    assert abs(float(haar_sq.mean()) - 1.0 / d) < 0.002
+    assert abs(float(haar_sq.var()) - beta_var) < 0.5 * beta_var
+
+    had = torch.stack([HadamardFrame(d, 1, seed=s).rows()[0] for s in range(200)])
+    assert float((had[:, 0] ** 2).var()) < 1e-12
+    assert torch.allclose(had.abs(), torch.full_like(had, d**-0.5), atol=1e-6)
+
+
+def test_haar_entry_signs_are_unbiased():
+    """The sign(diag(R)) correction exists so that Haar-ness cannot depend on an
+    undocumented LAPACK convention. A convention leak would show up as a non-zero
+    mean on the leading entries."""
+    rows = _haar_rows(3000, 64).double()
+    means = rows[:, :4].mean(0)
+    assert means.abs().max() < 3.5 * (1.0 / 64) ** 0.5 / 3000**0.5 * 3
+
+
+def test_random_householder_is_the_learned_arm_frozen_at_init():
+    """Architecture-matched control: same parameterisation, same reflector count,
+    same initial draw. Only the optimisation differs."""
+    learned = HouseholderFrame(D, K, num_reflectors=16, seed=3)
+    frozen = RandomHouseholderFrame(D, K, num_reflectors=16, seed=3)
+    assert torch.equal(learned.V.detach(), frozen.V)
+    assert sum(p.numel() for p in frozen.parameters()) == 0
+    z = torch.randn(8, D)
+    assert torch.allclose(learned.project(z), frozen.project(z), atol=1e-6)
+
+
+def test_random_householder_is_not_a_haar_sample():
+    """A product of m reflections is only close to uniform once m is comparable to d,
+    so arm C3 must never stand in for the primary random reference (arm C2).
+
+    For a Haar direction E[r_0^2] = 1/d. Measured at d=64 the Householder product
+    approaches that from far above, because a handful of reflections barely moves
+    e_1: m=4 -> 0.78, m=16 -> 0.38, m=64 -> 0.035, m=128 -> 0.014, against 1/64 =
+    0.0156. The configured arm uses m=128 in d=16384, i.e. m/d = 1/128 -- deep in the
+    regime where it is nothing like a uniform subspace, which is exactly why it is a
+    control for arm E rather than a random baseline.
+    """
+    d, n = 64, 400
+    means = {}
+    for m in (4, 16, 64):
+        rows = torch.stack([RandomHouseholderFrame(d, 1, num_reflectors=m, seed=s).rows()[0]
+                            for s in range(n)]).double()
+        means[m] = float((rows[:, 0] ** 2).mean())
+    uniform = 1.0 / d
+    assert means[4] > 20 * uniform, "m << d should be far from uniform"
+    assert means[4] > means[16] > means[64], "more reflections must move toward uniform"
+    assert means[64] < 4 * uniform
+
+
+def test_registry_exposes_both_new_arms():
+    for spec in ({"type": "haar"},
+                 {"type": "random_householder", "num_reflectors": 8}):
+        f = build_frame(spec, d=D, k=K, seed=2)
+        assert f.orthonormality_error() < TOL
