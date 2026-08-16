@@ -4,3 +4,8 @@ __pycache__/
 .pytest_cache/
 build/
 dist/
+
+# machine-local experiment output (data lives on /ssd2, see configs/sd15.yaml)
+reports/_*
+*.npz
+*.pt

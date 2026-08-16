@@ -129,6 +129,14 @@ such `R` extends to an orthogonal `Q`, so measure preservation is unaffected,
 and the Gate 3A orthonormality check `‖R Rᵀ − I‖_∞ < 1e-5` costs `O(k²d)`
 without ever forming `Q`.
 
+### Paths are machine-specific
+
+`configs/sd15.yaml` points at a local SD-v1.5 checkpoint, a COCO caption dump and
+two SSDs (`/ssd1` for code and reports, `/ssd2` for images and latents). Nothing
+is symlinked — every path is read from the config, so a different machine needs
+edits to `configs/sd15.yaml` (`model.checkpoint`, `paths.*`) and
+`configs/linear_fiber.yaml` (`dataset.prompts.*`) and nothing else.
+
 ### Running it
 
 ```bash
