@@ -33,9 +33,10 @@ def toy(seed=0):
 T = toy()
 
 
-def cov(F):
+def cov(F, ddof=1):
+    """ddof=1 to match the operator: the data are sample-centered."""
     Fc = F - F.mean(0)
-    return Fc.T @ Fc / len(Fc)
+    return Fc.T @ Fc / max(len(Fc) - ddof, 1)
 
 
 def max_eig(M):
@@ -491,3 +492,42 @@ def test_reported_mu_range_is_consistent_with_the_certified_rank():
             assert c["mu_max"] > c["zero_tolerance"]
         else:
             assert c["mu_max"] <= c["zero_tolerance"]
+
+
+def test_operator_uses_the_unbiased_denominator():
+    """The data are sample-centered, so N-1 is the unbiased denominator. At small N
+    the difference is visible: with ddof=0 the estimate is shrunk by (N-1)/N."""
+    n = 12
+    rng = np.random.default_rng(0)
+    Z = rng.standard_normal((n, 8))
+    F = 0.5 * Z + 0.1 * rng.standard_normal((n, 8))
+    V = np.eye(8)[:4]
+    c1 = project_operator(Z, F, V, ddof=1)
+    c0 = project_operator(Z, F, V, ddof=0)
+    assert np.allclose(c1 * (n - 1) / n, c0)
+
+
+def test_unbiased_denominator_recovers_the_population_operator():
+    """Averaged over many small samples, ddof=1 converges to the truth and ddof=0
+    does not."""
+    rng = np.random.default_rng(0)
+    d, n, reps = 6, 10, 4000
+    V = np.eye(d)[:3]
+    # f = alpha * Z is a legitimate Y-measurable decoder for Y = Z
+    alpha = 0.6
+    truth = (2 * alpha - alpha**2)          # v'C_cert v for every direction
+    acc1, acc0 = [], []
+    for _ in range(reps):
+        Z = rng.standard_normal((n, d))
+        F = alpha * Z
+        acc1.append(np.diag(project_operator(Z, F, V, ddof=1)).mean())
+        acc0.append(np.diag(project_operator(Z, F, V, ddof=0)).mean())
+    assert abs(np.mean(acc1) - truth) < 0.01
+    assert abs(np.mean(acc0) - truth) > 0.03
+
+
+def test_positive_rank_is_named_as_numerical_not_statistical():
+    """`tau` only excludes floating-point noise; it is not a significance test."""
+    c = subspace_certificate(*_null_case(256, 32))
+    assert "numerical_positive_rank" in c
+    assert c["numerical_positive_rank"] == c["certified_positive_rank"]

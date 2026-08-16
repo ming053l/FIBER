@@ -304,3 +304,31 @@ validity, and whether the experimental protocol changed. Final report
 `READY_FOR_PHASE2_3` / `NOT_READY_FOR_PHASE2_3`.
 
 No GPU sweep until that report says READY.
+
+
+---
+
+## Deferred to pre-Gate-3 cleanup (recorded, not blocking P0-2)
+
+Raised in review after P0-1.1 was accepted; neither changes a conclusion, both change
+what may be *claimed*.
+
+1. **Numerical positive rank is not statistical certification.** `tau = max(1e-9,
+   k·eps·max|mu|)` only excludes floating-point noise. Even after the inner cross-fit,
+   a decoder with zero true skill still shows `D = 0.44` at `N=64, k=32` purely from
+   clipping. Before Gate 3, split the reported rank into `numerical_positive_rank`
+   (already renamed) and a `statistically_certified_rank` requiring a one-sided 95%
+   lower confidence bound above zero, bootstrapped on the measurement half with the
+   rotation held fixed from the discovery half. The main table should then quote
+   `D_cert^LCB`. Until that exists, "certified" means "certified by this decoder up to
+   numerical noise", and the reports say so.
+
+2. **Unbiased denominator — DONE.** The empirical operator is sample-centered, so
+   `N-1` is the unbiased denominator; all of `CertifiedObservabilityOperator`,
+   `project_operator`, `quadratic_form`, `variance_form` and the `range_eigh` path now
+   take `ddof=1`. The change is a factor `N/(N-1)` and moves no conclusion.
+
+3. **Symmetric two-fold inner cross-fit (optional).** The inner cross-fit currently
+   measures on one half only. Averaging `D_{1->2}` and `D_{2->1}` would use every
+   report sample for measurement and reduce dependence on the split seed. Polish after
+   P0-7.

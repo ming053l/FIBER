@@ -68,7 +68,7 @@ class CertifiedObservabilityOperator:
         C_cert V = ( Zc^T (Fc V) + Fc^T (Zc V) − Fc^T (Fc V) ) / N
     """
 
-    def __init__(self, Z, F, center: bool = True, dtype=np.float64):
+    def __init__(self, Z, F, center: bool = True, dtype=np.float64, ddof: int = 1):
         Z, F = _as_2d(Z, dtype), _as_2d(F, dtype)
         if Z.shape != F.shape:
             raise ValueError(f"Z {Z.shape} and f(Y) {F.shape} must align sample-wise")
@@ -79,6 +79,11 @@ class CertifiedObservabilityOperator:
         self.Zc = Z - self.z_mean
         self.Fc = F - self.f_mean
         self.dtype = dtype
+        # Z and f are SAMPLE-centered, so the unbiased denominator is N-1. With N the
+        # estimator is shrunk by (N-1)/N -- immaterial at N >= 256, but then the word
+        # "unbiased" would not be literally true.
+        self.ddof = int(ddof)
+        self.denom = max(self.N - self.ddof, 1)
 
     @property
     def shape(self):
@@ -88,7 +93,7 @@ class CertifiedObservabilityOperator:
         V = np.asarray(V, dtype=self.dtype)
         return (self.Zc.T @ (self.Fc @ V)
                 + self.Fc.T @ (self.Zc @ V)
-                - self.Fc.T @ (self.Fc @ V)) / self.N
+                - self.Fc.T @ (self.Fc @ V)) / self.denom
 
     def matvec(self, v: np.ndarray) -> np.ndarray:
         return self.matmat(np.asarray(v, dtype=self.dtype).reshape(self.d, 1)).ravel()
@@ -100,12 +105,12 @@ class CertifiedObservabilityOperator:
     def trace(self) -> float:
         """Tr(C_cert), exact in O(Nd) and SIGNED. Reported as a consistency check
         against the recovered spectrum, never as the observability mass."""
-        return float((2 * (self.Zc * self.Fc).sum() - (self.Fc * self.Fc).sum()) / self.N)
+        return float((2 * (self.Zc * self.Fc).sum() - (self.Fc * self.Fc).sum()) / self.denom)
 
     def dense(self) -> np.ndarray:
         if self.d > DENSE_LIMIT:
             raise MemoryError(f"dense() refused for d={self.d}: use the matrix-free path")
-        return (self.Zc.T @ self.Fc + self.Fc.T @ self.Zc - self.Fc.T @ self.Fc) / self.N
+        return (self.Zc.T @ self.Fc + self.Fc.T @ self.Zc - self.Fc.T @ self.Fc) / self.denom
 
     @property
     def max_rank(self) -> int:
@@ -113,7 +118,7 @@ class CertifiedObservabilityOperator:
         return min(2 * self.N, self.d)
 
 
-def quadratic_form(Z, F, V, center: bool = True) -> np.ndarray:
+def quadratic_form(Z, F, V, center: bool = True, ddof: int = 1) -> np.ndarray:
     """lambda_skill_j = v_j^T C_cert v_j evaluated on the given samples.
 
     This is the CONSERVATIVE per-direction quantity: Var(v^T Z) minus the decoder's
@@ -124,7 +129,8 @@ def quadratic_form(Z, F, V, center: bool = True) -> np.ndarray:
     a, b = Z @ V.T, F @ V.T
     if center:
         a, b = a - a.mean(0), b - b.mean(0)
-    return 2 * (a * b).mean(0) - (b * b).mean(0)
+    denom = max(a.shape[0] - ddof, 1)
+    return (2 * (a * b).sum(0) - (b * b).sum(0)) / denom
 
 
 # Numerical-rank tolerance for calling a projected eigenvalue positive. Standard
@@ -135,7 +141,7 @@ def zero_tolerance(mu: np.ndarray, floor: float = 1e-9) -> float:
     return max(floor, k * np.finfo(np.float64).eps * float(np.abs(mu).max(initial=0.0)))
 
 
-def project_operator(Z, F, V, center: bool = True) -> np.ndarray:
+def project_operator(Z, F, V, center: bool = True, ddof: int = 1) -> np.ndarray:
     """C_V = V C_cert V^T, the certified operator RESTRICTED to span(V).
 
         A = Zc V^T,  B = Fc V^T,  C_V = (A^T B + B^T A - B^T B) / N
@@ -147,8 +153,7 @@ def project_operator(Z, F, V, center: bool = True) -> np.ndarray:
     A, B = Z @ V.T, F @ V.T
     if center:
         A, B = A - A.mean(0), B - B.mean(0)
-    N = A.shape[0]
-    C = (A.T @ B + B.T @ A - B.T @ B) / N
+    C = (A.T @ B + B.T @ A - B.T @ B) / max(A.shape[0] - ddof, 1)
     return (C + C.T) / 2
 
 
@@ -213,7 +218,11 @@ def subspace_certificate(Z, F, V, center: bool = True, tol: float | None = None,
         # N=256). Report both: the mass answers "how much is certified", the trace
         # answers "is this decoder net-positive at all" and can be negative.
         "trace_C_V": float(mu.sum()),
-        "certified_positive_rank": int(positive.size),
+        # NOT a significance statement: tau only rules out floating-point noise. A
+        # statistically certified rank needs a one-sided LCB > 0 on the measurement
+        # half (recorded as pre-Gate-3 work in reports/p0_fix_plan.md).
+        "numerical_positive_rank": int(positive.size),
+        "certified_positive_rank": int(positive.size),   # deprecated alias
         "requested_k": int(V.shape[0]),
         # mu.max()/min(), NOT mu[0]/mu[-1]: after the inner cross-fit mu is ordered by
         # the rotation chosen on half 1, so it is no longer sorted descending.
@@ -226,14 +235,14 @@ def subspace_certificate(Z, F, V, center: bool = True, tol: float | None = None,
     }
 
 
-def variance_form(F, V, center: bool = True) -> np.ndarray:
+def variance_form(F, V, center: bool = True, ddof: int = 1) -> np.ndarray:
     """lambda_var_j = Var(v_j^T f(Y)). Equals lambda_skill ONLY when f is the exact
     conditional mean, so the gap between them is the teacher-validity diagnostic."""
     F, V = _as_2d(F), _as_2d(V)
     b = F @ V.T
     if center:
         b = b - b.mean(0)
-    return (b * b).mean(0)
+    return (b * b).sum(0) / max(b.shape[0] - ddof, 1)
 
 
 @dataclass
@@ -329,7 +338,7 @@ def fit_certified(Z, F, k: int, oversampling: int = 32, seed: int = 0, center: b
         G = np.concatenate([op.Zc.T, op.Fc.T], axis=1)      # d x 2N
         Q, R = np.linalg.qr(G)                              # Q d x p, R p x 2N
         R1, R2 = R[:, :N], R[:, N:]
-        B = (R1 @ R2.T + R2 @ R1.T - R2 @ R2.T) / N         # p x p, symmetric
+        B = (R1 @ R2.T + R2 @ R1.T - R2 @ R2.T) / op.denom  # p x p, symmetric
         B = (B + B.T) / 2
         w, P = np.linalg.eigh(B)                            # ascending, exact
         order = np.argsort(w)[::-1]
