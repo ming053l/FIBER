@@ -63,14 +63,23 @@ def necessary_m(k: int, d: int) -> float:
     return k * (d - k) / (d - 1)
 
 
-def make_target(kind: str, d: int, k: int, m: int, seed: int, device) -> torch.Tensor:
+def make_target(kind: str, fitter: HouseholderFrame, d: int, k: int, m: int,
+                seed: int, device) -> torch.Tensor:
+    """`fitter` is passed in on purpose: the reachable target must be built on the
+    fitter's OWN frozen Haar base.
+
+    `HouseholderFrame(seed=s)` uses s for the reflectors AND for the base, so a target
+    at seed 2000+s sits on a DIFFERENT base B'. Then T = B' Q_* need not lie in the
+    fitter's family {B Q : Q a product of m reflections} at all, and a failure could not
+    be attributed to optimisation -- which is the whole point of having this control.
+    """
     if kind == "generic":
         return HaarRandomFrame(d, k, seed=1000 + seed).rows().to(device)
     if kind == "reachable":
-        # same parameterisation, random (unpaired) parameters: a frame this family
-        # provably contains, so failing it is an optimisation result, not a capacity one
         f = HouseholderFrame(d, k, num_reflectors=m, seed=2000 + seed,
                              base="haar", paired_init=False).to(device)
+        with torch.no_grad():
+            f.B.copy_(fitter.B)            # same base => provably inside the family
         return f.rows().detach()
     raise ValueError(kind)
 
@@ -80,7 +89,7 @@ def fit(d: int, k: int, m: int, kind: str, seed: int, steps: int, lr: float,
     torch.manual_seed(seed)
     frame = HouseholderFrame(d, k, num_reflectors=m, seed=seed,
                              base="haar", paired_init=True).to(device)
-    target = make_target(kind, d, k, m, seed, device)
+    target = make_target(kind, frame, d, k, m, seed, device)
     opt = torch.optim.Adam(frame.parameters(), lr=lr)
     start = float(alignment(frame.rows().detach(), target))
     t0 = time.time()

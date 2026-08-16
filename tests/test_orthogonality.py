@@ -246,3 +246,38 @@ def test_base_can_be_disabled_for_the_diagnostic():
     """base=None reproduces the pre-P0-4 arm: first k rows of the raw product."""
     f = HouseholderFrame(D, K, num_reflectors=16, seed=0, base=None, paired_init=False)
     assert not f.has_base and f.orthonormality_error() < TOL
+
+
+def test_reachable_target_shares_the_fitters_frozen_base():
+    """B3's attribution rests on the reachable target really being reachable.
+    `HouseholderFrame(seed=s)` seeds the reflectors AND the Haar base, so a target
+    built at another seed sits on a different base and need not lie in the fitter's
+    family at all -- at which point a failure says nothing about the optimiser."""
+    import sys
+    sys.path.insert(0, "scripts")
+    from audit_reflector_capacity import alignment, make_target
+
+    d, k, m = 512, 8, 16
+    fitter = HouseholderFrame(d, k, num_reflectors=m, seed=0, base="haar", paired_init=True)
+    naive = HouseholderFrame(d, k, num_reflectors=m, seed=2000, base="haar",
+                             paired_init=False)
+    assert not torch.allclose(fitter.B, naive.B), "the bases were already identical"
+
+    T = make_target("reachable", fitter, d, k, m, 0, torch.device("cpu"))
+    # the target is reachable: copying its parameters into the fitter reproduces it
+    src = HouseholderFrame(d, k, num_reflectors=m, seed=2000, base="haar",
+                           paired_init=False)
+    with torch.no_grad():
+        fitter.V.copy_(src.V)
+    assert float(alignment(fitter.rows(), T)) > 1 - 1e-5
+
+
+def test_generic_target_is_independent_of_the_fitter():
+    import sys
+    sys.path.insert(0, "scripts")
+    from audit_reflector_capacity import alignment, make_target
+
+    d, k, m = 512, 8, 16
+    fitter = HouseholderFrame(d, k, num_reflectors=m, seed=0, base="haar", paired_init=True)
+    T = make_target("generic", fitter, d, k, m, 0, torch.device("cpu"))
+    assert float(alignment(fitter.rows().detach(), T)) < 0.5
