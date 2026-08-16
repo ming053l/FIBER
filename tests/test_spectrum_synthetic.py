@@ -1,4 +1,8 @@
-"""PLAN.md §3.5 — validate the observability estimator with zero GPU time.
+"""PLAN.md §3.5 — validate the Cov(f) estimator with zero GPU time.
+
+P0-1 demoted this estimator to a DIAGNOSTIC: Cov(f) equals C_obs only for the exact
+conditional mean, which is what this file feeds it. The certified operator that
+discovery actually uses is tested in tests/test_certified_operator.py.
 
 Toy channel  Y = A Z + sigma * e,  Z ~ N(0, I_d),  e ~ N(0, I_n).  Then
 
@@ -15,7 +19,7 @@ import pytest
 import torch
 
 from fiber.spectrum import (fit_gram, fit_randomized, fit_spectrum,
-                            subspace_alignment, trace_c_obs)
+                            subspace_alignment, trace_teacher_covariance)
 
 D, N_OBS, N, SIGMA = 256, 48, 6000, 0.5
 
@@ -69,7 +73,7 @@ def test_randomized_matches_gram():
 
 def test_trace_is_the_sum_of_the_analytic_spectrum():
     """Tr(C_obs) is the headline number and is computed exactly (no SVD)."""
-    assert abs(trace_c_obs(DATA["M"]) - float(DATA["lam"].sum())) < 0.5
+    assert abs(trace_teacher_covariance(DATA["M"]) - float(DATA["lam"].sum())) < 0.5
 
 
 def test_crossfit_eigenvalues_lie_in_the_unit_interval():

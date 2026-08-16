@@ -1,28 +1,37 @@
 #!/usr/bin/env python
-"""Fit the Generative Observability Spectrum  C_obs = Cov(E[Z|Y])  (PLAN.md §3).
+"""Fit the DECODER-CERTIFIED observability operator (P0-1).
 
-    teacher M_theta(Y) ~= E[Z|Y]   trained with MSE on split A (discovery)
-    C_hat = (1/N) sum m m^T        never formed: randomized SVD of M
-    lambda_j = 1 - MMSE_j in [0,1] fraction of direction j that survives
-    Tr(C_hat) = sum lambda_j       effective number of recoverable dimensions
+    C_cert(f) = E[ z_c f_c' + f_c z_c' - f_c f_c' ]  =  C_obs - E[(m-f)(m-f)']  <=  C_obs
+    v' C_cert v = Var(v'Z) - E[(v'z_c - v'f_c)^2]    ( = 1 - MSE_v for Z ~ N(0,I) )
 
-Eigenvectors are fit on the discovery split; the REPORTED eigenvalues are
-re-measured on a held-out split (cross-fit), because in-sample eigenvalues of a
-covariance are upward biased and would inflate Tr.
+so a weak decoder UNDERSTATES observability and can never manufacture it. This
+replaces Cov(f(Y)), which is not a lower bound on C_obs for an approximate teacher.
 
-    python scripts/fit_observability_spectrum.py --tag pilot --epochs 20
+Every sample plays exactly one role:
+
+    A_teacher  -> fit f
+    A_operator -> estimate C_cert, take the top-k directions, FREEZE
+    val        -> cross-fit the reported eigenvalues and the validity diagnostic
+
+In-sample eigenvalues are inflated far past the theoretical bound of 1 (measured
+lambda_max = 7.2 with an EXACT teacher at N=200, d=4096), so they only ever select
+directions. Everything reported is the held-out lambda_skill.
+
+    python scripts/fit_observability_spectrum.py --tag pilot --per-attack
 """
 from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import time
 from pathlib import Path
 
+import numpy as np
 import torch
 
 from fiber.channels import ChannelBank
-from fiber.spectrum import fit_spectrum, subspace_alignment, trace_c_obs
+from fiber.spectrum import fit_certified, subspace_alignment, teacher_validity
 from fiber.training import TrainConfig, teacher_outputs, train_teacher
 from fiber.utils.config import load_config
 from fiber.utils.logging import get_logger
@@ -36,11 +45,12 @@ def main() -> int:
     ap.add_argument("--config", default="configs/linear_fiber.yaml")
     ap.add_argument("--tag", default="pilot")
     ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--k", type=int, default=None, help="how many directions to keep")
+    ap.add_argument("--k", type=int, default=None, help="directions to keep")
     ap.add_argument("--epochs", type=int, default=None)
     ap.add_argument("--batch-size", type=int, default=None)
-    ap.add_argument("--holdout-split", default="val")
-    ap.add_argument("--per-attack", action="store_true", help="also fit one spectrum per attack")
+    ap.add_argument("--report-split", default=None)
+    ap.add_argument("--per-attack", action="store_true",
+                    help="fixed-decoder operational spectrum per attack (NOT Cov(E[Z|Y,T=t]))")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--device", default="cuda:0")
     args = ap.parse_args()
@@ -50,8 +60,13 @@ def main() -> int:
     bank = ChannelBank(cfg)
     root = Path(cfg["paths"]["cache_dir"]) / args.tag
     scfg = cfg["spectrum"]
+    xfit = cfg["dataset"]["crossfit"]
     d = int(cfg["latent"]["dim"])
-    k = args.k or max([int(cfg["fiber"]["robust_dims"])] + [256])
+    k = args.k or max(int(cfg["fiber"]["robust_dims"]), 256)
+    report_split = args.report_split or scfg.get("report_split", "val")
+
+    if str(scfg.get("operator", "certified")) != "certified":
+        raise SystemExit("spectrum.operator must be 'certified'; Cov(f) is a diagnostic (P0-1)")
 
     tcfg = TrainConfig.from_config(cfg)
     if args.epochs:
@@ -60,74 +75,118 @@ def main() -> int:
         tcfg.batch_size = args.batch_size
 
     t0 = time.time()
-    teacher, hist = train_teacher(root, bank, tcfg, d=d, crossfit=cfg["dataset"]["crossfit"]["discovery_split"],
+    # ---- 1. teacher on A_teacher, MSE only ------------------------------
+    teacher, hist = train_teacher(root, bank, tcfg, d=d, crossfit_sub=xfit["teacher_subsplit"],
                                   device=args.device, seed=args.seed, attacks=bank.train,
                                   limit=args.limit)
-    log.info("teacher trained in %.1f s (final mse %.4f)", time.time() - t0, hist[-1]["mse"])
+    log.info("teacher trained on %s in %.1f s (final mse %.4f)",
+             xfit["teacher_subsplit"], time.time() - t0, hist[-1]["mse"])
 
-    # discovery outputs (directions) and held-out outputs (honest eigenvalues)
-    M_fit, Z_fit = teacher_outputs(teacher, root, bank, "train", attacks=bank.train,
-                                   crossfit=cfg["dataset"]["crossfit"]["discovery_split"],
-                                   device=args.device, limit=args.limit)
-    M_held, Z_held = teacher_outputs(teacher, root, bank, args.holdout_split, attacks=bank.train,
-                                     device=args.device, limit=args.limit,
-                                     epoch_salt="spectrum-holdout")
+    # ---- 2. discovery on A_operator, disjoint from the teacher's samples --
+    F_op, Z_op = teacher_outputs(teacher, root, bank, "train", attacks=bank.train,
+                                 crossfit_sub=xfit["operator_subsplit"], device=args.device,
+                                 limit=args.limit, epoch_salt="spectrum-operator")
+    spec = fit_certified(Z_op, F_op, k=k, oversampling=int(scfg.get("oversampling", 32)),
+                         seed=args.seed, center=bool(scfg.get("center", True)),
+                         method="range_eigh" if scfg.get("eigensolver") == "range_eigh" else "eigsh")
+    V = spec.eigenvectors[:k]
+    log.info("C_cert on %s: n=%d, in-sample lambda_1=%.3f (in-sample only, never reported)",
+             xfit["operator_subsplit"], spec.n_samples, float(spec.eigenvalues[0]))
 
-    spec = fit_spectrum(M_fit, k=k, cfg=scfg, seed=args.seed, strict=False)
-    lam_held = spec.evaluate_on(M_held)
-    # 1 - MMSE cross-check along the recovered directions, on held-out data
-    proj_err = ((Z_held @ spec.eigenvectors.T) - (M_held @ spec.eigenvectors.T)).pow(2).mean(0)
-    one_minus_mmse = (1.0 - proj_err)
-
-    out_dir = Path(cfg["paths"]["data_root"]) / "spectrum"
-    out_dir.mkdir(parents=True, exist_ok=True)
-    stem = f"{args.tag}_seed{args.seed}"
-    torch.save({"eigenvectors": spec.eigenvectors, "eigenvalues_insample": spec.eigenvalues,
-                "eigenvalues_heldout": lam_held, "trace_insample": spec.trace,
-                "trace_heldout": trace_c_obs(M_held), "k": k, "d": d,
-                "teacher_loss": "mse", "seed": args.seed},
-               out_dir / f"{stem}.pt")
+    # ---- 3. cross-fit the reported numbers on a held-out split -----------
+    F_rep, Z_rep = teacher_outputs(teacher, root, bank, report_split, attacks=bank.train,
+                                   device=args.device, limit=args.limit,
+                                   epoch_salt="spectrum-report")
+    valid = teacher_validity(Z_rep, F_rep, V)
+    lam = valid["lambda_skill"]
+    tol = float(scfg.get("validity_tol", 0.10))
 
     summary = {
-        "tag": args.tag, "seed": args.seed, "k_kept": int(spec.eigenvectors.shape[0]),
-        "teacher_final_mse": hist[-1]["mse"],
-        "teacher_epochs": tcfg.epochs,
-        "n_discovery": int(M_fit.shape[0]), "n_holdout": int(M_held.shape[0]),
-        # THE headline number: effective number of recoverable dimensions
-        "trace_c_obs_heldout": trace_c_obs(M_held),
-        "trace_c_obs_insample": spec.trace,
-        "lambda_top1_heldout": float(lam_held[0]),
-        "lambda_top64_mean_heldout": float(lam_held[:64].mean()),
-        "lambda_flatness_top64": float(lam_held[:64].max() / lam_held[:64].min().clamp_min(1e-9)),
-        "one_minus_mmse_top1": float(one_minus_mmse[0]),
-        "one_minus_mmse_top64_mean": float(one_minus_mmse[:64].mean()),
-        "effective_rank": spec.effective_rank(),
-        "estimator": spec.method,
+        "tag": args.tag, "seed": args.seed, "operator": "certified",
+        "solver": spec.solver, "k_kept": int(V.shape[0]),
+        "teacher_arch": scfg.get("teacher_arch", "resnet18"), "teacher_loss": "mse",
+        "teacher_final_mse": hist[-1]["mse"], "teacher_epochs": tcfg.epochs,
+        "n_teacher_split": None, "n_operator": int(spec.n_samples),
+        "n_report": int(valid["n_heldout"]), "report_split": report_split,
+
+        # ---- headline, all cross-fitted -------------------------------
+        "D_cert_k": float(np.clip(lam[:k], 0, None).sum()),
+        "D_cert_top64": float(np.clip(lam[:64], 0, None).sum()),
+        "D_neg_heldout": float(np.clip(-lam, 0, None).sum()),
+        "lambda_skill_top1": float(lam[0]),
+        "lambda_skill_top64_mean": float(lam[:64].mean()),
+        "n_negative_directions": int(valid["n_negative_directions"]),
+        "spectrum_flatness_top64": float(lam[:64].max() / max(abs(lam[:64].min()), 1e-9)),
+
+        # ---- validity: lambda_var == lambda_skill only for an exact mean --
+        "validity_mean_abs_gap": valid["mean_abs_gap"],
+        "validity_max_abs_gap": valid["max_abs_gap"],
+        "validity_tol": tol,
+        "validity_pass": bool(valid["mean_abs_gap"] < tol),
+        "teacher_output_mean_norm": valid["teacher_output_mean_norm"],
+
+        # ---- in-sample, for contrast only -----------------------------
+        "insample_lambda_top1": float(spec.eigenvalues[0]),
+        "insample_trace_signed": spec.trace_signed,
+        "insample_positive_mass": spec.total_positive_mass(),
+        "insample_negative_mass": spec.negative_mass(),
+        "insample_spectrum_complete": spec.spectrum_is_complete,
+
+        "commit": subprocess.run(["git", "rev-parse", "--short", "HEAD"],
+                                 capture_output=True, text=True).stdout.strip() or "uncommitted",
         "seconds": round(time.time() - t0, 1),
     }
 
     if args.per_attack:
         per = {}
         for attack in bank.eval:
-            Ma, _ = teacher_outputs(teacher, root, bank, args.holdout_split, attacks=[attack],
-                                    mode="fixed", device=args.device, limit=args.limit)
-            sp_a = fit_spectrum(Ma, k=min(k, Ma.shape[0] - 1), cfg=scfg, seed=args.seed, strict=False)
+            Fa, Za = teacher_outputs(teacher, root, bank, report_split, attacks=[attack],
+                                     mode="fixed", device=args.device, limit=args.limit)
+            va = teacher_validity(Za, Fa, V)
+            sp_a = fit_certified(Za, Fa, k=min(64, Za.shape[0] - 2), oversampling=8,
+                                 seed=args.seed, method="range_eigh")
             per[attack] = {
-                "trace_c_obs": trace_c_obs(Ma),
-                "lambda_top1": float(sp_a.eigenvalues[0]),
+                "D_cert_top64_along_mixture_directions":
+                    float(np.clip(va["lambda_skill"][:64], 0, None).sum()),
+                "lambda_skill_top1": float(va["lambda_skill"][0]),
                 "alignment_with_mixture": subspace_alignment(
-                    sp_a.eigenvectors[:64], spec.eigenvectors[:64]),
+                    torch.from_numpy(sp_a.eigenvectors[:64]).float(),
+                    torch.from_numpy(V[:64]).float()),
             }
-            log.info("%-10s Tr(C_obs) %.2f  align %.3f", attack, per[attack]["trace_c_obs"],
+            log.info("%-10s D_cert(64)=%7.3f  align=%.3f", attack,
+                     per[attack]["D_cert_top64_along_mixture_directions"],
                      per[attack]["alignment_with_mixture"])
         summary["per_attack"] = per
+        summary["per_attack_note"] = (
+            "fixed-decoder operational spectrum under attack t: one attack-mixture "
+            "teacher evaluated under each attack. NOT Cov(E[Z|Y,T=t]) -- that would "
+            "need a decoder calibrated per attack.")
+
+    out_dir = Path(cfg["paths"]["data_root"]) / "spectrum"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    stem = f"{args.tag}_seed{args.seed}"
+    torch.save({
+        "operator": "certified",
+        "eigenvectors": torch.from_numpy(V).float(),
+        "lambda_skill_heldout": torch.from_numpy(np.asarray(lam)).float(),
+        "lambda_var_heldout": torch.from_numpy(np.asarray(valid["lambda_var"])).float(),
+        "eigenvalues_insample": torch.from_numpy(spec.eigenvalues[:k]).float(),
+        "validity_pass": summary["validity_pass"], "k": k, "d": d,
+        "teacher_loss": "mse", "seed": args.seed, "commit": summary["commit"],
+    }, out_dir / f"{stem}.pt")
 
     rep = Path(cfg["paths"]["reports_dir"]) / f"spectrum_{stem}.json"
     rep.parent.mkdir(parents=True, exist_ok=True)
-    rep.write_text(json.dumps(summary, indent=2))
-    log.info("Tr(C_obs) held-out = %.2f of d=%d  (lambda_1 = %.3f)",
-             summary["trace_c_obs_heldout"], d, summary["lambda_top1_heldout"])
-    log.info("wrote %s and %s", out_dir / f"{stem}.pt", rep)
+    rep.write_text(json.dumps(summary, indent=2, default=float))
+
+    log.info("D_cert(k=%d) held-out = %.2f of d=%d   D^- = %.2f   lambda_1 = %.3f",
+             k, summary["D_cert_k"], d, summary["D_neg_heldout"], summary["lambda_skill_top1"])
+    log.info("teacher validity: mean|lambda_var - lambda_skill| = %.4f (tol %.2f) -> %s",
+             summary["validity_mean_abs_gap"], tol,
+             "PASS" if summary["validity_pass"] else "FAIL")
+    if not summary["validity_pass"]:
+        log.warning("validity gate FAILED: the teacher is far from a conditional mean, so "
+                    "these directions are certified by a poor decoder. Report as such.")
     return 0
 
 

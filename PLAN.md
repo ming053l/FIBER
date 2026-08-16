@@ -1,6 +1,15 @@
 # FIBER — Implementation Plan (Phases 0–3)
 
-Revision 2. Written before any implementation; nothing here has been run yet.
+Revision 3. Rev 2 was written before implementation; Gate 0 and Phase 1 have since run.
+
+**Rev 3 changes (P0 audit response).** §3 rewritten: the estimator is now the
+decoder-CERTIFIED operator `C_cert`, because `Cov(f)` is not a lower bound on `C_obs`
+for an approximate teacher; the headline scalar is the positive mass `D_cert`, not
+`Tr(·)`, because `C_cert` is indefinite; the eigensolver must be algebraically largest,
+never an SVD; discovery split A is subdivided into `A_teacher` / `A_operator`; every
+reported eigenvalue is cross-fitted. Remaining P0 items (Haar baseline, locked
+selection, learned-Q objective, teacher architecture, fresh channel draws,
+subspace-vs-basis) are tracked in `reports/p0_fix_plan.md` and land in later revisions.
 
 Rev 2 changes: Gate 3 split into a scientific gate (3A) and a methodological gate (3B);
 Arm D promoted from "a spectral baseline" to the **Generative Observability Spectrum**,
@@ -106,94 +115,112 @@ inversion available as a reference (§5.3).
 
 ---
 
-## 3. The central object: the Generative Observability Spectrum
+## 3. The central object: decoder-certified observability
 
-This replaces "Arm D is a spectral baseline" and is, in my view, the strongest
-contribution available in Level 1.
+Rev 2 defined this section around `Ĉ_obs = (1/N) Σ m̂ m̂ᵀ`, the covariance of a teacher's
+output. **That estimator was wrong and has been replaced** (P0-1).
 
-### 3.1 Derivation
+### 3.1 What we want (unchanged)
 
-Take a unit direction `v`, and the scalar coordinate `s = vᵀZ`. Since `Z ~ N(0,I)` and
-`‖v‖ = 1`, `Var(s) = 1`. The Bayes-optimal (MMSE) estimate of `s` from the received
-image is
-
-```
-ŝ(Y) = E[s | Y] = vᵀ E[Z | Y] = vᵀ m(Y)
-```
-
-By the law of total variance,
+For a unit direction `v` and `s = vᵀZ` with `Z ~ N(0,I)`, the Bayes-optimal estimate from
+the received image is `ŝ(Y) = vᵀE[Z|Y]`, and by the law of total variance
 
 ```
-E[(s − ŝ)²] = Var(s) − Var(ŝ) = 1 − vᵀ C_obs v ,      C_obs ≜ Cov(E[Z | Y])
+E[(s − ŝ)²] = 1 − vᵀ C_obs v ,      C_obs ≜ Cov(E[Z|Y])
 ```
 
-For `k` orthonormal directions `V` (`VVᵀ = I_k`) the total Bayes error is
-`k − Tr(V C_obs Vᵀ)`, so by Rayleigh–Ritz
+so by Rayleigh–Ritz the best `k`-dimensional linear readout is the top-`k` eigenspace of
+`C_obs`. This part of the derivation stands.
+
+### 3.2 Why `Cov(teacher)` cannot estimate it
+
+`E[Z|Y]` is unknown, so Rev 2 substituted a teacher `f(Y)` and took `Cov(f)`. The claim
+that this is "a lower bound limited by teacher capacity" is **false**: for `f ≠ E[Z|Y]`
+there is no PSD ordering `Cov(f) ⪯ C_obs`. An over-scaled teacher inflates it without
+limit — measured on the synthetic channel, `f = 3m` gives
 
 ```
-V* = top-k eigenvectors of C_obs                                   (★)
+max eig( Cov(f) − C_obs ) = +7.97          (and +23.3 at f = 5m)
 ```
 
-### 3.2 Why this is worth more than a learned Q
+Cross-fitting removes *fitting* bias; it does nothing about *estimator* bias.
 
-`E[m(Y)] = E[E[Z|Y]] = E[Z] = 0`, so `C_obs = E[m mᵀ]`; and `Var(vᵀm) ≤ Var(vᵀZ) = 1`
-gives `C_obs ⪯ I`. Therefore
-
-```
-λ_j = 1 − MMSE_j  ∈ [0, 1]
-```
-
-**Each eigenvalue is literally the fraction of that direction's variance that survives
-the generative channel.** And
+### 3.3 The certified operator
 
 ```
-Tr(C_obs) = Σ_j λ_j  =  the effective number of recoverable dimensions
+C_cert(f) = E[ z_c f_cᵀ + f_c z_cᵀ − f_c f_cᵀ ],     z_c = Z − E[Z],  f_c = f − E[f]
+
+vᵀ C_cert v = Var(vᵀZ) − E[(vᵀz_c − vᵀf_c)²]        ( = 1 − MSE_v  for Z ~ N(0,I) )
+C_cert(f)   = C_obs − E[(m−f)(m−f)ᵀ]   ⪯   C_obs
 ```
 
-a bounded, interpretable scalar answering *"how many dimensions of information can this
-generative channel actually carry?"* This should be the paper's headline number; BER is
-downstream of it.
+A weak decoder therefore **understates** observability and can never manufacture it —
+measured `max eig(C_cert − C_obs) < 0.07` at every teacher scale from 0.25 to 5.0, against
+`Cov`'s unbounded growth. What the top-`k` eigenvectors give is the best readout
+**certified by this decoder class**, never "the true `C_obs`".
 
-The spectrum `λ_1 ≥ … ≥ λ_d` also gives the whole picture at once: if it is flat, there
-is no anisotropy and FIBER is dead; if it decays fast, FIBER's premise holds and the
-decay rate predicts the achievable rate.
+Centering is mandatory: an uncentered estimate turns any teacher output bias `f̄` into a
+spurious leading direction pointing along `f̄`.
 
-### 3.3 Estimation
+### 3.4 Reporting: `D_cert`, not a trace
 
-`E[Z|Y]` is unknown, so train a teacher `M_θ(Y) ≈ E[Z|Y]`, then
+`C_cert` is **indefinite** — a badly scaled teacher produces large negative eigenvalues
+(measured range `[−3.00, +0.014]` for `f = 3m`), so `Tr(C_cert)` can be negative and
+"effective number of recoverable dimensions" would be meaningless. With the algebraically
+ordered spectrum `λ₁ ≥ λ₂ ≥ …`:
 
 ```
-Ĉ_obs = (1/N) Σ_i m̂_i m̂_iᵀ
+D_cert^(k) = Σ_{j≤k} max(λ_j, 0)      certified observability mass  (the headline)
+D⁻         = Σ_j     max(−λ_j, 0)     decoder-misspecification diagnostic
 ```
 
-**The teacher must be trained with MSE.** L2 regression converges to the conditional
-mean; L1 converges to the conditional *median*, which is not what (★) requires. This is
-a silent-failure bug and is asserted in `tests/test_spectrum_synthetic.py`.
+`D_cert` is *not* Shannon capacity and *not* `I(Z;Y)`; it is the variance the chosen
+decoder can certify it recovers under squared error. The raw signed spectrum is always
+kept.
 
-Never form the `16384 × 16384` matrix. With `M = [m̂_1 … m̂_N] ∈ R^{d×N}` and N ≪ d,
-`Ĉ = MMᵀ/N` has rank ≤ N, so take the economy SVD of `M` (or randomized SVD / Lanczos)
-and read the left singular vectors.
+**Every reported eigenvalue is cross-fitted.** In-sample eigenvalues of a rank-`2N`
+operator estimated in `d` dimensions are wildly inflated — measured `λ_max = 7.2` with an
+*exact* teacher at `N=200, d=4096`, against a theoretical ceiling of 1. In-sample spectra
+select directions; held-out `λ_skill` is what gets quoted.
 
-### 3.4 Three honest caveats, to be stated in the report
+### 3.5 The eigensolver must be algebraically largest
 
-1. **`Ĉ_obs` is a lower bound**, limited by the teacher's capacity. It is the
-   observability spectrum *given the teacher class*, not the true one.
-2. **(★) is MMSE-optimal, not sign-BER-optimal.** Our communication metric is sign BER;
-   the two coincide only when the posterior is near-Gaussian. This is exactly the gap a
-   learned `Q` can exploit, and is the principled reason to expect
-   `learned ≥ spectral` in Gate 3B — it turns 3B into an experiment with a prediction
-   rather than a coin flip.
-3. **`C_obs` depends on the channel.** We fit one spectrum on the training attack
-   mixture for the main arm, and report per-attack spectra as an analysis figure (how
-   observability geometry changes with channel severity is itself a result).
+Every SVD-based routine ranks by `|λ|`. On an indefinite operator that returns the
+directions the decoder is **worst** on as the "top-k", silently inverting the experiment.
+FIBER uses:
 
-### 3.5 Synthetic validation before touching the GPU
+- `range_eigh` (default, exact). `range(C_cert)` is spanned by the rows of `Z_c` and
+  `F_c`, so with `G = [Z_cᵀ, F_cᵀ]` and a thin QR `G = QR`, `C_cert = Q(RMRᵀ)Qᵀ` reduces
+  to an exact `2N × 2N` symmetric eigenproblem. Preferred because `d = 16384 ≫ 2N` makes
+  the zero eigenvalue massively degenerate, where ARPACK stalls (observed: *"No
+  convergence, 8/11 eigenvectors converged"*), and because it returns the complete signed
+  spectrum, making `D_cert` and `D⁻` exact rather than tail estimates.
+- `eigsh(which="LA")` — scipy Lanczos, kept as an independent cross-check and used as such
+  in tests.
 
-`tests/test_spectrum_synthetic.py`: build a toy channel `Y = A Z + noise` with a known
-`A` of designed spectrum; check the recovered eigenvalues/eigenvectors match the
-analytic `C_obs`. This validates the estimator with zero GPU time.
+### 3.6 Validity diagnostic, reported with every spectrum
 
----
+On held-out samples, for each recovered direction:
+
+```
+λ_var_j   = Var(v_jᵀ f(Y))                                (what Cov(f) would have said)
+λ_skill_j = Var(v_jᵀ Z) − E[(v_jᵀz_c − v_jᵀf_c)²]         (what C_cert certifies)
+```
+
+These coincide only for an exact conditional mean, so `mean|λ_var − λ_skill|` measures how
+far the teacher is from `E[Z|Y]`. `λ_skill` is always the conservative one. The gate is
+`mean|λ_var − λ_skill| < 0.10`; failing it does not stop the run but is reported, and a
+`SpectralFrame` built from a failed fit warns at load time.
+
+### 3.7 Synthetic validation before touching the GPU
+
+`tests/test_certified_operator.py` (34 tests) checks every claim above against a
+linear-Gaussian channel with closed-form `E[Z|Y]` and `C_obs`: the identity
+`C_cert = C_obs − E[(m−f)(m−f)ᵀ]`, the bound at six teacher scales, centering, matrix-free
+against dense, `range_eigh` against Lanczos, and — the trap — that magnitude-based
+selection picks a *negative* direction where the certified solver does not.
+`tests/test_spectrum_synthetic.py` retains the `Cov(f)` tests, now labelled as the
+diagnostic path they are.
 
 ## 4. Cross-fit protocol (replaces the broken re-randomisation control)
 
@@ -204,12 +231,20 @@ asking it for `100:164` fails regardless of observability. It tests nothing.
 Every data-derived arm instead uses:
 
 ```
-Discovery   : on split A, fit Q      (joint (Q,H) for learned; teacher + SVD for spectral)
-Freeze      : Q is frozen
+A_teacher   : fit the teacher f(Y)                                     (P0-1)
+A_operator  : estimate C_cert, take the top-k directions, FREEZE       (P0-1)
+Discovery   : for the learned arm, fit Q jointly with a throwaway extractor on A
 Discard     : throw the discovery extractor away entirely
 Re-fit      : fresh extractor H', identical init/capacity/schedule, trained on split B only
 Evaluate    : held-out test split
 ```
+
+**A is subdivided (P0-1).** Fitting the teacher and estimating the operator on the same
+samples makes the operator read back the teacher's own fitting noise as observability, so
+`A_teacher ∩ A_operator = ∅` by construction and is asserted in
+`tests/test_split_disjoint.py`. The full chain leaves every sample in exactly one role:
+`A_teacher` → teacher, `A_operator` → discovery, `B` → evaluation extractor, `val` → all
+model selection, `test` → locked evaluation.
 
 **Every arm — including the random ones — trains its evaluation extractor on split B
 only**, so the extractor-training budget is identical across arms. The only asymmetry

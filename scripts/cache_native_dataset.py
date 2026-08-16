@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import time
 from pathlib import Path
 
@@ -31,8 +32,25 @@ from fiber.utils.seeding import derive_seed, set_determinism
 log = get_logger("phase1")
 
 
+# Only what determines the PIXELS. The fingerprint answers exactly one question --
+# "would regenerating produce different images?" -- so downstream protocol choices
+# (cross-fit roles, attack lists, training budget) must not invalidate a cache.
+# Getting this wrong costs a full regeneration: 2768 images is ~1 GPU-hour, 12768 is ~4.4.
+IMAGE_DETERMINING = {
+    "model": None,                                   # checkpoint, scheduler, steps, CFG, dtype
+    "latent": None,                                  # shape of z
+    "vae": None,
+    "dataset": ["splits", "pilot", "prompts"],       # which z and which prompt per sample
+}
+
+
 def config_fingerprint(cfg) -> str:
-    keep = {k: cfg[k] for k in ("model", "latent", "vae", "dataset") if k in cfg}
+    keep = {}
+    for block, fields in IMAGE_DETERMINING.items():
+        if block not in cfg:
+            continue
+        keep[block] = (cfg[block] if fields is None
+                       else {f: cfg[block][f] for f in fields if f in cfg[block]})
     blob = json.dumps(keep, sort_keys=True, default=str).encode()
     return hashlib.blake2s(blob, digest_size=8).hexdigest()
 
@@ -90,7 +108,10 @@ def main() -> int:
                 if prev.get("n") == n and prev.get("fingerprint") == fingerprint:
                     log.info("%s shard %d: already cached", split, shard)
                     continue
-                log.warning("%s shard %d: stale cache (%s), regenerating", split, shard, prev)
+                log.warning("%s shard %d: stale cache (%s), regenerating. If only the "
+                            "PROTOCOL changed, stop and run scripts/verify_cache.py "
+                            "--restamp instead of paying for a regeneration.",
+                            split, shard, prev)
                 done.unlink()
             img_path = sdir / f"images_{shard:05d}.npy"
             lat_path = sdir / f"latents_{shard:05d}.npy"
@@ -112,8 +133,13 @@ def main() -> int:
                              lo + len(chunk), n, rate)
             images.flush(); latents.flush()
             del images, latents
+            os.replace(img_tmp, img_path)
+            os.replace(lat_tmp, lat_path)
+            # `batch` is part of the cache's identity, not just a speed knob: fp16
+            # batched matmuls reduce in a different order at a different batch size,
+            # so re-generating at another batch does NOT reproduce these pixels.
             done.write_text(json.dumps({"n": n, "shard_size": args.shard_size,
-                                        "fingerprint": fingerprint,
+                                        "batch": args.batch, "fingerprint": fingerprint,
                                         "seconds": round(time.time() - t0, 1)}))
         timings[split] = round(time.time() - t_split, 1)
         log.info("%s done in %.1f s", split, timings[split])
@@ -125,6 +151,8 @@ def main() -> int:
         "counts": report["counts"],
         "sizes": split_sizes(cfg, args.pilot),
         "shard_size": args.shard_size,
+        "batch": args.batch,
+        "generation_is_batch_dependent": True,
         "resolution": res,
         "latent_shape": list(lshape),
         "guidance_scale": cfg["model"]["guidance_scale"],

@@ -81,3 +81,17 @@ def test_crossfit_filter_splits_train_disjointly():
     ids_a = {r["sample_id"] for r in a.records}
     ids_b = {r["sample_id"] for r in b.records}
     assert ids_a and ids_b and not (ids_a & ids_b)
+
+
+def test_dataset_filters_by_teacher_operator_subsplit():
+    """P0-1: the loader must be able to serve A_teacher and A_operator separately,
+    with no sample in both."""
+    if not (ROOT / "train").exists():
+        pytest.skip("train not cached")
+    t = FiberDataset(ROOT, "train", BANK, crossfit_sub="A_teacher")
+    o = FiberDataset(ROOT, "train", BANK, crossfit_sub="A_operator")
+    ids_t = {r["sample_id"] for r in t.records}
+    ids_o = {r["sample_id"] for r in o.records}
+    assert ids_t and ids_o and not (ids_t & ids_o)
+    a = FiberDataset(ROOT, "train", BANK, crossfit="A")
+    assert ids_t | ids_o == {r["sample_id"] for r in a.records}

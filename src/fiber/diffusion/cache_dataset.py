@@ -18,7 +18,17 @@ Split discipline (Gate 1):
   * prompt sets are drawn disjointly across splits, and the held-out-prompt test
     split draws from COCO val2017 instead of train2017;
   * train is partitioned into cross-fit halves A (discovery) and B (evaluation
-    extractor), disjoint by construction (PLAN.md §4).
+    extractor), disjoint by construction (PLAN.md §4);
+  * A is further split into A_teacher / A_operator (P0-1). Fitting the teacher and
+    estimating the certified observability operator on the SAME samples makes the
+    operator read back the teacher's own fitting noise, so no sample may play both
+    roles. The full chain, with every sample in exactly one role:
+
+        A_teacher  -> teacher fitting
+        A_operator -> coordinate discovery, then frozen
+        B          -> fresh evaluation extractor
+        val        -> all model / hyperparameter selection
+        test       -> locked evaluation only
 """
 from __future__ import annotations
 
@@ -41,6 +51,7 @@ class Sample:
     sample_id: str
     split: str
     crossfit: str          # "A", "B" or "-"
+    crossfit_sub: str      # "A_teacher", "A_operator", "B" or "-"   (P0-1)
     index: int
     prompt: str
     latent_seed_parts: tuple
@@ -85,10 +96,19 @@ def build_index(cfg, pilot: bool = False, shard_size: int = 500) -> list[Sample]
             if split == "train":
                 # cross-fit halves, deterministic and balanced
                 crossfit = "A" if derive_seed(SALT, tag, "crossfit", i) % 2 == 0 else "B"
+                if crossfit == "A":
+                    # A_teacher / A_operator, derived from i alone so that adding this
+                    # sub-split cannot perturb sample_id, shard, offset, latent seed or
+                    # prompt -- i.e. an existing image cache stays addressable.
+                    sub = ("A_teacher" if derive_seed(SALT, tag, "crossfit_sub", i) % 2 == 0
+                           else "A_operator")
+                else:
+                    sub = "B"
             else:
-                crossfit = "-"
+                crossfit, sub = "-", "-"
             records.append(Sample(
-                sample_id=f"{tag}/{split}/{i:06d}", split=split, crossfit=crossfit, index=i,
+                sample_id=f"{tag}/{split}/{i:06d}", split=split, crossfit=crossfit,
+                crossfit_sub=sub, index=i,
                 prompt=prompts[split][i],
                 latent_seed_parts=(SALT, tag, "latent", split, i),
                 shard=i // shard_size, offset=i % shard_size,
@@ -118,6 +138,8 @@ def verify_index(records: list[Sample]) -> dict:
     train = by_split.get("train", [])
     a_ids = {r.sample_id for r in train if r.crossfit == "A"}
     b_ids = {r.sample_id for r in train if r.crossfit == "B"}
+    at_ids = {r.sample_id for r in train if r.crossfit_sub == "A_teacher"}
+    ao_ids = {r.sample_id for r in train if r.crossfit_sub == "A_operator"}
     all_seeds = [derive_seed(*r.latent_seed_parts) for r in records]
 
     return {
@@ -126,8 +148,15 @@ def verify_index(records: list[Sample]) -> dict:
         "latent_seed_overlaps": seed_overlaps,
         "duplicate_seeds_global": len(all_seeds) - len(set(all_seeds)),
         "crossfit": {"A": len(a_ids), "B": len(b_ids), "overlap": len(a_ids & b_ids)},
+        "crossfit_sub": {
+            "A_teacher": len(at_ids), "A_operator": len(ao_ids),
+            "teacher_operator_overlap": len(at_ids & ao_ids),
+            "sub_covers_A": len(at_ids | ao_ids) == len(a_ids),
+            "sub_leaks_into_B": len((at_ids | ao_ids) & b_ids),
+        },
         "unique_prompts_per_split": {s: len(p) for s, p in prompts.items()},
         "pass": (not prompt_overlaps and not seed_overlaps and not (a_ids & b_ids)
+                 and not (at_ids & ao_ids) and (at_ids | ao_ids) == a_ids
                  and len(all_seeds) == len(set(all_seeds))),
     }
 
@@ -145,6 +174,7 @@ class FiberDataset(torch.utils.data.Dataset):
 
     def __init__(self, root, split: str, bank: ChannelBank, attacks=None,
                  mode: str = "sampled", crossfit: str | None = None,
+                 crossfit_sub: str | None = None,
                  epoch_salt: str = "", normalise: bool = True):
         self.root = Path(root)
         self.split = split
@@ -161,6 +191,12 @@ class FiberDataset(torch.utils.data.Dataset):
         recs = [r for r in recs if r["split"] == split]
         if crossfit:
             recs = [r for r in recs if r["crossfit"] == crossfit]
+        if crossfit_sub:
+            if any("crossfit_sub" not in r for r in recs):
+                raise KeyError("index.jsonl predates the A_teacher/A_operator split "
+                               "(P0-1): rebuild it with scripts/cache_native_dataset.py "
+                               "(images are not regenerated)")
+            recs = [r for r in recs if r["crossfit_sub"] == crossfit_sub]
         self.records = sorted(recs, key=lambda r: r["index"])
         self._shards: dict[int, tuple] = {}
 

@@ -1,0 +1,74 @@
+{
+  "fingerprint": "0487e1ad73085e33",
+  "spot": 12,
+  "restamped": true,
+  "pass": true,
+  "shards": {
+    "test_heldout_prompts/0": {
+      "checked": 12,
+      "image_mismatches": 0,
+      "latent_mismatches": 0,
+      "pass": true,
+      "seconds": 15.3,
+      "batch": 12,
+      "groups": [
+        2
+      ]
+    },
+    "train/0": {
+      "checked": 12,
+      "image_mismatches": 0,
+      "latent_mismatches": 0,
+      "pass": true,
+      "seconds": 14.8,
+      "batch": 12,
+      "groups": [
+        27
+      ]
+    },
+    "train/1": {
+      "checked": 12,
+      "image_mismatches": 0,
+      "latent_mismatches": 0,
+      "pass": true,
+      "seconds": 14.9,
+      "batch": 12,
+      "groups": [
+        28
+      ]
+    },
+    "train/2": {
+      "checked": 12,
+      "image_mismatches": 0,
+      "latent_mismatches": 0,
+      "pass": true,
+      "seconds": 14.8,
+      "batch": 12,
+      "groups": [
+        39
+      ]
+    },
+    "train/3": {
+      "checked": 12,
+      "image_mismatches": 0,
+      "latent_mismatches": 0,
+      "pass": true,
+      "seconds": 14.8,
+      "batch": 12,
+      "groups": [
+        38
+      ]
+    },
+    "val/0": {
+      "checked": 12,
+      "image_mismatches": 0,
+      "latent_mismatches": 0,
+      "pass": true,
+      "seconds": 14.9,
+      "batch": 12,
+      "groups": [
+        8
+      ]
+    }
+  }
+}

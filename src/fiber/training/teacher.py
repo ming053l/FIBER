@@ -21,8 +21,11 @@ log = get_logger("fiber.teacher")
 
 
 def train_teacher(root, bank: ChannelBank, cfg: TrainConfig, *, d: int = 16384,
-                  split: str = "train", crossfit: str | None = "A", device="cuda:0",
+                  split: str = "train", crossfit: str | None = None,
+                  crossfit_sub: str | None = "A_teacher", device="cuda:0",
                   seed: int = 0, attacks=None, limit: int = 0):
+    """Trained on A_teacher only: the operator is estimated on A_operator, and a
+    sample must never serve both roles (P0-1)."""
     device = torch.device(device)
     torch.manual_seed(derive_seed("teacher", seed) % (2**31))
     model = Teacher(d=d).to(device)
@@ -31,8 +34,9 @@ def train_teacher(root, bank: ChannelBank, cfg: TrainConfig, *, d: int = 16384,
     history, step = [], 0
     for epoch in range(cfg.epochs):
         loader = make_loader(root, split, bank, attacks=attacks, crossfit=crossfit,
-                             batch_size=cfg.batch_size, workers=cfg.num_workers,
-                             epoch_salt=f"teacher-e{epoch}", limit=limit)
+                             crossfit_sub=crossfit_sub, batch_size=cfg.batch_size,
+                             workers=cfg.num_workers, epoch_salt=f"teacher-e{epoch}",
+                             limit=limit)
         total = cfg.epochs * max(len(loader), 1)
         model.train()
         t0, run = time.time(), []
@@ -63,16 +67,19 @@ def train_teacher(root, bank: ChannelBank, cfg: TrainConfig, *, d: int = 16384,
 
 @torch.no_grad()
 def teacher_outputs(model, root, bank: ChannelBank, split: str, *, attacks=None,
-                    mode: str = "sampled", crossfit: str | None = None, device="cuda:0",
+                    mode: str = "sampled", crossfit: str | None = None,
+                    crossfit_sub: str | None = None, device="cuda:0",
                     batch_size: int = 32, workers: int = 8, limit: int = 0,
                     epoch_salt: str = "spectrum") -> tuple[torch.Tensor, torch.Tensor]:
-    """Returns (M, Z) with M = [m_1 … m_N]ᵀ on the CPU: the input to the
-    randomized SVD, plus the true latents for the 1 - MMSE cross-check."""
+    """Returns (F, Z): teacher outputs and the true latents, both on the CPU.
+
+    BOTH are needed -- C_cert is built from the cross term E[z_c f_c'] as well as
+    E[f_c f_c'], which is exactly what makes it a certified lower bound."""
     device = torch.device(device)
     model.eval().to(device)
     loader = make_loader(root, split, bank, attacks=attacks, mode=mode, crossfit=crossfit,
-                         batch_size=batch_size, workers=workers, shuffle=False,
-                         epoch_salt=epoch_salt, limit=limit)
+                         crossfit_sub=crossfit_sub, batch_size=batch_size, workers=workers,
+                         shuffle=False, epoch_salt=epoch_salt, limit=limit)
     M, Z = [], []
     for batch in loader:
         x = batch["image"].to(device, non_blocking=True)

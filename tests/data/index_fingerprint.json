@@ -1,0 +1,86 @@
+{
+  "pilot": {
+    "n": 2768,
+    "digest": "60b189fd12e0e56eeb60b47f1579accd",
+    "spot": {
+      "0": [
+        "pilot/test/000000",
+        "test",
+        0,
+        0,
+        0,
+        4515158849111362524,
+        "3 boys on snow skis competing in a skiing competition"
+      ],
+      "1": [
+        "pilot/test/000001",
+        "test",
+        1,
+        0,
+        1,
+        4250492364149198473,
+        "A airplane fliyng near a mountain with its wheels out to land"
+      ],
+      "1384": [
+        "pilot/train/000872",
+        "train",
+        872,
+        1,
+        372,
+        2494215854396357300,
+        "A small front is lying down on the leaf."
+      ],
+      "2767": [
+        "pilot/val/000255",
+        "val",
+        255,
+        0,
+        255,
+        5027418197341310384,
+        "two people standing near a food truck on a side walk"
+      ]
+    }
+  },
+  "full": {
+    "n": 13000,
+    "digest": "1b349dd9db9cfed1c27c65cb73f6c2a0",
+    "spot": {
+      "0": [
+        "full/test/000000",
+        "test",
+        0,
+        0,
+        0,
+        5308338635486797572,
+        "3 Giraffes grazing in an open grassy area that is adjacent to a wooded area."
+      ],
+      "1": [
+        "full/test/000001",
+        "test",
+        1,
+        0,
+        1,
+        5522743782930818856,
+        "3 different signs and 3 different clocks on the wall"
+      ],
+      "6500": [
+        "full/train/004500",
+        "train",
+        4500,
+        9,
+        0,
+        2693233427678904475,
+        "A street sign hanging off the side of a pole."
+      ],
+      "12999": [
+        "full/val/000999",
+        "val",
+        999,
+        1,
+        499,
+        3714542417762521569,
+        "two women in white dresses playing tennis and fans"
+      ]
+    }
+  }
+}

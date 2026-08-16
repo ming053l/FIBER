@@ -16,10 +16,21 @@ dataset:
   # Disjoint in latent seed AND prompt (tests/test_split_disjoint.py asserts it).
   splits: {train: 10000, val: 1000, test: 1000}
   pilot:  {train: 2000,  val: 256,  test: 256}
-  # Cross-fit (PLAN.md §4): A = discovery (fit Q), B = train the evaluation extractor.
-  # Disjoint within train. EVERY arm trains its evaluation extractor on B only, so the
-  # extractor-training budget is identical across arms.
-  crossfit: {discovery_split: A, extractor_split: B, ratio: 0.5}
+  # Cross-fit (PLAN.md §4, extended by P0-1): every sample plays exactly one role.
+  #   A_teacher  -> fit the teacher f(Y)
+  #   A_operator -> estimate C_cert and freeze the directions
+  #   B          -> fresh evaluation extractor (EVERY arm, identical budget)
+  #   val        -> all model/hyperparameter selection
+  #   test       -> locked evaluation only
+  # Teacher and operator must not share samples: the operator would otherwise read
+  # back the teacher's own fitting noise as observability.
+  crossfit:
+    discovery_split: A
+    extractor_split: B
+    teacher_subsplit: A_teacher
+    operator_subsplit: A_operator
+    ratio: 0.5
+    teacher_operator_ratio: 0.5
   prompts:
     source: /ssd2/ming/STEGO/datasets/COCO/annotations/captions_train2017.json
     heldout_source: /ssd2/ming/STEGO/datasets/COCO/annotations/captions_val2017.json
@@ -43,17 +54,38 @@ fiber:
     E_learned:    {type: householder, num_reflectors: 128, seeds: [0,1,2]}
 
 spectrum:
-  # Teacher M_theta(Y) ~= E[Z|Y].
+  # P0-1. The estimated object is the DECODER-CERTIFIED operator
+  #   C_cert(f) = E[z_c f_c' + f_c z_c' - f_c f_c']  =  C_obs - E[(m-f)(m-f)']  <=  C_obs
+  # not Cov(f(Y)), which is NOT a lower bound on C_obs for an approximate teacher.
+  operator: certified             # certified | teacher_covariance (diagnostic only)
+
   # MSE IS MANDATORY: L2 regression converges to the conditional MEAN; L1 converges to
-  # the conditional MEDIAN, which is not what the derivation requires. Using L1 here
-  # silently corrupts C_obs. Asserted in tests/test_spectrum_synthetic.py.
+  # the conditional MEDIAN, which is not what the derivation requires.
   teacher_loss: mse
   teacher_arch: resnet18
-  estimator: randomized_svd       # never form the 16384x16384 matrix; rank(C_hat) <= N
-  num_power_iters: 4
+
+  # C_cert is INDEFINITE. Any solver that ranks by |eigenvalue| -- every SVD-based
+  # routine -- returns the directions the decoder is WORST on as the top-k. The
+  # eigensolver must be algebraically largest.
+  #   range_eigh : exact; eigendecomposition restricted to range(C_cert) (rank <= 2N).
+  #                Preferred because d=16384 >> 2N makes the zero eigenvalue massively
+  #                degenerate, where ARPACK stalls, and because it returns the complete
+  #                signed spectrum so the positive/negative masses are exact.
+  #   eigsh_la   : scipy Lanczos, which="LA". Independent cross-check.
+  eigensolver: range_eigh
   oversampling: 32
+  center: true                    # a teacher output bias otherwise injects a rank-1 direction
+
+  # Reported scalars. Tr(C_cert) can be NEGATIVE, so it is never the headline.
+  #   D_cert^(k) = sum_{j<=k} max(lambda_j, 0)   certified observability mass
+  #   D^-        = sum_j max(-lambda_j, 0)       decoder-misspecification diagnostic
+  # EVERY reported eigenvalue is cross-fitted on a held-out split: in-sample spectra
+  # are inflated far past the theoretical bound of 1 (measured lambda_max = 7.2 with an
+  # EXACT teacher at N=200, d=4096) and are used only to choose directions.
+  report_split: val
+  validity_tol: 0.10              # gate on mean |lambda_var - lambda_skill|
   fit_on: train_attack_mixture    # one spectrum for the main arm...
-  report_per_attack: true         # ...plus per-attack spectra as an analysis figure
+  report_per_attack: true         # ...plus the fixed-decoder operational spectrum per attack
   synthetic_test_first: true      # PLAN.md §3.5 — validate on Y = AZ + noise, no GPU
 
 extractor:

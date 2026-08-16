@@ -58,10 +58,11 @@ class TrainConfig:
 
 
 def make_loader(root, split: str, bank: ChannelBank, *, attacks=None, mode="sampled",
-                crossfit: str | None = None, batch_size: int = 16, workers: int = 8,
-                shuffle: bool = True, epoch_salt: str = "", limit: int = 0) -> DataLoader:
+                crossfit: str | None = None, crossfit_sub: str | None = None,
+                batch_size: int = 16, workers: int = 8, shuffle: bool = True,
+                epoch_salt: str = "", limit: int = 0) -> DataLoader:
     ds = FiberDataset(root, split, bank, attacks=attacks, mode=mode, crossfit=crossfit,
-                      epoch_salt=epoch_salt)
+                      crossfit_sub=crossfit_sub, epoch_salt=epoch_salt)
     if limit:
         ds.records = ds.records[:limit]
     return DataLoader(ds, batch_size=batch_size, shuffle=shuffle, num_workers=workers,

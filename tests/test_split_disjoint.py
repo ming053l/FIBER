@@ -1,9 +1,13 @@
-"""Gate 1: latents AND prompts disjoint across splits, and split A / split B
-disjoint within train (the cross-fit protocol, PLAN.md §4).
+"""Gate 1: latents AND prompts disjoint across splits, split A / split B disjoint
+within train, and (P0-1) A_teacher / A_operator disjoint within A.
 
 If any of these leak, every 'held-out' number in the project is contaminated and
 the cross-fit control silently becomes a co-adaptation study.
 """
+import hashlib
+import json
+from pathlib import Path
+
 import pytest
 
 from fiber.diffusion.cache_dataset import build_index, split_sizes, verify_index
@@ -83,3 +87,87 @@ def test_split_prompts_helper_is_disjoint():
 def test_latent_seed_derivation_is_stable():
     r = INDEX[0]
     assert derive_seed(*r.latent_seed_parts) == derive_seed(*r.latent_seed_parts)
+
+
+# --------------------------------------------------------------------------
+# P0-1: A is split again, into teacher-fitting and operator-estimation halves.
+# --------------------------------------------------------------------------
+def test_teacher_and_operator_subsplits_are_disjoint():
+    """Fitting the teacher and estimating C_cert on the same samples makes the
+    operator read back the teacher's own fitting noise as observability."""
+    sub = REPORT["crossfit_sub"]
+    assert sub["teacher_operator_overlap"] == 0
+    assert sub["A_teacher"] > 0 and sub["A_operator"] > 0
+
+
+def test_subsplit_partitions_A_exactly_and_never_touches_B():
+    sub = REPORT["crossfit_sub"]
+    assert sub["sub_covers_A"] and sub["sub_leaks_into_B"] == 0
+    assert sub["A_teacher"] + sub["A_operator"] == REPORT["crossfit"]["A"]
+
+
+def test_every_sample_has_exactly_one_role():
+    roles = {}
+    for r in INDEX:
+        key = (r.split, r.crossfit_sub)
+        roles.setdefault(r.sample_id, set()).add(key)
+    assert all(len(v) == 1 for v in roles.values())
+    train_subs = {r.crossfit_sub for r in INDEX if r.split == "train"}
+    assert train_subs == {"A_teacher", "A_operator", "B"}
+
+
+def _fingerprint(pilot):
+    rows = [(r.sample_id, r.split, r.index, r.shard, r.offset,
+             derive_seed(*r.latent_seed_parts), r.prompt) for r in build_index(CFG, pilot=pilot)]
+    blob = "\n".join("|".join(map(str, row)) for row in rows).encode()
+    return len(rows), hashlib.blake2s(blob, digest_size=16).hexdigest(), rows
+
+
+@pytest.mark.parametrize("tag,pilot", [("pilot", True), ("full", False)])
+def test_index_addressing_is_unchanged(tag, pilot):
+    """The cached shards are addressed by (split, shard, offset) and their contents
+    by the latent seed and prompt. This golden fingerprint is what lets a protocol
+    change be made WITHOUT regenerating 2768 GPU-hours' worth of images: if it still
+    matches, every cached image is still the image this index claims it is.
+    """
+    golden = json.loads(Path("tests/data/index_fingerprint.json").read_text())[tag]
+    n, digest, rows = _fingerprint(pilot)
+    assert n == golden["n"]
+    if digest != golden["digest"]:
+        # narrow the failure to a field so the message is actionable
+        for i, expected in golden["spot"].items():
+            got = list(rows[int(i)])
+            assert got == expected, f"record {i}: {got} != {expected}"
+        pytest.fail(f"index digest changed ({digest} != {golden['digest']}) with all "
+                    "spot checks matching: a record outside the spot set moved")
+
+
+def test_cache_fingerprint_tracks_pixels_not_protocol():
+    """The resume guard must invalidate a cache when the IMAGES would change and
+    never when only the downstream protocol changed -- a false invalidation costs a
+    full regeneration (~1 GPU-hour for the pilot, ~4.4 h for the full run)."""
+    import copy
+    import sys
+    sys.path.insert(0, "scripts")
+    from cache_native_dataset import config_fingerprint
+
+    base = config_fingerprint(CFG)
+
+    protocol = copy.deepcopy(dict(CFG))
+    protocol["dataset"]["crossfit"] = {"discovery_split": "A", "extractor_split": "B",
+                                       "teacher_subsplit": "changed"}
+    protocol["training"]["epochs"] = 999
+    protocol["extractor"]["arch"] = "resnet50"
+    assert config_fingerprint(protocol) == base, "protocol change invalidated the cache"
+
+    for block, field, value in [("model", "guidance_scale", 9.9),
+                                ("model", "num_inference_steps", 50),
+                                ("model", "checkpoint", "/elsewhere"),
+                                ("latent", "height", 32)]:
+        pixels = copy.deepcopy(dict(CFG))
+        pixels[block][field] = value
+        assert config_fingerprint(pixels) != base, f"{block}.{field} did not invalidate"
+
+    prompts = copy.deepcopy(dict(CFG))
+    prompts["dataset"]["prompts"]["num_train_prompts"] = 123
+    assert config_fingerprint(prompts) != base

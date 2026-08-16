@@ -9,10 +9,16 @@
 | 0.4 | [4,64,64], d = 16384; VAE 0.18215 documented as NOT applying to z      |
 | 0.5 | generation is no_grad; N samples, zero NaN                            |
 | 0.6 | DDIM, eta = 0, nothing sets sde-*                                     |
+| 0.7 | Batch-composition sensitivity of generation, measured and reported     |
 
 R5: 0.1 is an audit, NOT a BER noise floor. X is generated once and cached and
 every extractor reads the same cached X, so generation nondeterminism never
 enters the extractor's error.
+
+0.7 qualifies 0.1: reproducibility holds at FIXED batch composition. fp16 batched
+matmuls reduce in a different order at a different batch size, and 25 diffusion
+steps amplify it, so the batch size is part of a cache's identity rather than a
+speed knob. Recorded in every shard marker.
 """
 from __future__ import annotations
 
@@ -141,6 +147,29 @@ def main() -> int:
         "psnr_mean_finite": float(np.mean(finite)) if finite else None,
         "psnr_all_infinite": len(finite) == 0,
         "role": "generation reproducibility audit, NOT a BER noise floor (PLAN.md R5)",
+        "scope": "same process, same batch composition; see 0.7 for what breaks it",
+    }
+
+    # ---- 0.7 batch-composition sensitivity (qualifies 0.1)
+    nb = min(8, args.repro_pairs * 2) if args.repro_pairs >= 4 else 4
+    zb = gen.sample_latent("gate0", "batchdep", batch=nb)
+    pb = sample_prompts(prompts_pool, nb, "gate0", "batch_prompts")
+    big = gen.generate(zb, pb)                                  # one batch of nb
+    half = np.concatenate([gen.generate(zb[: nb // 2], pb[: nb // 2]),
+                           gen.generate(zb[nb // 2:], pb[nb // 2:])])   # two of nb/2
+    d = np.abs(big.astype(int) - half.astype(int))
+    identical = int(sum(d[i].max() == 0 for i in range(nb)))
+    results["0.7_batch_composition"] = {
+        "pass": True,   # measured and reported, never a threshold
+        "batch": nb, "split_batch": nb // 2,
+        "bit_identical_images": identical,
+        "max_abs_diff": int(d.max()),
+        "mean_abs_diff": float(d.mean()),
+        "fraction_pixels_changed": float((d > 0).mean()),
+        "psnr": psnr(big, half),
+        "note": ("generation is bit-reproducible only at identical batch composition; "
+                 "the batch size is part of a cache's identity and is recorded in each "
+                 "shard marker"),
     }
 
     env = {
@@ -174,6 +203,10 @@ def main() -> int:
         fh.write(json.dumps(results, indent=2))
         fh.write("\n```\n\n")
         fh.write("## Notes\n\n"
+                 "- **0.7 qualifies 0.1.** Reproducibility holds at fixed batch\n"
+                 "  composition. Regenerating the same `z` and prompt at a different batch\n"
+                 "  size changes the image materially, so the batch size is part of a\n"
+                 "  cache's identity and is recorded in every shard marker.\n"
                  "- **0.1 is an audit, not a noise floor (R5).** `X` is generated once and\n"
                  "  cached; every extractor reads the same cached `X`, so generation\n"
                  "  nondeterminism never enters the extractor's error. It would only become\n"

@@ -1,10 +1,23 @@
-"""The Generative Observability Spectrum   C_obs = Cov(E[Z|Y]).
+"""Teacher-output covariance  Cov(f(Y))  —  A DIAGNOSTIC, NOT C_obs.
 
-PLAN.md §3. With a teacher M_theta(Y) ~= E[Z|Y] and m_i = M_theta(y_i),
+This module used to be presented as an estimator of the Generative Observability
+Spectrum. It is not one, and P0-1 demoted it:
 
-    Ĉ_obs = (1/N) Σ_i m_i m_iᵀ         (d x d, NEVER formed: d = 16384)
-    λ_j   = 1 - MMSE_j ∈ [0, 1]         (fraction of direction j that survives)
-    Tr    = Σ_j λ_j                     (effective number of recoverable dims)
+    Cov(f) == C_obs  ONLY when f is the exact conditional mean E[Z|Y].
+
+For any approximate teacher there is no PSD ordering `Cov(f) <= C_obs` — an
+over-scaled teacher inflates it without bound (measured: f = 3m gives
+max eig(Cov(f) - C_obs) = +7.97). The valid, certified lower-bound operator lives
+in `fiber.spectrum.certified` and is what discovery and reporting now use.
+
+What survives here is the quantity `lambda_var = Var(vᵀf(Y))`, whose GAP against
+the certified `lambda_skill` is the teacher-validity diagnostic
+(`certified.teacher_validity`). Nothing in this module may be reported as C_obs,
+as an observability mass, or as a channel capacity.
+
+With a teacher M_theta(Y) and m_i = M_theta(y_i),
+
+    Cov(f) = (1/N) Σ_i (m_i - m̄)(m_i - m̄)ᵀ   (d x d, NEVER formed: d = 16384)
 
 Two estimators, both reading the eigenvectors of Ĉ_obs off M = [m_1 … m_N]ᵀ
 without materialising Ĉ_obs:
@@ -30,7 +43,9 @@ LAMBDA_TOL = 1e-3  # numerical slack on top of the finite-sample allowance below
 
 @dataclass
 class Spectrum:
-    eigenvalues: torch.Tensor           # [r], descending, in [0, 1]
+    """Spectrum of Cov(f(Y)) — lambda_var. Never report this as C_obs."""
+
+    eigenvalues: torch.Tensor           # [r], descending, PSD
     eigenvectors: torch.Tensor          # [r, d], orthonormal rows
     trace: float                        # Tr(Ĉ_obs), computed exactly (not from the top-r)
     n_samples: int
@@ -70,9 +85,16 @@ class Spectrum:
         }
 
 
-def trace_c_obs(M: torch.Tensor) -> float:
-    """Tr(Ĉ_obs) = ‖M‖_F² / N, exact and O(Nd). This is the headline number."""
-    return float(M.double().pow(2).sum() / M.shape[0])
+def trace_teacher_covariance(M: torch.Tensor, center: bool = True) -> float:
+    """Tr(Cov(f)) = ‖M − m̄‖_F² / N, exact and O(Nd).
+
+    A DIAGNOSTIC. Not Tr(C_obs), not an observability mass, not capacity. Without
+    centering, a teacher output bias m̄ contributes ‖m̄‖² of pure artefact.
+    """
+    Md = M.double()
+    if center:
+        Md = Md - Md.mean(0, keepdim=True)
+    return float(Md.pow(2).sum() / M.shape[0])
 
 
 def _finite_sample_ceiling(trace: float, lam_max: float, N: int) -> float:
@@ -105,10 +127,16 @@ def _check_spectrum(lam: torch.Tensor, trace: float, N: int, strict: bool) -> No
         print("WARNING:", msg)
 
 
-def fit_gram(M: torch.Tensor, k: int | None = None, strict: bool = True) -> Spectrum:
-    """Exact top-r eigenpairs via the N x N Gram matrix. Requires N <= d."""
+def fit_gram(M: torch.Tensor, k: int | None = None, strict: bool = True,
+             center: bool = True) -> Spectrum:
+    """Exact top-r eigenpairs of Cov(f) via the N x N Gram matrix. Requires N <= d.
+
+    DIAGNOSTIC ONLY (see the module docstring): these are lambda_var, not C_obs.
+    """
     N, d = M.shape
     Md = M.double()
+    if center:
+        Md = Md - Md.mean(0, keepdim=True)
     G = (Md @ Md.T) / N
     evals, evecs = torch.linalg.eigh(G)              # ascending
     evals = evals.flip(0).clamp_min(0.0)
@@ -119,18 +147,25 @@ def fit_gram(M: torch.Tensor, k: int | None = None, strict: bool = True) -> Spec
     V = (Md.T @ evecs) / (N * evals).clamp_min(1e-30).sqrt()
     V = V / V.norm(dim=0, keepdim=True).clamp_min(1e-30)
     lam = evals.float()
-    tr = trace_c_obs(M)
+    tr = trace_teacher_covariance(M, center=center)
     _check_spectrum(lam, tr, N, strict)
     return Spectrum(lam, V.T.float().contiguous(), tr, N, "gram")
 
 
 def fit_randomized(M: torch.Tensor, k: int, oversampling: int = 32, n_iter: int = 4,
-                   seed: int = 0, strict: bool = True) -> Spectrum:
-    """Randomized SVD of M (N x d); right singular vectors are the eigenvectors
-    of Ĉ_obs = MᵀM/N and λ_j = s_j²/N."""
+                   seed: int = 0, strict: bool = True, center: bool = True) -> Spectrum:
+    """Randomized SVD of the centered M (N x d); right singular vectors are the
+    eigenvectors of Cov(f) and λ_j = s_j²/N.
+
+    DIAGNOSTIC ONLY. An SVD is legitimate here because Cov(f) is PSD, so largest
+    singular value == largest algebraic eigenvalue. That equivalence FAILS for the
+    certified operator, which is indefinite — see `fiber.spectrum.certified`.
+    """
     N, d = M.shape
     r = min(k + oversampling, min(N, d))
     Md = M.double()
+    if center:
+        Md = Md - Md.mean(0, keepdim=True)
     g = torch.Generator(device=M.device).manual_seed(int(seed) % (2**63 - 1))
     Omega = torch.randn(d, r, generator=g, device=M.device, dtype=torch.float64)
     Y = Md @ Omega
@@ -142,7 +177,7 @@ def fit_randomized(M: torch.Tensor, k: int, oversampling: int = 32, n_iter: int 
     _, S, Vh = torch.linalg.svd(B, full_matrices=False)
     lam = (S.pow(2) / N)[:r].float()
     V = Vh[:r]
-    tr = trace_c_obs(M)
+    tr = trace_teacher_covariance(M, center=center)
     _check_spectrum(lam, tr, N, strict)
     return Spectrum(lam, V.float().contiguous(), tr, N, "randomized",
                     meta={"oversampling": oversampling, "n_iter": n_iter, "seed": seed})
@@ -150,7 +185,7 @@ def fit_randomized(M: torch.Tensor, k: int, oversampling: int = 32, n_iter: int 
 
 def fit_spectrum(M: torch.Tensor, k: int, cfg: dict | None = None, seed: int = 0,
                  strict: bool = True) -> Spectrum:
-    """Entry point driven by the `spectrum:` block of linear_fiber.yaml."""
+    """Diagnostic entry point for Cov(f). Discovery uses `certified.fit_certified`."""
     cfg = dict(cfg or {})
     loss = str(cfg.get("teacher_loss", "mse")).lower()
     if loss != "mse":

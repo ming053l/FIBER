@@ -1,8 +1,13 @@
-"""Arm D — the Generative Observability Spectrum.
+"""Arm D — the decoder-certified observability directions.
 
-R = top-k eigenvectors of C_obs = Cov(E[Z|Y]).  By Rayleigh-Ritz this is the
-Bayes-optimal k-dimensional linear readout under MMSE (PLAN.md §3.1). The rows
-come from `fiber.spectrum.observability`; this class only carries them, checks
+R = top-k ALGEBRAICALLY largest eigenvectors of
+
+    C_cert(f) = C_obs - E[(m-f)(m-f)']  <=  C_obs
+
+produced by `fiber.spectrum.certified`. By Rayleigh-Ritz these maximise the
+variance the decoder can certify it recovers; they are the Bayes-optimal MMSE
+readout only in the limit f -> E[Z|Y] (PLAN.md §3, P0-1). This class carries the
+rows, refuses a file produced by the demoted Cov(f) estimator, checks
 orthonormality and re-orthonormalises if the estimator drifted.
 """
 from __future__ import annotations
@@ -22,7 +27,19 @@ class SpectralFrame(Frame):
             if path is None:
                 raise ValueError("SpectralFrame needs either rows= or path=")
             blob = torch.load(path, map_location="cpu", weights_only=True)
-            rows = blob["eigenvectors"] if isinstance(blob, dict) else blob
+            if isinstance(blob, dict):
+                op = blob.get("operator")
+                if op != "certified":
+                    raise ValueError(
+                        f"{path} was produced by operator={op!r}. Arm D must use the "
+                        "decoder-certified operator: Cov(f) is not a lower bound on "
+                        "C_obs for an approximate teacher (P0-1).")
+                if blob.get("validity_pass") is False:
+                    print(f"WARNING: {path} failed the teacher-validity gate; these "
+                          "directions are certified by a poor decoder.")
+                rows = blob["eigenvectors"]
+            else:
+                rows = blob
         rows = rows[:k].float()
         if rows.shape != (k, d):
             raise ValueError(f"expected rows {(k, d)}, got {tuple(rows.shape)}")
