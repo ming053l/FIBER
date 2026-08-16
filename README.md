@@ -158,3 +158,7 @@ code stays here and reaches the data through the config, not through symlinks.
 `/ssd1/ming/STEGO` holds a full reproduction of the InvCISD baseline
 (SD-v1.5 + EDICT + IP-Adapter, two-stage training). FIBER reuses its model
 weights, its conda env and its COCO/prompt assets — see PLAN.md §Reuse.
+
+## License
+
+Apache-2.0 — see [LICENSE](LICENSE).
