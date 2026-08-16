@@ -281,3 +281,40 @@ def test_generic_target_is_independent_of_the_fitter():
     fitter = HouseholderFrame(d, k, num_reflectors=m, seed=0, base="haar", paired_init=True)
     T = make_target("generic", fitter, d, k, m, 0, torch.device("cpu"))
     assert float(alignment(fitter.rows().detach(), T)) < 0.5
+
+
+def test_capacity_decision_rule_is_applied_by_code_not_by_eye():
+    """m(k) is chosen by a rule fixed before the sweep finished, using the MINIMUM
+    alignment over seeds: an m that works on one draw and not another is not a capacity
+    a locked experiment can rely on."""
+    import sys
+    sys.path.insert(0, "scripts")
+    from audit_reflector_capacity import classify, recommend_m
+
+    assert classify(0.995) == "sufficient"
+    assert classify(0.96) == "marginal"
+    assert classify(0.80) == "insufficient"
+
+    rows = [
+        {"k": 128, "m": 128, "target": "generic", "alignment_min": 0.804},
+        {"k": 128, "m": 256, "target": "generic", "alignment_min": 0.999},
+        {"k": 128, "m": 512, "target": "generic", "alignment_min": 1.000},
+        # reachable rows must not influence the recommendation
+        {"k": 128, "m": 128, "target": "reachable", "alignment_min": 1.000},
+    ]
+    rec = recommend_m(rows)
+    assert rec[128]["recommended_m"] == 256, "reachable rows leaked into the choice"
+    assert rec[128]["by_m"][128]["class"] == "insufficient"
+
+
+def test_recommendation_requires_every_seed_not_the_average():
+    import sys
+    sys.path.insert(0, "scripts")
+    from audit_reflector_capacity import recommend_m
+
+    # mean 0.995 but one seed at 0.99-eps: not something to rely on
+    rows = [{"k": 64, "m": 128, "target": "generic",
+             "alignment_final": 0.995, "alignment_min": 0.985},
+            {"k": 64, "m": 256, "target": "generic",
+             "alignment_final": 0.999, "alignment_min": 0.999}]
+    assert recommend_m(rows)[64]["recommended_m"] == 256

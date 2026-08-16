@@ -50,6 +50,45 @@ from fiber.utils.logging import get_logger
 log = get_logger("capacity")
 
 
+# Pre-registered decision rule, fixed BEFORE the sweep finished so that m(k) is chosen
+# by a rule rather than by eye after seeing the table. The requirement is the MINIMUM
+# over seeds, not the mean: an m that works on one draw and not another is not a
+# capacity a locked experiment can rely on.
+CAPACITY_SUFFICIENT = 0.99
+CAPACITY_MARGINAL = 0.95
+
+
+def classify(a_sub: float) -> str:
+    if a_sub >= CAPACITY_SUFFICIENT:
+        return "sufficient"
+    if a_sub >= CAPACITY_MARGINAL:
+        return "marginal"
+    return "insufficient"
+
+
+def recommend_m(rows: list[dict]) -> dict:
+    """Smallest m whose GENERIC alignment clears the threshold at every seed.
+
+    Generic, not reachable: reachable only says the optimiser can hit targets the
+    family provably contains, which is the diagnostic for attributing a failure. What
+    arm E needs is coverage of subspaces it was not built from.
+    """
+    out = {}
+    for row in sorted(rows, key=lambda r: (r["k"], r["m"])):
+        if row["target"] != "generic":
+            continue
+        k = row["k"]
+        worst = row.get("alignment_min", row.get("alignment_final"))
+        if worst is None:
+            raise KeyError(f"row for k={row['k']} m={row['m']} has no alignment")
+        entry = out.setdefault(k, {"k": k, "recommended_m": None, "by_m": {}})
+        entry["by_m"][row["m"]] = {"alignment_min_over_seeds": worst,
+                                   "class": classify(worst)}
+        if entry["recommended_m"] is None and classify(worst) == "sufficient":
+            entry["recommended_m"] = row["m"]
+    return out
+
+
 def alignment(R: torch.Tensor, T: torch.Tensor) -> torch.Tensor:
     """A_sub = ||R T'||_F^2 / k, in [0, 1]. Only k x k is formed."""
     return (R @ T.T).pow(2).sum() / R.shape[0]
@@ -121,7 +160,27 @@ def main() -> int:
     ap.add_argument("--targets", nargs="*", default=["generic", "reachable"])
     ap.add_argument("--device", default="cuda:0" if torch.cuda.is_available() else "cpu")
     ap.add_argument("--out", default="reports/reflector_capacity.json")
+    ap.add_argument("--classify-only", action="store_true",
+                    help="apply the pre-registered rule to an existing result file")
     args = ap.parse_args()
+
+    if args.classify_only:
+        blob = json.loads(Path(args.out).read_text())
+        rows = blob["rows"]
+        for row in rows:
+            # two seeds: mean and spread determine the minimum exactly
+            if "alignment_min" not in row:
+                row["alignment_min"] = row["alignment_final"] - row.get("alignment_spread", 0) / 2
+            row["capacity_class"] = classify(row["alignment_min"])
+        blob["recommended_m_by_k"] = recommend_m(rows)
+        blob["decision_rule"] = {"sufficient": CAPACITY_SUFFICIENT,
+                                 "marginal": CAPACITY_MARGINAL,
+                                 "statistic": "minimum generic alignment over seeds"}
+        Path(args.out).write_text(json.dumps(blob, indent=2))
+        for k, e in sorted(blob["recommended_m_by_k"].items(), key=lambda x: int(x[0])):
+            log.info("k=%-4s recommended m=%s  %s", k, e["recommended_m"],
+                     {m: v["class"] for m, v in sorted(e["by_m"].items())})
+        return 0
 
     device = torch.device(args.device)
     rows = []
@@ -134,16 +193,22 @@ def main() -> int:
                        for s in args.seeds]
                 a = sum(r["alignment_final"] for r in res) / len(res)
                 e = sum(r["projector_error"] for r in res) / len(res)
+                worst = min(r["alignment_final"] for r in res)
                 row = {**res[0], "seed": args.seeds, "alignment_final": a,
                        "projector_error": e,
-                       "alignment_spread": max(r["alignment_final"] for r in res)
-                       - min(r["alignment_final"] for r in res)}
+                       "alignment_min": worst, "capacity_class": classify(worst),
+                       "alignment_spread": max(r["alignment_final"] for r in res) - worst}
                 rows.append(row)
                 log.info("%-9s k=%-4d m=%-4d  A_sub %.4f  E_sub %.4f  "
                          "(need m>=%.0f: %s)", kind, k, m, a, e,
                          row["necessary_m"], "yes" if row["m_meets_necessary_condition"] else "NO")
 
     out = {"d": args.d, "steps": args.steps, "lr": args.lr, "rows": rows,
+           "decision_rule": {"sufficient": CAPACITY_SUFFICIENT,
+                             "marginal": CAPACITY_MARGINAL,
+                             "statistic": "minimum generic alignment over seeds",
+                             "registered": "before the sweep completed"},
+           "recommended_m_by_k": recommend_m(rows),
            "metric_note": ("E_sub = ||R'R - T'T||_F / ||T'T||_F = sqrt(2(1 - A_sub)); the "
                            "projector error and the mean squared principal cosine are the "
                            "same quantity, and only R T' (k x k) is ever formed"),
