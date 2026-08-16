@@ -113,11 +113,16 @@ def main() -> int:
                             "--restamp instead of paying for a regeneration.",
                             split, shard, prev)
                 done.unlink()
+            # Write to temporary files and rename only on completion. open_memmap(w+)
+            # creates a ZERO-FILLED file, so writing in place means an interrupted or
+            # failed run destroys good data before it has regenerated it.
             img_path = sdir / f"images_{shard:05d}.npy"
             lat_path = sdir / f"latents_{shard:05d}.npy"
-            images = np.lib.format.open_memmap(img_path, mode="w+", dtype=np.uint8,
+            img_tmp = img_path.with_suffix(".npy.tmp")
+            lat_tmp = lat_path.with_suffix(".npy.tmp")
+            images = np.lib.format.open_memmap(img_tmp, mode="w+", dtype=np.uint8,
                                                shape=(n, res, res, 3))
-            latents = np.lib.format.open_memmap(lat_path, mode="w+", dtype=np.float16,
+            latents = np.lib.format.open_memmap(lat_tmp, mode="w+", dtype=np.float16,
                                                 shape=(n, *lshape))
             t0 = time.time()
             for lo in range(0, n, args.batch):
@@ -133,7 +138,7 @@ def main() -> int:
                              lo + len(chunk), n, rate)
             images.flush(); latents.flush()
             del images, latents
-            os.replace(img_tmp, img_path)
+            os.replace(img_tmp, img_path)      # atomic
             os.replace(lat_tmp, lat_path)
             # `batch` is part of the cache's identity, not just a speed knob: fp16
             # batched matmuls reduce in a different order at a different batch size,

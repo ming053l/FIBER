@@ -4,12 +4,23 @@
   "restamped": true,
   "pass": true,
   "shards": {
+    "test/0": {
+      "checked": 12,
+      "image_mismatches": 0,
+      "latent_mismatches": 0,
+      "pass": true,
+      "seconds": 15.0,
+      "batch": 12,
+      "groups": [
+        1
+      ]
+    },
     "test_heldout_prompts/0": {
       "checked": 12,
       "image_mismatches": 0,
       "latent_mismatches": 0,
       "pass": true,
-      "seconds": 15.3,
+      "seconds": 14.8,
       "batch": 12,
       "groups": [
         2
@@ -20,7 +31,7 @@
       "image_mismatches": 0,
       "latent_mismatches": 0,
       "pass": true,
-      "seconds": 14.8,
+      "seconds": 14.9,
       "batch": 12,
       "groups": [
         27
@@ -31,7 +42,7 @@
       "image_mismatches": 0,
       "latent_mismatches": 0,
       "pass": true,
-      "seconds": 14.9,
+      "seconds": 14.8,
       "batch": 12,
       "groups": [
         28
@@ -64,7 +75,7 @@
       "image_mismatches": 0,
       "latent_mismatches": 0,
       "pass": true,
-      "seconds": 14.9,
+      "seconds": 14.8,
       "batch": 12,
       "groups": [
         8
