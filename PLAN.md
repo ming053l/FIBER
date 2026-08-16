@@ -298,9 +298,19 @@ directions beat one structured family. Sampling is `A ~ N(0,1)^{d×k}`, thin QR,
 
 Arm C3 is matched to arm E in parameterisation, reflector count and initial draw, so
 it separates *the Householder parameterisation helps* from *learning selects better
-directions*. It is **not** a uniform sample: with `m = 128` against `d = 16384`,
-`E[r₀²]` sits far above `1/d`, which is why it is a control for E rather than a random
-baseline.
+directions*. Measured at the configured size (`scripts/diagnose_frames.py`, 100 draws,
+`d = 16384`, `m = 128`) it is not merely non-uniform but **nearly the identity**:
+`E[r₀²] = 0.969` and participation ratio `1.1`, against Haar's `5.8e-5` and `5470`.
+R1 therefore applies to it, and its expected behaviour is arm A's.
+
+The same measurement says arm **E starts at identity**, which is a confound: a failure
+there would be indistinguishable from a bad initialisation. The fix, landing with P0-4,
+is to parameterise `R_E = Householder_φ(H)` on a frozen Haar frame `H`, so arm E begins
+exactly at the gate denominator and any gain over Haar is attributable to learning.
+
+The four families also quantify R1's locality axis directly — participation ratio
+`1.0` (signed permutation), `1.1` (random Householder), `5470` (Haar), `16384`
+(Hadamard) — which is the honest way to present "identity loses for a trivial reason".
 
 Random arms report `E_Q[BER]`, the spread, and the best draw. Claiming "learned >
 random" from a single random subspace is indefensible. Every control is reported beside

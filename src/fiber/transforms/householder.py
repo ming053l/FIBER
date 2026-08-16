@@ -58,9 +58,23 @@ class RandomHouseholderFrame(HouseholderFrame):
     """Arm C3 — the learned arm's architecture, frozen at its random initialisation.
 
     Separates "the Householder parameterisation itself helps" from "learning selects
-    better directions". Note this is NOT a Haar sample: a product of m reflections
-    from Gaussian directions is only approximately uniform, and for m < d it cannot
-    be. That is the point -- it is matched to arm E, not to arm C2.
+    better directions".
+
+    MEASURED at the configured size (d = 16384, m = 128, 100 draws), this frame is
+    not merely "not Haar" -- it is very nearly the IDENTITY:
+
+        E[r_0^2]            0.969        (Haar: 5.8e-5, uniform ideal 1/d = 6.1e-5)
+        participation ratio 1.1          (Haar: 5470, uniform ideal d/3 = 5461)
+
+    Each reflection displaces e_0 by about 2/sqrt(d) = 0.016, so m random reflections
+    move it by only ~sqrt(m)*2/sqrt(d) = 0.18; reaching a Haar-like draw would need
+    m ~ d/4 = 4096. So this control behaves like arm A, and PLAN.md R1 applies to it.
+
+    This is a statement about the INITIALISATION, not about capacity: m >= k
+    Householder reflections can represent any k-frame exactly. But it means the
+    LEARNED arm starts essentially at identity -- the one starting point R1 says is
+    bad for a trivial locality reason -- so an arm-E failure would be confounded with
+    a poor init. See PLAN.md and the P0-4 entry in reports/p0_fix_plan.md.
     """
 
     def __init__(self, d: int, k: int, num_reflectors: int = 128, seed: int = 0, **kw):

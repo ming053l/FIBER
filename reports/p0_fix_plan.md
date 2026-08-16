@@ -332,3 +332,41 @@ what may be *claimed*.
    measures on one half only. Averaging `D_{1->2}` and `D_{2->1}` would use every
    report sample for measurement and reduce dependence on the split seed. Polish after
    P0-7.
+
+
+---
+
+## Finding while closing P0-2: arm E initialises at (almost exactly) identity
+
+`scripts/diagnose_frames.py`, at the configured size rather than a toy — 100 draws,
+`d = 16384`, `m = 128`:
+
+| frame | `E[r₀²]` | `E[max_i r_i²]` | participation ratio |
+|---|---|---|---|
+| signed permutation | 0 | 1.000 | 1.0 |
+| **random Householder, m=128** | **0.969** | **0.969** | **1.1** |
+| Haar | 5.82e-05 | 1.02e-03 | 5470 |
+| Hadamard | 6.10e-05 | 6.10e-05 | 16384 |
+| uniform ideal | 1/d = 6.10e-05 | 2ln d/d = 1.18e-03 | d/3 = 5461 |
+
+Each reflection displaces `e₀` by about `2/√d = 0.016`, so `m` random reflections move
+it by only `√m·2/√d = 0.18`; a Haar-like draw would need `m ~ d/4 = 4096`.
+
+Two consequences.
+
+**Arm C3 is nearly the identity arm.** It remains a valid architecture-matched control
+for E — it *is* E at initialisation — but it is not a random frame in any useful sense,
+and R1 applies to it. Its expected behaviour is arm A's, and the report must say so
+rather than let a reader read it as a random baseline.
+
+**Arm E starts at the one point R1 says is worst.** This is about the initialisation,
+not capacity: `m ≥ k` Householder reflections can represent any `k`-frame exactly. But
+gradient descent begins essentially at identity, so an arm-E failure would be
+confounded with a bad starting point rather than evidence about learning.
+
+**Proposed fix, to land with P0-4:** parameterise arm E as `R_E = Householder_φ(H)`
+with `H` a *frozen Haar frame*. At initialisation `Householder_φ ≈ I`, so `R_E ≈ H` —
+arm E starts exactly at the gate denominator, and any improvement over Haar is
+unambiguously due to learning rather than to having escaped a bad init. Arm C3 then
+coincides with C2 at initialisation, which is itself the honest statement: at init the
+architecture adds nothing.
