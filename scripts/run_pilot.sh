@@ -68,12 +68,23 @@ done
 for s in $DERIVED_SEEDS; do
   run python scripts/train_coordinates.py --tag "$TAG" --arm D_spectral   --k "$K" --seed "$s" --epochs "$EPOCHS"
   run python scripts/train_coordinates.py --tag "$TAG" --arm E_learned    --k "$K" --seed "$s" --epochs "$EPOCHS"
-  run python scripts/train_coordinates.py --tag "$TAG" --arm D3_rot_learn --k "$K" --seed "$s" --epochs "$EPOCHS"
 done
 
-echo "===== P0-7: same subspace, random coding basis (averaged, never best-of-N) ====="
-for s in 0 1 2 3; do
-  run python scripts/train_coordinates.py --tag "$TAG" --arm D2_rot_rand --k "$K" --seed "$s" --epochs "$EPOCHS"
+echo "===== P0-7: same subspace, different coding basis ====="
+# `--seed` is the BASIS; `--receiver-seed` is the extractor. Marginalising the receiver
+# within each basis is what makes the reported spread attributable to the basis.
+RECEIVER_SEEDS=${RECEIVER_SEEDS:-"0 1"}
+for r in $RECEIVER_SEEDS; do
+  run python scripts/train_coordinates.py --tag "$TAG" --arm D_spectral --k "$K" \
+      --seed 0 --receiver-seed "$r" --epochs "$EPOCHS"
+  for s in 0 1 2 3; do
+    run python scripts/train_coordinates.py --tag "$TAG" --arm D2_rot_rand --k "$K" \
+        --seed "$s" --receiver-seed "$r" --epochs "$EPOCHS"
+  done
+  for s in 0 1; do
+    run python scripts/train_coordinates.py --tag "$TAG" --arm D3_rot_learn --k "$K" \
+        --seed "$s" --receiver-seed "$r" --epochs "$EPOCHS"
+  done
 done
 
 echo "===== P0-5: same operator, second decoder architecture ====="

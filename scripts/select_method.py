@@ -30,9 +30,16 @@ from fiber.utils.logging import get_logger
 log = get_logger("select")
 
 SELECTION_SPLIT = "val"
-# `rotated_random` is deliberately NOT selectable: it is the random-basis control for
-# D3, not a method. Selecting it would be picking the best of N random bases.
-DERIVED_TYPES = {"spectral_topk", "householder", "rotated_learned"}
+# Gate 3A asks whether an observable SUBSPACE exists, so only subspace-discovery
+# families are selectable: spectral_topk (closed-form) and householder (differentiable).
+#
+# `rotated_learned` (D3) is excluded on purpose. It only rotates the basis inside D1's
+# subspace, so span and D_cert are identical to D1's by construction; letting it win
+# Gate 3A would fold coding-basis optimisation into a claim about subspace anisotropy.
+# `rotated_random` (D2) is excluded for the same reason plus the obvious one: selecting
+# it would be picking the best of N random bases. Both live only in the P0-7 analysis.
+DERIVED_TYPES = {"spectral_topk", "householder"}
+BASIS_ONLY_TYPES = {"rotated_random", "rotated_learned"}
 PRIMARY_RANDOM_TYPE = "haar"
 
 

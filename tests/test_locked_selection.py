@@ -253,3 +253,96 @@ def test_same_arm_and_k_with_different_hyperparameters_are_separate_candidates(t
     assert blob["selected"]["hyperparameters_fingerprint"] == "hp256"
     assert len(blob["selected_runs"]) == 1
     assert blob["selected_runs"][0]["stem"] == f"E_learned_k{K}_s1"
+
+
+# --------------------------------------------------------------------------
+# P0-7.1: the basis arms must not leak into Gate 3A, and the P0-7 comparator
+# must be the single spectral subspace the rotations actually sit in.
+# --------------------------------------------------------------------------
+from select_method import BASIS_ONLY_TYPES, DERIVED_TYPES  # noqa: E402
+
+
+def _write_rot_run(dirpath, arm, rtype, seed, val_ber, test_ber, base_seed=0,
+                   receiver_seed=None):
+    _write_run(dirpath, arm, rtype, seed, val_ber, test_ber)
+    jf = dirpath / f"{arm}_k{K}_s{seed}.json"
+    blob = json.loads(jf.read_text())
+    blob["base_seed"] = base_seed
+    blob["basis_seed"] = seed
+    blob["receiver_seed"] = seed if receiver_seed is None else receiver_seed
+    jf.write_text(json.dumps(blob))
+
+
+def test_a_basis_arm_can_never_win_gate_3a(tmp_path):
+    """D3 only rotates inside D1's subspace, so span and D_cert are identical to D1's.
+    Letting it win Gate 3A would fold coding-basis optimisation into a claim about
+    subspace anisotropy."""
+    assert "rotated_learned" not in DERIVED_TYPES
+    assert BASIS_ONLY_TYPES == {"rotated_random", "rotated_learned"}
+
+    d = tmp_path / "results"
+    d.mkdir()
+    _write_run(d, "C2_haar", "haar", 0, 0.50, 0.50)
+    _write_run(d, "D_spectral", "spectral_topk", 0, 0.45, 0.45)
+    _write_rot_run(d, "D3_rot_learn", "rotated_learned", 0, val_ber=0.05, test_ber=0.05)
+
+    sel = tmp_path / "selection.json"
+    assert _run("select_method.py", "--tag", "unit", "--results-dir", str(d),
+                "--out", str(sel)).returncode == 0
+    blob = json.loads(sel.read_text())
+    assert blob["selected"]["arm"] == "D_spectral", "a basis arm won the scientific gate"
+
+
+def test_p0_7_comparator_is_the_pinned_spectral_seed_not_an_average(tmp_path):
+    """Adversarial: spectral seed 1 is far better than seed 0, but the rotations sit in
+    seed 0's subspace, so the basis table must report seed 0's BER."""
+    d = tmp_path / "results"
+    d.mkdir()
+    _write_run(d, "C2_haar", "haar", 0, 0.50, 0.50)
+    _write_run(d, "D_spectral", "spectral_topk", 0, 0.40, 0.40)
+    _write_run(d, "D_spectral", "spectral_topk", 1, 0.10, 0.10)
+    for s in (0, 1):
+        _write_rot_run(d, "D2_rot_rand", "rotated_random", s, 0.52, 0.52, base_seed=0)
+
+    sel = tmp_path / "selection.json"
+    _run("select_method.py", "--tag", "unit", "--results-dir", str(d), "--out", str(sel))
+    out = tmp_path / "gate.md"
+    p = _run("eval_coordinates.py", "--tag", "unit", "--results-dir", str(d),
+             "--selection", str(sel), "--split", "test", "--out", str(out))
+    assert p.returncode == 0, p.stderr
+    basis = json.loads(out.with_suffix(".json").read_text())["p0_7_basis"]
+    assert basis["base_seed"] == 0
+    d1 = basis["arms"]["D_spectral"]
+    assert abs(d1["mean_sign_ber"] - 0.40) < 0.02, \
+        "D1 averaged several different subspaces while claiming one was held fixed"
+    assert d1["n_basis_draws"] == 1
+
+
+def test_basis_spread_marginalises_the_receiver_seed(tmp_path):
+    """Two basis draws, each with two receiver seeds. The reported spread must be
+    across BASES after averaging receivers, not the pooled standard deviation."""
+    d = tmp_path / "results"
+    d.mkdir()
+    _write_run(d, "C2_haar", "haar", 0, 0.50, 0.50)
+    _write_run(d, "D_spectral", "spectral_topk", 0, 0.40, 0.40)
+    for s, level in ((0, 0.40), (1, 0.50)):
+        for r, jitter in ((0, -0.05), (1, +0.05)):
+            _write_run(d, f"D2_rot_rand_b{s}", "rotated_random", r,
+                       level + jitter, level + jitter)
+            jf = d / f"D2_rot_rand_b{s}_k{K}_s{r}.json"
+            blob = json.loads(jf.read_text())
+            blob.update({"arm": "D2_rot_rand", "base_seed": 0,
+                         "basis_seed": s, "receiver_seed": r})
+            jf.write_text(json.dumps(blob))
+
+    sel = tmp_path / "selection.json"
+    _run("select_method.py", "--tag", "unit", "--results-dir", str(d), "--out", str(sel))
+    out = tmp_path / "gate.md"
+    p = _run("eval_coordinates.py", "--tag", "unit", "--results-dir", str(d),
+             "--selection", str(sel), "--split", "test", "--out", str(out))
+    assert p.returncode == 0, p.stderr
+    d2 = json.loads(out.with_suffix(".json").read_text())["p0_7_basis"]["arms"]["D2_rot_rand"]
+    assert d2["n_basis_draws"] == 2 and d2["receiver_seeds"] == [0, 1]
+    # receiver jitter cancels within a basis: 0.40 and 0.50 -> spread 0.05, not 0.0707
+    assert abs(d2["basis_spread"] - 0.05) < 0.005, \
+        "the spread still contains extractor training noise"

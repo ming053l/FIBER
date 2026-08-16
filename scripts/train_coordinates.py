@@ -78,6 +78,9 @@ def main() -> int:
     ap.add_argument("--crossfit", default=None, help="'A', 'B' or 'none'")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--device", default="cuda:0")
+    ap.add_argument("--receiver-seed", type=int, default=None,
+                    help="P0-7.1: separate the receiver's randomness from the BASIS "
+                         "seed, so a D2 spread can be attributed to the basis")
     ap.add_argument("--extractor-arch", default=None,
                     help="receiver architecture; `spatial` is the no-GAP control (P0-5)")
     args = ap.parse_args()
@@ -102,6 +105,11 @@ def main() -> int:
     if args.batch_size:
         tcfg.batch_size = args.batch_size
 
+    # args.seed selects the arm's structure (subspace, or basis for a rotation arm);
+    # receiver_seed selects the extractor initialisation and training order. Sharing one
+    # seed for both makes a D2 spread a mixture of basis variability and extractor
+    # training noise, which cannot then be attributed to the coding basis.
+    receiver_seed = args.seed if args.receiver_seed is None else args.receiver_seed
     frame, extra = build_arm_frame(cfg, args.arm, k, args.seed, args.tag, d)
     learnable = any(p.requires_grad for p in frame.parameters()) or \
         cfg["fiber"]["arms"][args.arm]["type"] == "householder"
@@ -127,7 +135,7 @@ def main() -> int:
             frame, root, bank, dcfg, split=args.train_split,
             crossfit=cfg["dataset"]["crossfit"]["discovery_split"] if args.crossfit is None else xfit_eval,
             device=args.device, seed=args.seed, learn_frame=True, attacks=bank.train,
-            limit=args.limit)
+            limit=args.limit)   # discovery randomness follows the structure seed
         meta["discovery"] = {"epochs": dcfg.epochs, "objective": "mse",
                              "history": dhist[-3:],
                              "orthonormality_error": frame.orthonormality_error()}
@@ -142,7 +150,7 @@ def main() -> int:
     log.info("[%s] evaluation extractor on split B (%d epochs)", args.arm, tcfg.epochs)
     model, frame, hist = train_extractor(
         frame, root, bank, tcfg, split=args.train_split, crossfit=xfit_eval,
-        device=args.device, seed=args.seed, learn_frame=False, attacks=bank.train,
+        device=args.device, seed=receiver_seed, learn_frame=False, attacks=bank.train,
         limit=args.limit)
 
     results, arrays = {}, {}
@@ -161,6 +169,8 @@ def main() -> int:
     out_dir = Path(cfg["paths"]["data_root"]) / "results" / args.tag
     out_dir.mkdir(parents=True, exist_ok=True)
     stem = f"{args.arm}_k{k}_s{args.seed}"
+    if args.receiver_seed is not None:
+        stem += f"_r{receiver_seed}"
     np.savez_compressed(out_dir / f"{stem}.npz", **arrays)
     rows = frame.rows().detach().cpu().contiguous()
     rows_digest = hashlib.blake2s(rows.numpy().tobytes(), digest_size=16).hexdigest()
@@ -175,6 +185,8 @@ def main() -> int:
         "arm": args.arm, "type": cfg["fiber"]["arms"][args.arm]["type"], "k": k,
         "arm_spec": arm_spec, "hyperparameters_fingerprint": hp_fp,
         "seed": args.seed, "tag": args.tag,
+        # `seed` is the arm's structure seed; these name what it actually varies
+        "basis_seed": args.seed, "receiver_seed": receiver_seed,
         "orthonormality_error": ortho, "rows_digest": rows_digest,
         "extractor_arch": tcfg.extractor_arch,
         "epochs": tcfg.epochs, "final_train_loss": hist[-1]["loss"],

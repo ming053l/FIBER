@@ -43,7 +43,8 @@ from select_method import config_fingerprint, file_digest  # noqa: E402
 log = get_logger("eval")
 
 RANDOM_TYPES = {"haar", "signed_permutation", "hadamard", "random_householder"}
-DERIVED_TYPES = {"spectral_topk", "householder", "rotated_learned"}
+DERIVED_TYPES = {"spectral_topk", "householder"}      # Gate 3A / 3B families
+BASIS_ONLY_TYPES = {"rotated_random", "rotated_learned"}   # P0-7 only, never a gate
 # P0-7: same subspace, different basis. Reported in their own section, never as a
 # random-SUBSPACE control and never as the gate denominator.
 BASIS_TYPES = {"spectral_topk", "rotated_random", "rotated_learned"}
@@ -108,7 +109,9 @@ def group_matrix(runs, split, attacks, bank):
                 cols.append(v)
             if cols:
                 per_group[g] = np.mean(cols, axis=0)
-        out[f"{run['arm']}_s{run['seed']}"] = {"per_group": per_group, "run": run}
+        # key by the file stem: with the receiver seed decoupled from the arm seed
+        # (P0-7.1), (arm, seed) is no longer unique and runs would overwrite each other
+        out[Path(run["_npz"]).stem] = {"per_group": per_group, "run": run}
     return out, sorted(groups)
 
 
@@ -160,8 +163,8 @@ def main() -> int:
 
     mats, groups = group_matrix(locked_runs + ref_runs + context_runs, args.split,
                                 bank.eval, bank)
-    locked_set = {f"{r['arm']}_s{r['seed']}" for r in locked_runs}
-    ref_set = {f"{r['arm']}_s{r['seed']}" for r in ref_runs}
+    locked_set = {Path(r["_npz"]).stem for r in locked_runs}
+    ref_set = {Path(r["_npz"]).stem for r in ref_runs}
 
     def stems_where(pred):
         return [s for s, m in mats.items() if pred(m["run"])]
@@ -295,40 +298,79 @@ def main() -> int:
         lines.append("_Needs both a certified-spectral and a learned arm._\n")
 
     # ---------------- P0-7 — subspace vs basis --------------------------
-    basis_stems = [s for s in mats if mats[s]["run"]["type"] in BASIS_TYPES]
-    if len({mats[s]["run"]["type"] for s in basis_stems}) > 1:
+    # Everything here must live in ONE subspace. The rotation arms pin it with
+    # `base_seed`, so the D1 comparator is D_spectral at exactly that seed -- averaging
+    # D1 over all its seeds would compare "several different subspaces, averaged"
+    # against "rotations of one subspace" while claiming to hold the subspace fixed.
+    rot_runs = [m["run"] for m in mats.values() if m["run"]["type"] in BASIS_ONLY_TYPES]
+    if rot_runs:
+        base_seeds = {r.get("base_seed", 0) for r in rot_runs}
+        if len(base_seeds) > 1:
+            raise SystemExit(f"rotation arms pin different base_seeds {sorted(base_seeds)}: "
+                             "they would not share a subspace")
+        base_seed = base_seeds.pop()
+
+        def in_p0_7(run) -> bool:
+            if run["type"] in BASIS_ONLY_TYPES:
+                return True
+            # the single spectral run whose subspace the rotations actually use
+            return (run["type"] == "spectral_topk"
+                    and run.get("basis_seed", run["seed"]) == base_seed)
+
+        basis_stems = [s for s in mats if in_p0_7(mats[s]["run"])]
         lines.append("\n## P0-7 — same subspace, different coding basis\n")
-        lines.append("D1, D2 and D3 span the **same** subspace, so every certified "
-                     "observability quantity is identical for them by construction "
-                     "(`span(AV) = span(V)`, asserted to 1e-9). Only the sign coding can "
-                     "differ, so any gap below is a **coding-basis** result and must not "
-                     "be reported as more observable information.\n")
-        lines.append("| basis | arm | draws | mean sign BER | spread |")
-        lines.append("|" + "---|" * 5)
-        by_arm = defaultdict(list)
-        for s in basis_stems:
-            by_arm[mats[s]["run"]["arm"]].append(
-                float(np.mean([v.mean() for v in mats[s]["per_group"].values()])))
+        lines.append(f"All rows below span the **same** subspace (spectral `base_seed = "
+                     f"{base_seed}`), so every certified observability quantity is "
+                     "identical for them by construction (`span(AV) = span(V)`, asserted "
+                     "to 1e-9). Only the sign coding can differ, so any gap here is a "
+                     "**coding-basis** result and must not be reported as more observable "
+                     "information.\n")
+        lines.append("| basis | arm | basis draws | receiver seeds | mean sign BER | "
+                     "basis spread |")
+        lines.append("|" + "---|" * 6)
         label = {"spectral_topk": "D1 certified eigenbasis",
                  "rotated_random": "D2 random O(k) basis",
                  "rotated_learned": "D3 learned SO(k) basis"}
+
+        # receiver randomness is marginalised WITHIN a basis, then the spread is taken
+        # ACROSS bases: otherwise the spread mixes basis variability with extractor
+        # training noise and cannot be attributed to the coding basis (P0-7.1).
+        per_basis = defaultdict(lambda: defaultdict(list))
+        receivers = defaultdict(set)
+        for s in basis_stems:
+            run = mats[s]["run"]
+            score = float(np.mean([v.mean() for v in mats[s]["per_group"].values()]))
+            per_basis[run["arm"]][run.get("basis_seed", run["seed"])].append(score)
+            receivers[run["arm"]].add(run.get("receiver_seed", run["seed"]))
+
         basis_report = {}
-        for s in sorted(basis_stems):
-            arm = mats[s]["run"]["arm"]
-            t = mats[s]["run"]["type"]
-            if arm in basis_report:
-                continue
-            vals = by_arm[arm]
-            basis_report[arm] = {"type": t, "n_draws": len(vals),
-                                 "mean_sign_ber": float(np.mean(vals)),
-                                 "spread": float(np.std(vals))}
-            lines.append(f"| {label.get(t, t)} | {arm} | {len(vals)} | "
-                         f"{np.mean(vals):.4f} | ±{np.std(vals):.4f} |")
+        for arm in sorted(per_basis):
+            rtype = next(mats[s]["run"]["type"] for s in basis_stems
+                         if mats[s]["run"]["arm"] == arm)
+            per = {bs: float(np.mean(v)) for bs, v in per_basis[arm].items()}
+            vals = list(per.values())
+            basis_report[arm] = {
+                "type": rtype, "n_basis_draws": len(vals),
+                "receiver_seeds": sorted(receivers[arm]),
+                "mean_sign_ber": float(np.mean(vals)),
+                "basis_spread": float(np.std(vals)) if len(vals) > 1 else None,
+                "per_basis_seed": per,
+            }
+            spread = basis_report[arm]["basis_spread"]
+            lines.append(f"| {label.get(rtype, rtype)} | {arm} | {len(vals)} | "
+                         f"{sorted(receivers[arm])} | {np.mean(vals):.4f} | "
+                         + (f"±{spread:.4f} |" if spread is not None else "n/a |"))
         lines.append("\nD2 is averaged over its draws; best-of-N would be the same free "
-                     "win the Haar denominator forbids. A large D2 spread is itself a "
-                     "result: it would mean the coding basis is a major performance "
-                     "factor inside a fixed observable subspace.\n")
-        report["p0_7_basis"] = basis_report
+                     "win the Haar denominator forbids. The spread column is taken ACROSS "
+                     "bases after marginalising the receiver seed within each basis, so it "
+                     "is basis-to-basis variability rather than a mixture of that and "
+                     "extractor training noise. It is reported only when more than one "
+                     "basis draw exists.\n")
+        if any(len(v["receiver_seeds"]) < 2 for v in basis_report.values()):
+            lines.append("> Only one receiver seed per basis in this run, so the "
+                         "marginalisation is nominal and the spread still carries "
+                         "extractor noise. Treat it as descriptive.\n")
+        report["p0_7_basis"] = {"base_seed": base_seed, "arms": basis_report}
 
     ident = [s for s in mats if mats[s]["run"]["type"] in SANITY_TYPES]
     if ident:

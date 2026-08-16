@@ -384,8 +384,21 @@ Protocol details that decide whether the decomposition means anything:
 - The discovery extractor is discarded; a fresh capacity-matched extractor is trained on
   split B, as for every other arm, so D3 gets no free extra pass over the data.
 - D2 is **averaged over draws**. Best-of-N would be the same free win the Haar
-  denominator forbids. A large D2 spread is itself a result: it would say the coding
-  basis is a major performance factor inside a fixed observable subspace.
+  denominator forbids.
+- **Neither basis arm can win Gate 3A.** D3 rotates inside D1's subspace, so its span
+  and `D_cert` are identical to D1's by construction; letting it be selected would fold
+  coding-basis optimisation into a claim about subspace anisotropy. Gate 3A's selectable
+  families stay `spectral_topk` (closed-form) and `householder` (differentiable); D2 and
+  D3 exist only in this analysis.
+- **The D1 comparator is `D_spectral` at the rotations' `base_seed`, not an average over
+  its seeds.** Averaging would compare *several different subspaces, averaged* against
+  *rotations of one subspace* while claiming the subspace was held fixed.
+- **The basis seed and the receiver seed are separate.** The arm seed selects the basis;
+  `--receiver-seed` selects the extractor initialisation and training order. Receiver
+  randomness is marginalised *within* each basis before the spread is taken *across*
+  bases, so the reported spread is basis-to-basis variability rather than a mixture of
+  that and extractor training noise. Only then is a large D2 spread a result — it would
+  say the coding basis is a major performance factor inside a fixed observable subspace.
 
 `matrix_exp` costs 1.63 / 1.66 / 1.96 ms per step at `k = 64 / 128 / 256` on the GPU
 (1.20× at the largest `k`, about 1 % of a training step), so it stays the
