@@ -103,9 +103,16 @@ tests/test_orthogonality.py, test_channel_determinism.py, test_split_disjoint.py
 **(a) Attacks applied on-the-fly, not cached as images.** 10 k × 9 variants × ~400 KB
 ≈ 36 GB, and it freezes the attack set. We cache only `(z, prompt, seed, clean_image)`
 (~4 GB) and apply attacks in the dataloader with a seed from
-`blake2s(sample_id|attack|severity)`. Exactly reproducible, real codecs, ~1 ms/image,
-and Phase 3 can add a held-out attack without regenerating. `X` is still a cached
-constant, so nothing needs to be differentiable.
+`blake2s(sample_id|attack|severity|split_salt|draw_salt)`. Exactly reproducible, real
+codecs, ~1 ms/image, and Phase 3 can add a held-out attack without regenerating. `X` is
+still a cached constant, so nothing needs to be differentiable.
+
+`draw_salt` chooses the realisation (P0-6). **Training** salts by epoch, so a sample
+meeting `noise005` twice sees two different Gaussian fields — otherwise the stochastic
+channel is a finite deterministic corruption table the extractor can memorise.
+**Evaluation** salts by a constant, so every arm faces bit-identical attacked images;
+without that the paired bootstrap would difference arms across different channels and
+the pairing would mean nothing. Deterministic attacks ignore the salt.
 
 **(b) DDIM 25 steps.** Deterministic, `init_noise_sigma = 1`, and it makes DDIM
 inversion available as a reference (§5.3).

@@ -23,8 +23,17 @@ def severity_key(spec: dict) -> str:
     return json.dumps({k: v for k, v in sorted(spec.items()) if k != "type"}, sort_keys=True)
 
 
-def attack_seed(sample_id, name: str, spec: dict, split_salt: str = "") -> int:
-    return derive_seed(sample_id, name, severity_key(spec), split_salt)
+def attack_seed(sample_id, name: str, spec: dict, split_salt: str = "",
+                draw_salt: str = "") -> int:
+    """`draw_salt` selects WHICH realisation of a stochastic attack is drawn (P0-6).
+
+    Training passes the epoch, so a sample that draws `noise005` twice sees two
+    different Gaussian fields and the extractor cannot memorise a fixed corruption
+    table. Evaluation passes a constant, so every arm faces bit-identical attacked
+    images -- without that the paired bootstrap would be differencing arms across
+    different channels.
+    """
+    return derive_seed(sample_id, name, severity_key(spec), split_salt, draw_salt)
 
 
 class ChannelBank:
@@ -49,12 +58,14 @@ class ChannelBank:
         if leaked:
             raise ValueError(f"held-out attacks leaked into train/eval: {sorted(leaked)}")
 
-    def apply(self, img: np.ndarray, name: str, sample_id=0, split_salt: str = "") -> np.ndarray:
+    def apply(self, img: np.ndarray, name: str, sample_id=0, split_salt: str = "",
+              draw_salt: str = "") -> np.ndarray:
         spec = self.attacks[name]
         kind = spec["type"]
         kwargs = {k: v for k, v in spec.items() if k != "type"}
         if kind in STOCHASTIC:
-            kwargs["rng"] = np.random.default_rng(attack_seed(sample_id, name, spec, split_salt))
+            kwargs["rng"] = np.random.default_rng(
+                attack_seed(sample_id, name, spec, split_salt, draw_salt))
         out = OPS[kind](img, **kwargs)
         if out.shape != img.shape or out.dtype != np.uint8:
             raise RuntimeError(f"attack {name!r} changed shape/dtype: {out.shape} {out.dtype}")

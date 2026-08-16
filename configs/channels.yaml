@@ -6,8 +6,16 @@
 #   real codecs (PIL/OpenCV) are used, which is closer to a real channel.
 #
 # Reproducibility: every stochastic attack draws from a generator seeded with
-#   seed = blake2s(f"{sample_id}|{name}|{severity}|{split_salt}")
-# so a given (sample, attack) is byte-identical across runs and machines.
+#   seed = blake2s(f"{sample_id}|{name}|{severity}|{split_salt}|{draw_salt}")
+#
+# `draw_salt` decides WHICH realisation is drawn (P0-6):
+#   training   draw_salt = the epoch, so a sample that meets noise005 twice sees two
+#              different Gaussian fields and the extractor cannot memorise a finite
+#              deterministic corruption table;
+#   evaluation draw_salt = "eval-v1", fixed, so every arm faces bit-identical attacked
+#              images -- otherwise the paired bootstrap differences arms across
+#              different channels and the pairing means nothing.
+# Deterministic attacks (jpeg, resize, blur, webp) ignore the salt entirely.
 
 train_attacks: [clean, jpeg90, jpeg70, jpeg50, resize075, resize050, noise005, noise010, blur10, blur20]
 eval_attacks:  [clean, jpeg90, jpeg70, jpeg50, resize075, resize050, noise005, noise010, blur10, blur20]

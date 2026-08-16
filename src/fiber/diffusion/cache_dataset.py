@@ -174,14 +174,17 @@ class FiberDataset(torch.utils.data.Dataset):
 
     def __init__(self, root, split: str, bank: ChannelBank, attacks=None,
                  mode: str = "sampled", crossfit: str | None = None,
-                 crossfit_sub: str | None = None,
-                 epoch_salt: str = "", normalise: bool = True):
+                 crossfit_sub: str | None = None, epoch_salt: str = "",
+                 eval_draw_salt: str = "eval-v1", normalise: bool = True):
         self.root = Path(root)
         self.split = split
         self.bank = bank
         self.attacks = list(attacks or bank.train)
         self.mode = mode
         self.epoch_salt = epoch_salt
+        # Fresh stochastic realisations per epoch while TRAINING; one fixed realisation
+        # for evaluation, shared by every arm (P0-6).
+        self.eval_draw_salt = eval_draw_salt
         self.normalise = normalise
         if mode == "fixed" and len(self.attacks) != 1:
             raise ValueError("mode='fixed' takes exactly one attack")
@@ -212,6 +215,10 @@ class FiberDataset(torch.utils.data.Dataset):
             )
         return self._shards[shard]
 
+    def draw_salt_for(self) -> str:
+        """Evaluation is a fixed draw; training varies with the epoch."""
+        return self.eval_draw_salt if self.mode == "fixed" else self.epoch_salt
+
     def attack_for(self, rec: dict) -> str:
         if self.mode == "fixed":
             return self.attacks[0]
@@ -224,7 +231,8 @@ class FiberDataset(torch.utils.data.Dataset):
         img = np.asarray(images[rec["offset"]])
         z = np.asarray(latents[rec["offset"]]).astype(np.float32)
         name = self.attack_for(rec)
-        y = self.bank.apply(img, name, sample_id=rec["sample_id"], split_salt=self.split)
+        y = self.bank.apply(img, name, sample_id=rec["sample_id"], split_salt=self.split,
+                            draw_salt=self.draw_salt_for())
         x = torch.from_numpy(np.ascontiguousarray(y)).permute(2, 0, 1).float() / 255.0
         if self.normalise:
             x = (x - 0.5) / 0.5

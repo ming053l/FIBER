@@ -95,3 +95,20 @@ def test_dataset_filters_by_teacher_operator_subsplit():
     assert ids_t and ids_o and not (ids_t & ids_o)
     a = FiberDataset(ROOT, "train", BANK, crossfit="A")
     assert ids_t | ids_o == {r["sample_id"] for r in a.records}
+
+
+def test_dataset_uses_a_fresh_draw_per_epoch_and_a_fixed_one_for_eval():
+    """P0-6 at the loader level: training salts by epoch, evaluation by a constant."""
+    split = _split_with_data()
+    train_e0 = FiberDataset(ROOT, split, BANK, attacks=["noise005"], mode="sampled",
+                            epoch_salt="e0")
+    train_e1 = FiberDataset(ROOT, split, BANK, attacks=["noise005"], mode="sampled",
+                            epoch_salt="e1")
+    assert train_e0.draw_salt_for() == "e0" and train_e1.draw_salt_for() == "e1"
+    assert not torch.equal(train_e0[0]["image"], train_e1[0]["image"])
+
+    ev = FiberDataset(ROOT, split, BANK, attacks=["noise005"], mode="fixed")
+    ev2 = FiberDataset(ROOT, split, BANK, attacks=["noise005"], mode="fixed",
+                       epoch_salt="ignored")
+    assert ev.draw_salt_for() == "eval-v1"
+    assert torch.equal(ev[0]["image"], ev2[0]["image"]), "evaluation draw moved"
