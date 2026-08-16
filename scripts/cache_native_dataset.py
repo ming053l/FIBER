@@ -106,7 +106,7 @@ def main() -> int:
                 for j, r in enumerate(chunk):
                     images[r.offset] = x[j]
                     latents[r.offset] = z[j].numpy().astype(np.float16)
-                if lo % (args.batch * 10) == 0:
+                if (lo // args.batch) % 10 == 0 or lo + len(chunk) >= n:
                     rate = (lo + len(chunk)) / max(time.time() - t0, 1e-6)
                     log.info("%s shard %d: %d/%d  %.2f img/s", split, shard,
                              lo + len(chunk), n, rate)
