@@ -1,0 +1,117 @@
+# Phase 3 — Linear measure-preserving FIBER.  W = QZ,  QᵀQ = I.
+#
+# Because N(0,I) is rotationally invariant, ANY orthogonal Q preserves the measure
+# exactly. So this phase asks one sharp question and nothing else:
+#   which k-dimensional subspace of latent space survives the channel best?
+#
+# The central quantity is NOT a learned Q but the Generative Observability Spectrum
+#   C_obs = Cov(E[Z|Y]),   lambda_j = 1 - MMSE_j in [0,1],   Tr(C_obs) = effective
+#   number of recoverable dimensions.
+# See PLAN.md §3.
+
+defaults: {model: sd15.yaml, channels: channels.yaml}
+
+dataset:
+  root: /ssd2/ming/FIBER/cache
+  # Disjoint in latent seed AND prompt (tests/test_split_disjoint.py asserts it).
+  splits: {train: 10000, val: 1000, test: 1000}
+  pilot:  {train: 2000,  val: 256,  test: 256}
+  # Cross-fit (PLAN.md §4): A = discovery (fit Q), B = train the evaluation extractor.
+  # Disjoint within train. EVERY arm trains its evaluation extractor on B only, so the
+  # extractor-training budget is identical across arms.
+  crossfit: {discovery_split: A, extractor_split: B, ratio: 0.5}
+  prompts:
+    source: /ssd2/ming/STEGO/datasets/COCO/annotations/captions_train2017.json
+    heldout_source: /ssd2/ming/STEGO/datasets/COCO/annotations/captions_val2017.json
+    # 100 prompts (InvCISD's text_prompt.yaml) is far too few: the extractor would
+    # memorise prompt->image structure and infer z indirectly. PLAN.md R6.
+    num_train_prompts: 20000
+    num_heldout_prompts: 2000
+
+fiber:
+  robust_dims: 64                 # ablation: [16, 32, 64, 128, 256]
+  arms:
+    # Sanity only. Identity loses to any global transform for a trivial locality
+    # reason, so NO gate ever compares against it (PLAN.md R1).
+    A_identity:   {type: identity, seeds: [0]}
+    # Random arms need many draws: "learned > random" from ONE random subspace is
+    # indefensible. Report E_Q[BER], the spread, and the best draw.
+    B_signperm:   {type: signed_permutation, seeds: [0,1,2,3,4,5,6,7]}
+    C_hadamard:   {type: hadamard, structure: P2_H_D_P1, seeds: [0,1,2,3,4,5,6,7]}
+    # The Observability Spectrum. Top-k eigenvectors of C_obs.
+    D_spectral:   {type: spectral_topk, seeds: [0,1,2]}
+    E_learned:    {type: householder, num_reflectors: 128, seeds: [0,1,2]}
+
+spectrum:
+  # Teacher M_theta(Y) ~= E[Z|Y].
+  # MSE IS MANDATORY: L2 regression converges to the conditional MEAN; L1 converges to
+  # the conditional MEDIAN, which is not what the derivation requires. Using L1 here
+  # silently corrupts C_obs. Asserted in tests/test_spectrum_synthetic.py.
+  teacher_loss: mse
+  teacher_arch: resnet18
+  estimator: randomized_svd       # never form the 16384x16384 matrix; rank(C_hat) <= N
+  num_power_iters: 4
+  oversampling: 32
+  fit_on: train_attack_mixture    # one spectrum for the main arm...
+  report_per_attack: true         # ...plus per-attack spectra as an analysis figure
+  synthetic_test_first: true      # PLAN.md §3.5 — validate on Y = AZ + noise, no GPU
+
+extractor:
+  arch: resnet18
+  pretrained: false               # must not be an ImageNet-semantic shortcut
+  in_resolution: 512
+  # GAUSSIAN heads, NOT circular. In Level 1 W = QZ ~ N(0,I) is not a torus variable;
+  # (cos 2piW, sin 2piW) would alias W and W+1 onto the same target. Circular heads
+  # belong to Phase 4/5 after U = Phi(Z).  PLAN.md §5.2.
+  heads:
+    regression: {enabled: true,  loss: mse, weight: 1.0}   # diagnostic
+    sign:       {enabled: true,  loss: bce, weight: 1.0}   # PRIMARY metric: sign BER
+    circular:   {enabled: false}                           # Phase 4+ only
+
+# Receiver protocol: H(Y). The prompt is NOT receiver-side information in the MVP.
+# DDIM inversion therefore is not a fair baseline -- it is plotted as a dashed
+# "prompt-assisted reference (violates the receiver protocol)" whose only job is to
+# separate "weak channel" from "weak extractor".  PLAN.md §5.3.
+threat_model:
+  receiver_sees: [received_image]
+  prompt_is_public: false
+  ddim_inversion_reference: {enabled: true, role: capacity_diagnostic_only}
+
+training:
+  batch_size: 16
+  lr: 2.0e-4
+  optimizer: adamw
+  weight_decay: 1.0e-4
+  epochs: 40
+  warmup_steps: 500
+  grad_clip: 1.0
+  amp: true
+  joint_training: true            # discovery stage only; alternating if unstable
+
+eval:
+  primary_metric: sign_ber
+  diagnostics: [coord_mse, coord_pearson, spectrum_lambda, trace_c_obs]
+  report_per_attack: true
+  # Paired bootstrap, NOT "do the CIs overlap": every arm is evaluated on the same
+  # (z_i, prompt_i, attack_i), so the paired difference is the correct statistic.
+  statistic: paired_bootstrap
+  bootstrap_resamples: 10000
+
+# ---- Gates.  3A decides whether the science holds; 3B only decides the story. ----
+gate3a:
+  # min(BER_spectral, BER_learned) < BER_random, in >=3 of 5 channel groups
+  comparison: data_derived_vs_random
+  min_conditions_improved: 3
+  paired_ci_lower_bound: 0.0      # CI95(delta BER) > 0
+  target_relative_reduction: 0.20
+  min_absolute_reduction: 0.02    # so 0.005 -> 0.004 cannot be sold as "20% better"
+  orthogonality_tol: 1.0e-5
+  require_heldout_prompts: true
+  # THE ONLY KILL CONDITION: data-derived subspace indistinguishable from random.
+  kill_if_relative_reduction_below: 0.01
+
+gate3b:
+  # Framing only. learned > spectral, learned ~= spectral and spectral > learned are
+  # ALL acceptable outcomes; none stops the project.  PLAN.md §7.
+  comparison: learned_vs_spectral
+  is_kill_gate: false

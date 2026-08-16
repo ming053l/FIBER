@@ -1,0 +1,68 @@
+{
+  "env": {
+    "python": "3.11.15",
+    "torch": "2.4.1+cu121",
+    "gpu": "NVIDIA TITAN RTX",
+    "capability": "7.5",
+    "checkpoint": "/ssd2/ming/STEGO/pretrained_models/sd-v1-5",
+    "commit": "uncommitted",
+    "diffusers": "0.26.3"
+  },
+  "results": {
+    "0.6_native_channel": {
+      "pass": true,
+      "scheduler": "DDIMScheduler",
+      "eta": 0.0,
+      "prediction_type": "epsilon",
+      "clip_sample": false,
+      "steps": 25,
+      "load_seconds": 2.1
+    },
+    "0.4_latent_geometry": {
+      "pass": true,
+      "shape": [
+        4,
+        64,
+        64
+      ],
+      "d": 16384,
+      "is_power_of_two": true,
+      "vae_scaling_factor": 0.18215,
+      "vae_scaling_applied_to_z": false,
+      "note": "0.18215 belongs to the VAE latent, never to z_T (PLAN.md \u00a71.3)",
+      "z_mean": 0.0005764622474089265,
+      "z_std": 1.002151370048523,
+      "z_dtype_rounded_to": "float16"
+    },
+    "0.2_latent_roundtrip": {
+      "pass": true,
+      "init_noise_sigma": 1.0,
+      "max_abs_error": 0.0
+    },
+    "0.3_persistence": {
+      "pass": true,
+      "path": "/ssd2/ming/FIBER/gate0/z_roundtrip.pt",
+      "bit_exact": true,
+      "bytes": 525488
+    },
+    "0.5_generation_health": {
+      "pass": true,
+      "samples": 100,
+      "non_finite_values": 0,
+      "grad_enabled_in_output": false,
+      "seconds_total": 125.8,
+      "seconds_per_image": 1.26,
+      "guidance_scale": 3.0
+    },
+    "0.1_reproducibility_audit": {
+      "pass": true,
+      "pairs": 8,
+      "bit_identical_pairs": 8,
+      "psnr_min": Infinity,
+      "psnr_mean_finite": null,
+      "psnr_all_infinite": true,
+      "role": "generation reproducibility audit, NOT a BER noise floor (PLAN.md R5)"
+    }
+  },
+  "pass": true
+}

@@ -1,0 +1,40 @@
+# Channel T: X -> Y.  Applied on-the-fly in the dataloader, NOT cached as images.
+#
+# Rationale (deviation from the master prompt, flagged in PLAN.md §2a):
+#   caching 9 variants x 10k x ~400KB = ~36 GB and freezes the attack set.
+#   X is a cached constant either way, so nothing needs to be differentiable;
+#   real codecs (PIL/OpenCV) are used, which is closer to a real channel.
+#
+# Reproducibility: every stochastic attack draws from a generator seeded with
+#   seed = blake2s(f"{sample_id}|{name}|{severity}|{split_salt}")
+# so a given (sample, attack) is byte-identical across runs and machines.
+
+train_attacks: [clean, jpeg90, jpeg70, jpeg50, resize075, resize050, noise005, noise010, blur10, blur20]
+eval_attacks:  [clean, jpeg90, jpeg70, jpeg50, resize075, resize050, noise005, noise010, blur10, blur20]
+
+# Held out entirely from training; used only for Falsification Test 2 (unseen channel).
+holdout_attacks: [webp75, jpeg30, blur30, resize035]
+
+attacks:
+  clean:      {type: identity}
+
+  jpeg90:     {type: jpeg, quality: 90}
+  jpeg70:     {type: jpeg, quality: 70}
+  jpeg50:     {type: jpeg, quality: 50}
+  jpeg30:     {type: jpeg, quality: 30}
+  webp75:     {type: webp, quality: 75}
+
+  # down then back up to 512, so Y always has the carrier's shape (no alignment problem)
+  resize075:  {type: resize, scale: 0.75, interp: bilinear}
+  resize050:  {type: resize, scale: 0.50, interp: bilinear}
+  resize035:  {type: resize, scale: 0.35, interp: bilinear}
+
+  noise005:   {type: gaussian_noise, sigma: 0.05}
+  noise010:   {type: gaussian_noise, sigma: 0.10}
+
+  blur10:     {type: gaussian_blur, sigma: 1.0, kernel: 5}
+  blur20:     {type: gaussian_blur, sigma: 2.0, kernel: 9}
+  blur30:     {type: gaussian_blur, sigma: 3.0, kernel: 13}
+
+# Crop is deliberately absent in v1: it introduces an alignment problem the
+# extractor would have to solve simultaneously, confounding the coordinate result.

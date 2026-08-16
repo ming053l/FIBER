@@ -1,0 +1,48 @@
+# Frozen generative channel. NOTHING in this file may be fine-tuned (Rule A).
+model:
+  checkpoint: /ssd2/ming/STEGO/pretrained_models/sd-v1-5
+  # DDIM, not the checkpoint's default PNDM: deterministic, eta=0, and
+  # init_noise_sigma == 1.0 so a supplied z passes through unscaled.
+  # It also gives DDIM inversion as a free non-learned extractor baseline.
+  scheduler: DDIMScheduler
+  eta: 0.0
+  num_inference_steps: 25
+  # Pilot value only. "High CFG suppresses z-information" is a HYPOTHESIS WE TEST,
+  # not a premise: picking 3.0 without evidence invites "you tuned CFG until the
+  # hidden channel worked". The paper's main table must sweep guidance_sweep below
+  # and co-report generation quality + prompt alignment at each point (PLAN.md R3).
+  guidance_scale: 3.0
+  guidance_sweep: [1.0, 3.0, 7.5]
+  negative_prompt: ""
+  resolution: 512
+  dtype: float16          # TITAN RTX is sm75: no bf16
+  device: cuda:0
+
+# The INITIAL DIFFUSION NOISE z_T ~ N(0,I). This is what FIBER operates on.
+# It carries NO scaling factor. Do not multiply it by 0.18215 -- that constant
+# belongs to the VAE block below and applies to a different object (PLAN.md 1.3).
+latent:
+  channels: 4
+  height: 64              # resolution / vae_scale_factor
+  width: 64
+  dim: 16384              # 4*64*64 == 2^14, a power of two (Walsh-Hadamard needs this)
+
+vae:
+  # Applies to the VAE latent inside encode/decode only, NEVER to z_T above.
+  scaling_factor: 0.18215
+  vae_scale_factor: 8
+
+determinism:
+  # Gate 0.1 is a GENERATION REPRODUCIBILITY AUDIT, not a BER noise floor: X is
+  # generated once and cached, and every extractor reads the same cached X, so this
+  # variation never enters the extractor's error (PLAN.md R5).
+  cudnn_benchmark: false
+  cudnn_deterministic: true
+  use_deterministic_algorithms: false   # some SD kernels have no deterministic impl
+  torch_seed: 0
+
+paths:
+  data_root: /ssd2/ming/FIBER          # /ssd1 has only ~120 GB free
+  cache_dir: /ssd2/ming/FIBER/cache
+  reports_dir: /ssd1/ming/FIBER/reports
+  hf_home: /ssd2/ming/STEGO/hf_cache
