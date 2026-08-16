@@ -318,3 +318,26 @@ def test_recommendation_requires_every_seed_not_the_average():
             {"k": 64, "m": 256, "target": "generic",
              "alignment_final": 0.999, "alignment_min": 0.999}]
     assert recommend_m(rows)[64]["recommended_m"] == 256
+
+
+def test_unconverged_cells_cannot_be_read_as_capacity_limits():
+    """A fixed step budget measures the budget. Measured: (k=64, m=128) generic gives
+    0.9373 after 250 steps and 1.0000 after 2000, so the first sweep's 'insufficient'
+    was an artefact. A cell that only hit the step limit must therefore be classified
+    `not_converged`, and must neither be recommended nor rule out a smaller m."""
+    import sys
+    sys.path.insert(0, "scripts")
+    from audit_reflector_capacity import recommend_m
+
+    rows = [
+        {"k": 64, "m": 128, "target": "generic", "alignment_min": 0.937,
+         "capacity_class": "not_converged", "converged": False},
+        {"k": 64, "m": 256, "target": "generic", "alignment_min": 0.999,
+         "capacity_class": "sufficient", "converged": True},
+    ]
+    rec = recommend_m(rows)
+    assert rec[64]["by_m"][128]["class"] == "not_converged"
+    assert rec[64]["recommended_m"] == 256
+    # and once it converges, the smaller m wins
+    rows[0].update({"alignment_min": 1.0, "capacity_class": "sufficient", "converged": True})
+    assert recommend_m(rows)[64]["recommended_m"] == 128

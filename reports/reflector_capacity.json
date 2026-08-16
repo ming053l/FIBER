@@ -1,0 +1,712 @@
+{
+  "d": 16384,
+  "steps": 250,
+  "lr": 0.05,
+  "rows": [
+    {
+      "k": 16,
+      "m": 64,
+      "target": "generic",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.000983389443717897,
+      "alignment_final": 0.944520890712738,
+      "projector_error": 0.33243365120818613,
+      "orthonormality_error": 1.1920928955078125e-07,
+      "necessary_m": 16.0,
+      "m_meets_necessary_condition": true,
+      "seconds": 6.5,
+      "alignment_spread": 0.014042496681213379,
+      "alignment_min": 0.9374996423721313,
+      "capacity_class": "insufficient"
+    },
+    {
+      "k": 16,
+      "m": 128,
+      "target": "generic",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.000983389443717897,
+      "alignment_final": 0.9992278516292572,
+      "projector_error": 0.027959655073894266,
+      "orthonormality_error": 1.1920928955078125e-07,
+      "necessary_m": 16.0,
+      "m_meets_necessary_condition": true,
+      "seconds": 11.9,
+      "alignment_spread": 0.001544177532196045,
+      "alignment_min": 0.9984557628631592,
+      "capacity_class": "sufficient"
+    },
+    {
+      "k": 16,
+      "m": 256,
+      "target": "generic",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.0009833893273025751,
+      "alignment_final": 1.0,
+      "projector_error": 0.0,
+      "orthonormality_error": 1.1920928955078125e-07,
+      "necessary_m": 16.0,
+      "m_meets_necessary_condition": true,
+      "seconds": 31.3,
+      "alignment_spread": 0.0,
+      "alignment_min": 1.0,
+      "capacity_class": "sufficient"
+    },
+    {
+      "k": 16,
+      "m": 512,
+      "target": "generic",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.0009833895601332188,
+      "alignment_final": 1.0,
+      "projector_error": 0.0,
+      "orthonormality_error": 1.1920928955078125e-07,
+      "necessary_m": 16.0,
+      "m_meets_necessary_condition": true,
+      "seconds": 72.1,
+      "alignment_spread": 0.0,
+      "alignment_min": 1.0,
+      "capacity_class": "sufficient"
+    },
+    {
+      "k": 64,
+      "m": 64,
+      "target": "generic",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.003934213891625404,
+      "alignment_final": 0.7368717789649963,
+      "projector_error": 0.7254331786707469,
+      "orthonormality_error": 2.384185791015625e-07,
+      "necessary_m": 63.8,
+      "m_meets_necessary_condition": true,
+      "seconds": 6.7,
+      "alignment_spread": 0.0025731325149536133,
+      "alignment_min": 0.7355852127075195,
+      "capacity_class": "insufficient"
+    },
+    {
+      "k": 64,
+      "m": 128,
+      "target": "generic",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.003934214357286692,
+      "alignment_final": 0.9372562170028687,
+      "projector_error": 0.3542422037462082,
+      "orthonormality_error": 1.7881393432617188e-07,
+      "necessary_m": 63.8,
+      "m_meets_necessary_condition": true,
+      "seconds": 11.9,
+      "alignment_spread": 0.00011658668518066406,
+      "alignment_min": 0.9371979236602783,
+      "capacity_class": "insufficient"
+    },
+    {
+      "k": 64,
+      "m": 256,
+      "target": "generic",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.003934213891625404,
+      "alignment_final": 0.9999873042106628,
+      "projector_error": 0.00416842870467707,
+      "orthonormality_error": 2.384185791015625e-07,
+      "necessary_m": 63.8,
+      "m_meets_necessary_condition": true,
+      "seconds": 21.5,
+      "alignment_spread": 2.3603439331054688e-05,
+      "alignment_min": 0.9999755024909973,
+      "capacity_class": "sufficient"
+    },
+    {
+      "k": 64,
+      "m": 512,
+      "target": "generic",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.003934214357286692,
+      "alignment_final": 1.0,
+      "projector_error": 0.0,
+      "orthonormality_error": 2.384185791015625e-07,
+      "necessary_m": 63.8,
+      "m_meets_necessary_condition": true,
+      "seconds": 57.7,
+      "alignment_spread": 0.0,
+      "alignment_min": 1.0,
+      "capacity_class": "sufficient"
+    },
+    {
+      "k": 128,
+      "m": 64,
+      "target": "generic",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.007950173690915108,
+      "alignment_final": 0.5016175508499146,
+      "projector_error": 0.9983811387298449,
+      "orthonormality_error": 2.384185791015625e-07,
+      "necessary_m": 127.0,
+      "m_meets_necessary_condition": false,
+      "seconds": 6.7,
+      "alignment_spread": 2.2649765014648438e-05,
+      "alignment_min": 0.5016062259674072,
+      "capacity_class": "insufficient"
+    },
+    {
+      "k": 128,
+      "m": 128,
+      "target": "generic",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.007950173690915108,
+      "alignment_final": 0.8043524026870728,
+      "projector_error": 0.6255055510948657,
+      "orthonormality_error": 2.980232238769531e-07,
+      "necessary_m": 127.0,
+      "m_meets_necessary_condition": true,
+      "seconds": 12.7,
+      "alignment_spread": 0.00771176815032959,
+      "alignment_min": 0.800496518611908,
+      "capacity_class": "insufficient"
+    },
+    {
+      "k": 128,
+      "m": 256,
+      "target": "generic",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.007950173690915108,
+      "alignment_final": 0.964582622051239,
+      "projector_error": 0.2657011832723412,
+      "orthonormality_error": 2.384185791015625e-07,
+      "necessary_m": 127.0,
+      "m_meets_necessary_condition": true,
+      "seconds": 28.7,
+      "alignment_spread": 0.008191823959350586,
+      "alignment_min": 0.9604867100715637,
+      "capacity_class": "marginal"
+    },
+    {
+      "k": 128,
+      "m": 512,
+      "target": "generic",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.007950173690915108,
+      "alignment_final": 1.0,
+      "projector_error": 0.0,
+      "orthonormality_error": 2.384185791015625e-07,
+      "necessary_m": 127.0,
+      "m_meets_necessary_condition": true,
+      "seconds": 71.1,
+      "alignment_spread": 0.0,
+      "alignment_min": 1.0,
+      "capacity_class": "sufficient"
+    },
+    {
+      "k": 256,
+      "m": 64,
+      "target": "generic",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.015601865947246552,
+      "alignment_final": 0.25969168543815613,
+      "projector_error": 1.2168059125100232,
+      "orthonormality_error": 3.5762786865234375e-07,
+      "necessary_m": 252.0,
+      "m_meets_necessary_condition": false,
+      "seconds": 9.9,
+      "alignment_spread": 4.89354133605957e-05,
+      "alignment_min": 0.25966721773147583,
+      "capacity_class": "insufficient"
+    },
+    {
+      "k": 256,
+      "m": 128,
+      "target": "generic",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.015601865015923977,
+      "alignment_final": 0.5041444003582001,
+      "projector_error": 0.9958469757689062,
+      "orthonormality_error": 3.5762786865234375e-07,
+      "necessary_m": 252.0,
+      "m_meets_necessary_condition": false,
+      "seconds": 20.7,
+      "alignment_spread": 2.3186206817626953e-05,
+      "alignment_min": 0.5041328072547913,
+      "capacity_class": "insufficient"
+    },
+    {
+      "k": 256,
+      "m": 256,
+      "target": "generic",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.015601865015923977,
+      "alignment_final": 0.8692536652088165,
+      "projector_error": 0.5113594611292456,
+      "orthonormality_error": 3.5762786865234375e-07,
+      "necessary_m": 252.0,
+      "m_meets_necessary_condition": true,
+      "seconds": 44.6,
+      "alignment_spread": 0.0020887255668640137,
+      "alignment_min": 0.8682093024253845,
+      "capacity_class": "insufficient"
+    },
+    {
+      "k": 256,
+      "m": 512,
+      "target": "generic",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.015601865947246552,
+      "alignment_final": 0.9879932701587677,
+      "projector_error": 0.1549617986583781,
+      "orthonormality_error": 4.76837158203125e-07,
+      "necessary_m": 252.0,
+      "m_meets_necessary_condition": true,
+      "seconds": 102.8,
+      "alignment_spread": 0.00016993284225463867,
+      "alignment_min": 0.9879083037376404,
+      "capacity_class": "marginal"
+    },
+    {
+      "k": 16,
+      "m": 64,
+      "target": "reachable",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.9844127893447876,
+      "alignment_final": 0.9999999701976776,
+      "projector_error": 0.00017263349150062197,
+      "orthonormality_error": 1.1920928955078125e-07,
+      "necessary_m": 16.0,
+      "m_meets_necessary_condition": true,
+      "seconds": 6.8,
+      "alignment_spread": 5.960464477539063e-08,
+      "alignment_min": 0.9999999403953552,
+      "capacity_class": "sufficient"
+    },
+    {
+      "k": 16,
+      "m": 128,
+      "target": "reachable",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.9689368605613708,
+      "alignment_final": 1.0,
+      "projector_error": 0.0,
+      "orthonormality_error": 2.384185791015625e-07,
+      "necessary_m": 16.0,
+      "m_meets_necessary_condition": true,
+      "seconds": 12.0,
+      "alignment_spread": 0.0,
+      "alignment_min": 1.0,
+      "capacity_class": "sufficient"
+    },
+    {
+      "k": 16,
+      "m": 256,
+      "target": "reachable",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.9397574663162231,
+      "alignment_final": 0.999999463558197,
+      "projector_error": 0.0010208839234257948,
+      "orthonormality_error": 1.1920928955078125e-07,
+      "necessary_m": 16.0,
+      "m_meets_necessary_condition": true,
+      "seconds": 21.4,
+      "alignment_spread": 3.5762786865234375e-07,
+      "alignment_min": 0.9999992847442627,
+      "capacity_class": "sufficient"
+    },
+    {
+      "k": 16,
+      "m": 512,
+      "target": "reachable",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.8832675218582153,
+      "alignment_final": 0.9997892379760742,
+      "projector_error": 0.019825381832936494,
+      "orthonormality_error": 1.1920928955078125e-07,
+      "necessary_m": 16.0,
+      "m_meets_necessary_condition": true,
+      "seconds": 48.4,
+      "alignment_spread": 0.00021159648895263672,
+      "alignment_min": 0.9996834397315979,
+      "capacity_class": "sufficient"
+    },
+    {
+      "k": 64,
+      "m": 64,
+      "target": "reachable",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.9837906956672668,
+      "alignment_final": 0.9983693957328796,
+      "projector_error": 0.05709579936238346,
+      "orthonormality_error": 2.384185791015625e-07,
+      "necessary_m": 63.8,
+      "m_meets_necessary_condition": true,
+      "seconds": 6.6,
+      "alignment_spread": 0.0001291036605834961,
+      "alignment_min": 0.9983048439025879,
+      "capacity_class": "sufficient"
+    },
+    {
+      "k": 64,
+      "m": 128,
+      "target": "reachable",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.9686055183410645,
+      "alignment_final": 1.0,
+      "projector_error": 0.0,
+      "orthonormality_error": 2.384185791015625e-07,
+      "necessary_m": 63.8,
+      "m_meets_necessary_condition": true,
+      "seconds": 11.7,
+      "alignment_spread": 0.0,
+      "alignment_min": 1.0,
+      "capacity_class": "sufficient"
+    },
+    {
+      "k": 64,
+      "m": 256,
+      "target": "reachable",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.9391958117485046,
+      "alignment_final": 1.0,
+      "projector_error": 0.0,
+      "orthonormality_error": 2.384185791015625e-07,
+      "necessary_m": 63.8,
+      "m_meets_necessary_condition": true,
+      "seconds": 20.6,
+      "alignment_spread": 0.0,
+      "alignment_min": 1.0,
+      "capacity_class": "sufficient"
+    },
+    {
+      "k": 64,
+      "m": 512,
+      "target": "reachable",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.8826888799667358,
+      "alignment_final": 0.9999999701976776,
+      "projector_error": 0.00017263349150062197,
+      "orthonormality_error": 2.384185791015625e-07,
+      "necessary_m": 63.8,
+      "m_meets_necessary_condition": true,
+      "seconds": 57.1,
+      "alignment_spread": 5.960464477539063e-08,
+      "alignment_min": 0.9999999403953552,
+      "capacity_class": "sufficient"
+    },
+    {
+      "k": 128,
+      "m": 64,
+      "target": "reachable",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.9845653176307678,
+      "alignment_final": 0.9975025653839111,
+      "projector_error": 0.0706743772056401,
+      "orthonormality_error": 2.384185791015625e-07,
+      "necessary_m": 127.0,
+      "m_meets_necessary_condition": false,
+      "seconds": 6.6,
+      "alignment_spread": 5.7220458984375e-06,
+      "alignment_min": 0.9974997043609619,
+      "capacity_class": "sufficient"
+    },
+    {
+      "k": 128,
+      "m": 128,
+      "target": "reachable",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.9693096876144409,
+      "alignment_final": 0.9972172975540161,
+      "projector_error": 0.07460159507338161,
+      "orthonormality_error": 2.980232238769531e-07,
+      "necessary_m": 127.0,
+      "m_meets_necessary_condition": true,
+      "seconds": 12.7,
+      "alignment_spread": 1.239776611328125e-05,
+      "alignment_min": 0.9972110986709595,
+      "capacity_class": "sufficient"
+    },
+    {
+      "k": 128,
+      "m": 256,
+      "target": "reachable",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.9396311044692993,
+      "alignment_final": 1.0,
+      "projector_error": 0.0,
+      "orthonormality_error": 2.384185791015625e-07,
+      "necessary_m": 127.0,
+      "m_meets_necessary_condition": true,
+      "seconds": 28.6,
+      "alignment_spread": 0.0,
+      "alignment_min": 1.0,
+      "capacity_class": "sufficient"
+    },
+    {
+      "k": 128,
+      "m": 512,
+      "target": "reachable",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.8829229474067688,
+      "alignment_final": 1.0,
+      "projector_error": 0.0,
+      "orthonormality_error": 2.980232238769531e-07,
+      "necessary_m": 127.0,
+      "m_meets_necessary_condition": true,
+      "seconds": 71.0,
+      "alignment_spread": 0.0,
+      "alignment_min": 1.0,
+      "capacity_class": "sufficient"
+    },
+    {
+      "k": 256,
+      "m": 64,
+      "target": "reachable",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.9847338795661926,
+      "alignment_final": 0.9982488751411438,
+      "projector_error": 0.05917836756158394,
+      "orthonormality_error": 2.980232238769531e-07,
+      "necessary_m": 252.0,
+      "m_meets_necessary_condition": false,
+      "seconds": 9.9,
+      "alignment_spread": 4.887580871582031e-05,
+      "alignment_min": 0.9982244372367859,
+      "capacity_class": "sufficient"
+    },
+    {
+      "k": 256,
+      "m": 128,
+      "target": "reachable",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.9696344137191772,
+      "alignment_final": 0.997065007686615,
+      "projector_error": 0.07661581423059538,
+      "orthonormality_error": 3.5762786865234375e-07,
+      "necessary_m": 252.0,
+      "m_meets_necessary_condition": false,
+      "seconds": 20.7,
+      "alignment_spread": 6.198883056640625e-06,
+      "alignment_min": 0.9970619082450867,
+      "capacity_class": "sufficient"
+    },
+    {
+      "k": 256,
+      "m": 256,
+      "target": "reachable",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.939984142780304,
+      "alignment_final": 0.9964416027069092,
+      "projector_error": 0.08436104639979472,
+      "orthonormality_error": 2.980232238769531e-07,
+      "necessary_m": 252.0,
+      "m_meets_necessary_condition": true,
+      "seconds": 44.6,
+      "alignment_spread": 1.5497207641601562e-05,
+      "alignment_min": 0.9964338541030884,
+      "capacity_class": "sufficient"
+    },
+    {
+      "k": 256,
+      "m": 512,
+      "target": "reachable",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.8834865093231201,
+      "alignment_final": 1.0,
+      "projector_error": 0.0,
+      "orthonormality_error": 3.5762786865234375e-07,
+      "necessary_m": 252.0,
+      "m_meets_necessary_condition": true,
+      "seconds": 102.8,
+      "alignment_spread": 0.0,
+      "alignment_min": 1.0,
+      "capacity_class": "sufficient"
+    }
+  ],
+  "metric_note": "E_sub = ||R'R - T'T||_F / ||T'T||_F = sqrt(2(1 - A_sub)); the projector error and the mean squared principal cosine are the same quantity, and only R T' (k x k) is ever formed",
+  "necessary_condition": "m >= k(d-k)/(d-1), necessary not sufficient",
+  "recommended_m_by_k": {
+    "16": {
+      "k": 16,
+      "recommended_m": 128,
+      "by_m": {
+        "64": {
+          "alignment_min_over_seeds": 0.9374996423721313,
+          "class": "insufficient"
+        },
+        "128": {
+          "alignment_min_over_seeds": 0.9984557628631592,
+          "class": "sufficient"
+        },
+        "256": {
+          "alignment_min_over_seeds": 1.0,
+          "class": "sufficient"
+        },
+        "512": {
+          "alignment_min_over_seeds": 1.0,
+          "class": "sufficient"
+        }
+      }
+    },
+    "64": {
+      "k": 64,
+      "recommended_m": 256,
+      "by_m": {
+        "64": {
+          "alignment_min_over_seeds": 0.7355852127075195,
+          "class": "insufficient"
+        },
+        "128": {
+          "alignment_min_over_seeds": 0.9371979236602783,
+          "class": "insufficient"
+        },
+        "256": {
+          "alignment_min_over_seeds": 0.9999755024909973,
+          "class": "sufficient"
+        },
+        "512": {
+          "alignment_min_over_seeds": 1.0,
+          "class": "sufficient"
+        }
+      }
+    },
+    "128": {
+      "k": 128,
+      "recommended_m": 512,
+      "by_m": {
+        "64": {
+          "alignment_min_over_seeds": 0.5016062259674072,
+          "class": "insufficient"
+        },
+        "128": {
+          "alignment_min_over_seeds": 0.800496518611908,
+          "class": "insufficient"
+        },
+        "256": {
+          "alignment_min_over_seeds": 0.9604867100715637,
+          "class": "marginal"
+        },
+        "512": {
+          "alignment_min_over_seeds": 1.0,
+          "class": "sufficient"
+        }
+      }
+    },
+    "256": {
+      "k": 256,
+      "recommended_m": null,
+      "by_m": {
+        "64": {
+          "alignment_min_over_seeds": 0.25966721773147583,
+          "class": "insufficient"
+        },
+        "128": {
+          "alignment_min_over_seeds": 0.5041328072547913,
+          "class": "insufficient"
+        },
+        "256": {
+          "alignment_min_over_seeds": 0.8682093024253845,
+          "class": "insufficient"
+        },
+        "512": {
+          "alignment_min_over_seeds": 0.9879083037376404,
+          "class": "marginal"
+        }
+      }
+    }
+  },
+  "decision_rule": {
+    "sufficient": 0.99,
+    "marginal": 0.95,
+    "statistic": "minimum generic alignment over seeds"
+  }
+}

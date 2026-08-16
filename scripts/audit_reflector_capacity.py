@@ -82,9 +82,12 @@ def recommend_m(rows: list[dict]) -> dict:
         if worst is None:
             raise KeyError(f"row for k={row['k']} m={row['m']} has no alignment")
         entry = out.setdefault(k, {"k": k, "recommended_m": None, "by_m": {}})
-        entry["by_m"][row["m"]] = {"alignment_min_over_seeds": worst,
-                                   "class": classify(worst)}
-        if entry["recommended_m"] is None and classify(worst) == "sufficient":
+        cls = row.get("capacity_class") or classify(worst)
+        entry["by_m"][row["m"]] = {"alignment_min_over_seeds": worst, "class": cls,
+                                   "converged": row.get("converged", True)}
+        # An unconverged cell says nothing about capacity, so it can neither be
+        # recommended nor rule out a smaller m.
+        if entry["recommended_m"] is None and cls == "sufficient":
             entry["recommended_m"] = row["m"]
     return out
 
@@ -123,20 +126,39 @@ def make_target(kind: str, fitter: HouseholderFrame, d: int, k: int, m: int,
     raise ValueError(kind)
 
 
-def fit(d: int, k: int, m: int, kind: str, seed: int, steps: int, lr: float,
-        device) -> dict:
+def fit(d: int, k: int, m: int, kind: str, seed: int, max_steps: int, lr: float,
+        device, patience: int = 400, tol: float = 1e-4, check_every: int = 100) -> dict:
+    """Optimise to CONVERGENCE, and say so when it did not converge.
+
+    A fixed step budget measures the budget, not the family. Measured directly: at
+    (k=64, m=128) a generic target reaches 0.9373 after 250 steps and 1.0000 after
+    2000, so the first sweep's "insufficient" verdict was an artefact of the budget.
+    Stopping is therefore decided by a plateau -- no improvement above `tol` over
+    `patience` steps -- and `converged` is recorded, so a cell that merely ran out of
+    steps cannot be read as a capacity limit.
+    """
     torch.manual_seed(seed)
     frame = HouseholderFrame(d, k, num_reflectors=m, seed=seed,
                              base="haar", paired_init=True).to(device)
     target = make_target(kind, frame, d, k, m, seed, device)
     opt = torch.optim.Adam(frame.parameters(), lr=lr)
+    sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=max_steps)
     start = float(alignment(frame.rows().detach(), target))
-    t0 = time.time()
-    for _ in range(steps):
+    t0, best, best_step, step = time.time(), -1.0, 0, 0
+    while step < max_steps:
         opt.zero_grad(set_to_none=True)
         loss = 1.0 - alignment(frame.rows(), target)
         loss.backward()
         opt.step()
+        sched.step()
+        step += 1
+        if step % check_every == 0:
+            with torch.no_grad():
+                a_now = float(alignment(frame.rows(), target))
+            if a_now > best + tol:
+                best, best_step = a_now, step
+            elif step - best_step >= patience:
+                break
     with torch.no_grad():
         a = float(alignment(frame.rows(), target))
         ortho = frame.orthonormality_error()
@@ -144,6 +166,8 @@ def fit(d: int, k: int, m: int, kind: str, seed: int, steps: int, lr: float,
             "alignment_start": start, "alignment_final": a,
             "projector_error": projector_error(a),
             "orthonormality_error": ortho,
+            "steps_used": step, "max_steps": max_steps,
+            "converged": step < max_steps,
             "necessary_m": round(necessary_m(k, d), 1),
             "m_meets_necessary_condition": m >= necessary_m(k, d),
             "seconds": round(time.time() - t0, 1)}
@@ -155,7 +179,9 @@ def main() -> int:
     ap.add_argument("--ks", nargs="*", type=int, default=[16, 64, 128, 256])
     ap.add_argument("--ms", nargs="*", type=int, default=[64, 128, 256, 512])
     ap.add_argument("--seeds", nargs="*", type=int, default=[0, 1])
-    ap.add_argument("--steps", type=int, default=400)
+    ap.add_argument("--steps", type=int, default=6000, help="MAXIMUM steps; a plateau "
+                    "stops earlier and `converged` records which happened")
+    ap.add_argument("--patience", type=int, default=400)
     ap.add_argument("--lr", type=float, default=0.05)
     ap.add_argument("--targets", nargs="*", default=["generic", "reachable"])
     ap.add_argument("--device", default="cuda:0" if torch.cuda.is_available() else "cpu")
@@ -189,19 +215,23 @@ def main() -> int:
             for m in args.ms:
                 if m < 2:
                     continue
-                res = [fit(args.d, k, m, kind, s, args.steps, args.lr, device)
-                       for s in args.seeds]
+                res = [fit(args.d, k, m, kind, s, args.steps, args.lr, device,
+                           patience=args.patience) for s in args.seeds]
                 a = sum(r["alignment_final"] for r in res) / len(res)
                 e = sum(r["projector_error"] for r in res) / len(res)
                 worst = min(r["alignment_final"] for r in res)
+                converged = all(r["converged"] for r in res)
                 row = {**res[0], "seed": args.seeds, "alignment_final": a,
-                       "projector_error": e,
-                       "alignment_min": worst, "capacity_class": classify(worst),
+                       "projector_error": e, "converged": converged,
+                       "steps_used": [r["steps_used"] for r in res],
+                       "alignment_min": worst,
+                       # a cell that only ran out of steps is not a capacity statement
+                       "capacity_class": classify(worst) if converged else "not_converged",
                        "alignment_spread": max(r["alignment_final"] for r in res) - worst}
                 rows.append(row)
-                log.info("%-9s k=%-4d m=%-4d  A_sub %.4f  E_sub %.4f  "
-                         "(need m>=%.0f: %s)", kind, k, m, a, e,
-                         row["necessary_m"], "yes" if row["m_meets_necessary_condition"] else "NO")
+                log.info("%-9s k=%-4d m=%-4d  A_sub %.4f  E_sub %.4f  steps %s  %s",
+                         kind, k, m, a, e, row["steps_used"],
+                         "converged" if converged else "HIT STEP LIMIT")
 
     out = {"d": args.d, "steps": args.steps, "lr": args.lr, "rows": rows,
            "decision_rule": {"sufficient": CAPACITY_SUFFICIENT,
