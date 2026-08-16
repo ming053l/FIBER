@@ -16,7 +16,12 @@ The certified operator instead is
 with two properties that make it the right object:
 
     v^T C_cert v = Var(v^T Z) − E[(v^T z_c − v^T f_c)^2]      ( = 1 − MSE_v for Z ~ N(0,I) )
-    C_cert(f)    = C_obs − E[(m−f)(m−f)^T]  <=  C_obs          (PSD order)
+    C_cert(f)    = C_obs − Cov(m − f)  <=  C_obs                (PSD order)
+
+The subtracted term is a COVARIANCE, not a second moment: the operator centers
+Z and f, so a constant decoder bias is calibrated away rather than charged
+against the decoder. `E[(m−f)(m−f)^T]` is the UNCENTERED statement and the two
+agree only when E[f] = E[m].
 
 So a weak decoder UNDERSTATES observability; it can never manufacture it. What the
 top-k eigenvectors give is therefore the best k-dimensional readout *certified by
@@ -120,6 +125,105 @@ def quadratic_form(Z, F, V, center: bool = True) -> np.ndarray:
     if center:
         a, b = a - a.mean(0), b - b.mean(0)
     return 2 * (a * b).mean(0) - (b * b).mean(0)
+
+
+# Numerical-rank tolerance for calling a projected eigenvalue positive. Standard
+# relative rule: anything within k * eps of the largest magnitude is numerical zero,
+# NOT certified observability. tau is reported alongside every rank.
+def zero_tolerance(mu: np.ndarray, floor: float = 1e-9) -> float:
+    k = max(len(mu), 1)
+    return max(floor, k * np.finfo(np.float64).eps * float(np.abs(mu).max(initial=0.0)))
+
+
+def project_operator(Z, F, V, center: bool = True) -> np.ndarray:
+    """C_V = V C_cert V^T, the certified operator RESTRICTED to span(V).
+
+        A = Zc V^T,  B = Fc V^T,  C_V = (A^T B + B^T A - B^T B) / N
+
+    Never touches d x d. Under any within-subspace rotation V' = R V (R in O(k)),
+    C_V' = R C_V R^T, so its EIGENVALUES are a property of the subspace alone.
+    """
+    Z, F, V = _as_2d(Z), _as_2d(F), _as_2d(V)
+    A, B = Z @ V.T, F @ V.T
+    if center:
+        A, B = A - A.mean(0), B - B.mean(0)
+    N = A.shape[0]
+    C = (A.T @ B + B.T @ A - B.T @ B) / N
+    return (C + C.T) / 2
+
+
+def subspace_certificate(Z, F, V, center: bool = True, tol: float | None = None,
+                         crossfit: bool = True, seed: int = 0) -> dict:
+    """Cross-fitted, BASIS-INVARIANT score of a frozen discovered subspace.
+
+        D_cert_subspace(V) = sum_j max(mu_j, 0),   mu = eig(V C_cert^held V^T)
+
+    The discovery frame V diagonalises the DISCOVERY operator, not the held-out one,
+    so `sum_j max(v_j^T C_held v_j, 0)` -- clipping the DIAGONAL -- is not a property
+    of the subspace. Concretely, C_V = [[-1, 2], [2, -1]] has diagonal (-1, -1),
+    which clips to 0, while its eigenvalues are (1, -3): the subspace does contain a
+    positively certified direction, one rotation away.
+
+    The per-coordinate diagonal is still returned as `coordinate_skill` -- it is the
+    right diagnostic for sign coding, which IS basis dependent (P0-7) -- but it is
+    never the observability headline.
+
+    **The eigen-step needs its own cross-fit.** Summing positive eigenvalues is a
+    max-type functional, so computing the eigenvectors and the eigenvalues on the same
+    held-out samples rectifies noise into positive mass: measured on a decoder with
+    ZERO true skill (f independent of Z), the in-sample version reports D = 3.35 at
+    N=64, k=32 and 0.59 at N=256, k=32, where the truth is 0. That is the same
+    selection error as trusting the discovery basis, moved one level down into the
+    subspace. So by default the within-subspace rotation is chosen on one half of the
+    held-out samples and measured on the other. Invariance survives: replacing V by RV
+    rotates both halves' operators by R, the chosen rotation absorbs it, and the
+    measured mu are unchanged.
+    """
+    Z, F, V = _as_2d(Z), _as_2d(F), _as_2d(V)
+    C_V = project_operator(Z, F, V, center=center)
+    # ascontiguousarray: the [::-1] view has a negative stride, which torch refuses
+    mu_in = np.ascontiguousarray(np.linalg.eigvalsh(C_V)[::-1])
+
+    mu, rotation_split = mu_in, None
+    if crossfit and np.shape(Z)[0] >= 8:
+        rng = np.random.default_rng(seed)
+        perm = rng.permutation(np.shape(Z)[0])
+        h1, h2 = perm[: len(perm) // 2], perm[len(perm) // 2:]
+        C1 = project_operator(Z[h1], F[h1], V, center=center)
+        W = np.ascontiguousarray(np.linalg.eigh(C1)[1][:, ::-1].T)   # rotation from half 1
+        C2 = project_operator(Z[h2], F[h2], V, center=center)
+        mu = np.ascontiguousarray(np.diag(W @ C2 @ W.T))             # measured on half 2
+        rotation_split = [int(h1.size), int(h2.size)]
+
+    tau = zero_tolerance(mu) if tol is None else float(tol)
+    positive = mu[mu > tau]
+    return {
+        # ---- subspace (basis-invariant) --------------------------------
+        "mu": mu,
+        "crossfit": bool(rotation_split is not None),
+        "rotation_split": rotation_split,
+        # same score without the inner cross-fit: optimistic, kept for contrast
+        "D_cert_subspace_insample": float(np.clip(mu_in, 0, None).sum()),
+        "mu_insample": mu_in,
+        "D_cert_subspace": float(positive.sum()),
+        # Unbiased companion: sum(mu) = tr(C_V), basis-invariant and NOT clipped, so
+        # it estimates the TRUE restricted trace instead of being rectified upward.
+        # Clipping is what leaves the headline with a residual positive bias at small
+        # N (measured 0.44 at N=64, k=32 where the certified mass is 0; 0.00 by
+        # N=256). Report both: the mass answers "how much is certified", the trace
+        # answers "is this decoder net-positive at all" and can be negative.
+        "trace_C_V": float(mu.sum()),
+        "certified_positive_rank": int(positive.size),
+        "requested_k": int(V.shape[0]),
+        # mu.max()/min(), NOT mu[0]/mu[-1]: after the inner cross-fit mu is ordered by
+        # the rotation chosen on half 1, so it is no longer sorted descending.
+        "mu_max": float(mu.max()) if mu.size else float("nan"),
+        "mu_min": float(mu.min()) if mu.size else float("nan"),
+        "zero_tolerance": tau,
+        # ---- basis / coordinates (NOT invariant) -----------------------
+        "coordinate_skill": np.diag(C_V).copy(),
+        "D_coordinate_clipped": float(np.clip(np.diag(C_V), 0, None).sum()),
+    }
 
 
 def variance_form(F, V, center: bool = True) -> np.ndarray:
@@ -264,18 +368,23 @@ def teacher_validity(Z_held, F_held, V, center: bool = True) -> dict:
 
     They coincide only for an exact conditional mean, so their gap measures how far
     the teacher is from E[Z|Y]. lambda_skill is always the conservative one.
+
+    Both are PER-COORDINATE and therefore basis dependent. The reported observability
+    headline is the basis-invariant `subspace` block (P0-1.1).
     """
     lam_skill = quadratic_form(Z_held, F_held, V, center=center)
     lam_var = variance_form(F_held, V, center=center)
     gap = np.abs(lam_var - lam_skill)
     F = _as_2d(F_held)
     return {
+        # per-coordinate: basis dependent, diagnostics only (P0-1.1)
         "lambda_skill": lam_skill,
         "lambda_var": lam_var,
         "mean_abs_gap": float(gap.mean()),
         "max_abs_gap": float(gap.max()) if gap.size else 0.0,
-        "d_cert_heldout": float(np.clip(lam_skill, 0, None).sum()),
         "n_negative_directions": int((lam_skill < 0).sum()),
+        # subspace: basis invariant, THE headline
+        "subspace": subspace_certificate(Z_held, F_held, V, center=center),
         # a teacher with a non-zero output mean injects a rank-1 direction into any
         # UNcentered estimate; report it so centering cannot be quietly dropped
         "teacher_output_mean_norm": float(np.linalg.norm(F.mean(0))),

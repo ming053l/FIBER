@@ -151,8 +151,12 @@ Cross-fitting removes *fitting* bias; it does nothing about *estimator* bias.
 C_cert(f) = E[ z_c f_cᵀ + f_c z_cᵀ − f_c f_cᵀ ],     z_c = Z − E[Z],  f_c = f − E[f]
 
 vᵀ C_cert v = Var(vᵀZ) − E[(vᵀz_c − vᵀf_c)²]        ( = 1 − MSE_v  for Z ~ N(0,I) )
-C_cert(f)   = C_obs − E[(m−f)(m−f)ᵀ]   ⪯   C_obs
+C_cert(f)   = C_obs − Cov(m − f)   ⪯   C_obs
 ```
+
+The subtracted term is a **covariance**, not a second moment: `Z` and `f` are centered, so
+a constant decoder bias is calibrated away rather than charged against the decoder.
+`E[(m−f)(m−f)ᵀ]` is the uncentered statement and the two agree only when `E[f] = E[m]`.
 
 A weak decoder therefore **understates** observability and can never manufacture it —
 measured `max eig(C_cert − C_obs) < 0.07` at every teacher scale from 0.25 to 5.0, against
@@ -170,9 +174,25 @@ spurious leading direction pointing along `f̄`.
 ordered spectrum `λ₁ ≥ λ₂ ≥ …`:
 
 ```
-D_cert^(k) = Σ_{j≤k} max(λ_j, 0)      certified observability mass  (the headline)
-D⁻         = Σ_j     max(−λ_j, 0)     decoder-misspecification diagnostic
+μ = eig( V C_cert^held Vᵀ )                     the k×k operator restricted to span(V)
+D_cert(V) = Σ_j max(μ_j, 0)                     certified observability mass  (headline)
+D⁻        = Σ_j max(−μ_j, 0)                     decoder-misspecification diagnostic
 ```
+
+**The headline is a property of the subspace, not of the basis.** `V` diagonalises the
+*discovery* operator, not the held-out one, so clipping the DIAGONAL of `V C_cert^held Vᵀ`
+would not be invariant: `C_V = [[−1, 2], [2, −1]]` has diagonal `(−1, −1)`, which clips to
+0, while its eigenvalues are `(1, −3)` — the subspace does contain a certified direction,
+one rotation away. Since P0-7 exists precisely to separate *subspace quality* from
+*coding-basis quality*, the observability metric has to be decoupled from the basis first.
+Per-coordinate `diag(V C_cert^held Vᵀ)` is still reported as **coordinate_skill**, because
+sign coding genuinely is basis dependent — but never as the observability mass.
+
+Positive rank is reported against the request (`requested_k = 64`,
+`certified_positive_rank = 20` is an honest result, not a number to round up), with an
+explicit numerical-zero tolerance `τ = max(1e-9, k·ε·max|μ|)` so that `1e-16` eigenvalues
+cannot become certified mass. `k` is never chosen from the test split — that is a `val`
+decision (P0-3).
 
 `D_cert` is *not* Shannon capacity and *not* `I(Z;Y)`; it is the variance the chosen
 decoder can certify it recovers under squared error. The raw signed spectrum is always

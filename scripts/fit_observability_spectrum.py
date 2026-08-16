@@ -98,7 +98,8 @@ def main() -> int:
                                    device=args.device, limit=args.limit,
                                    epoch_salt="spectrum-report")
     valid = teacher_validity(Z_rep, F_rep, V)
-    lam = valid["lambda_skill"]
+    lam = valid["lambda_skill"]           # per-coordinate: basis dependent, diagnostic
+    sub = valid["subspace"]               # basis invariant: THE headline (P0-1.1)
     tol = float(scfg.get("validity_tol", 0.10))
 
     summary = {
@@ -109,14 +110,26 @@ def main() -> int:
         "n_teacher_split": None, "n_operator": int(spec.n_samples),
         "n_report": int(valid["n_heldout"]), "report_split": report_split,
 
-        # ---- headline, all cross-fitted -------------------------------
-        "D_cert_k": float(np.clip(lam[:k], 0, None).sum()),
-        "D_cert_top64": float(np.clip(lam[:64], 0, None).sum()),
-        "D_neg_heldout": float(np.clip(-lam, 0, None).sum()),
-        "lambda_skill_top1": float(lam[0]),
-        "lambda_skill_top64_mean": float(lam[:64].mean()),
-        "n_negative_directions": int(valid["n_negative_directions"]),
-        "spectrum_flatness_top64": float(lam[:64].max() / max(abs(lam[:64].min()), 1e-9)),
+        # ---- SUBSPACE: basis-invariant, cross-fitted. THE headline. ----
+        # D_cert_subspace = sum_j max(mu_j, 0) with mu = eig(V C_cert^held V^T).
+        # Clipping the DIAGONAL of that matrix instead would not be a property of
+        # the discovered subspace: C_V = [[-1,2],[2,-1]] clips to 0 while its
+        # eigenvalues are (1,-3), i.e. one rotation from a certified direction.
+        "D_cert_subspace": sub["D_cert_subspace"],
+        "D_cert_subspace_insample": sub["D_cert_subspace_insample"],
+        "trace_C_V": sub["trace_C_V"],
+        "inner_crossfit": sub["crossfit"], "rotation_split": sub["rotation_split"],
+        "certified_positive_rank": sub["certified_positive_rank"],
+        "requested_k": sub["requested_k"],
+        "mu_max": sub["mu_max"], "mu_min": sub["mu_min"],
+        "zero_tolerance": sub["zero_tolerance"],
+
+        # ---- COORDINATES: basis dependent. Diagnostics, and the quantity that
+        # sign coding actually depends on (P0-7). Never the observability headline.
+        "coordinate_skill_top1": float(lam[0]),
+        "coordinate_skill_top64_mean": float(lam[:64].mean()),
+        "D_coordinate_clipped": sub["D_coordinate_clipped"],
+        "n_negative_coordinates": int(valid["n_negative_directions"]),
 
         # ---- validity: lambda_var == lambda_skill only for an exact mean --
         "validity_mean_abs_gap": valid["mean_abs_gap"],
@@ -146,15 +159,16 @@ def main() -> int:
             sp_a = fit_certified(Za, Fa, k=min(64, Za.shape[0] - 2), oversampling=8,
                                  seed=args.seed, method="range_eigh")
             per[attack] = {
-                "D_cert_top64_along_mixture_directions":
-                    float(np.clip(va["lambda_skill"][:64], 0, None).sum()),
-                "lambda_skill_top1": float(va["lambda_skill"][0]),
+                "D_cert_subspace": va["subspace"]["D_cert_subspace"],
+                "certified_positive_rank": va["subspace"]["certified_positive_rank"],
+                "coordinate_skill_top1": float(va["lambda_skill"][0]),
                 "alignment_with_mixture": subspace_alignment(
                     torch.from_numpy(sp_a.eigenvectors[:64]).float(),
                     torch.from_numpy(V[:64]).float()),
             }
-            log.info("%-10s D_cert(64)=%7.3f  align=%.3f", attack,
-                     per[attack]["D_cert_top64_along_mixture_directions"],
+            log.info("%-10s D_cert_subspace=%7.3f (rank %d)  align=%.3f", attack,
+                     per[attack]["D_cert_subspace"],
+                     per[attack]["certified_positive_rank"],
                      per[attack]["alignment_with_mixture"])
         summary["per_attack"] = per
         summary["per_attack_note"] = (
@@ -168,7 +182,9 @@ def main() -> int:
     torch.save({
         "operator": "certified",
         "eigenvectors": torch.from_numpy(V).float(),
-        "lambda_skill_heldout": torch.from_numpy(np.asarray(lam)).float(),
+        "coordinate_skill_heldout": torch.from_numpy(np.asarray(lam)).float(),
+        "mu_subspace_heldout": torch.from_numpy(np.asarray(sub["mu"])).float(),
+        "D_cert_subspace": sub["D_cert_subspace"],
         "lambda_var_heldout": torch.from_numpy(np.asarray(valid["lambda_var"])).float(),
         "eigenvalues_insample": torch.from_numpy(spec.eigenvalues[:k]).float(),
         "validity_pass": summary["validity_pass"], "k": k, "d": d,
@@ -179,8 +195,15 @@ def main() -> int:
     rep.parent.mkdir(parents=True, exist_ok=True)
     rep.write_text(json.dumps(summary, indent=2, default=float))
 
-    log.info("D_cert(k=%d) held-out = %.2f of d=%d   D^- = %.2f   lambda_1 = %.3f",
-             k, summary["D_cert_k"], d, summary["D_neg_heldout"], summary["lambda_skill_top1"])
+    log.info("SUBSPACE  D_cert = %.3f over %d/%d certified directions "
+             "(mu in [%.3f, %.3f], tr(C_V) = %.3f)",
+             summary["D_cert_subspace"], summary["certified_positive_rank"],
+             summary["requested_k"], summary["mu_min"], summary["mu_max"],
+             summary["trace_C_V"])
+    log.info("          without the inner cross-fit it would read %.3f -- the gap is "
+             "selection bias, not observability", summary["D_cert_subspace_insample"])
+    log.info("COORDS    diagonal-clipped %.3f, top-1 %.3f  (basis dependent; not the headline)",
+             summary["D_coordinate_clipped"], summary["coordinate_skill_top1"])
     log.info("teacher validity: mean|lambda_var - lambda_skill| = %.4f (tol %.2f) -> %s",
              summary["validity_mean_abs_gap"], tol,
              "PASS" if summary["validity_pass"] else "FAIL")

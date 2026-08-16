@@ -76,9 +76,18 @@ spectrum:
   oversampling: 32
   center: true                    # a teacher output bias otherwise injects a rank-1 direction
 
-  # Reported scalars. Tr(C_cert) can be NEGATIVE, so it is never the headline.
-  #   D_cert^(k) = sum_{j<=k} max(lambda_j, 0)   certified observability mass
-  #   D^-        = sum_j max(-lambda_j, 0)       decoder-misspecification diagnostic
+  # Reported scalars. Tr(C_cert) can be NEGATIVE, so it is never the headline, and
+  # the headline is a property of the SUBSPACE, not of the discovery basis (P0-1.1):
+  #   mu        = eig(V C_cert^held V')          k x k restriction to span(V)
+  #   D_cert(V) = sum_j max(mu_j, 0)             certified observability mass
+  #   D^-       = sum_j max(-mu_j, 0)            decoder-misspecification diagnostic
+  # Clipping the DIAGONAL instead is basis dependent: C_V = [[-1,2],[2,-1]] clips to 0
+  # while its eigenvalues are (1,-3). diag(V C_cert^held V') is still reported as
+  # coordinate_skill, because sign coding IS basis dependent (P0-7) -- never as mass.
+  # Positive rank is reported against the request, with a numerical-zero tolerance
+  #   tau = max(1e-9, k * eps * max|mu|)
+  # so 1e-16 eigenvalues cannot become certified mass. k is never chosen on test.
+  positive_rank_floor: 1.0e-9
   # EVERY reported eigenvalue is cross-fitted on a held-out split: in-sample spectra
   # are inflated far past the theoretical bound of 1 (measured lambda_max = 7.2 with an
   # EXACT teacher at N=200, d=4096) and are used only to choose directions.

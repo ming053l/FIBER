@@ -301,3 +301,193 @@ def test_cannot_ask_for_more_directions_than_the_operator_has_rank():
     Z = np.random.default_rng(0).standard_normal((8, D))
     with pytest.raises(ValueError, match="rank"):
         fit_certified(Z, Z, k=32, oversampling=8)
+
+
+# ==========================================================================
+# P0-1.1: the reported observability must be a property of the SUBSPACE, not of
+# the basis the discovery step happened to hand back.
+# ==========================================================================
+from fiber.spectrum.certified import (project_operator,  # noqa: E402
+                                      subspace_certificate, zero_tolerance)
+
+
+def _rotation(k, seed=0):
+    g = np.random.default_rng(seed)
+    q, r = np.linalg.qr(g.standard_normal((k, k)))
+    return q * np.sign(np.diag(r))          # exactly orthogonal, sign-corrected
+
+
+def test_subspace_score_is_invariant_under_within_subspace_rotation():
+    """D_cert_subspace(V) == D_cert_subspace(R V) for R in O(k), because
+    C_{RV} = R C_V R^T has the same eigenvalues. This is what makes it a property
+    of the discovered subspace and lets P0-7 attribute a BER change to the BASIS."""
+    V = T["V"][:8]
+    base = subspace_certificate(T["Z"], T["m"], V)
+    for seed in (0, 1, 2):
+        rot = subspace_certificate(T["Z"], T["m"], _rotation(8, seed) @ V)
+        assert abs(rot["D_cert_subspace"] - base["D_cert_subspace"]) < 1e-9
+        assert rot["certified_positive_rank"] == base["certified_positive_rank"]
+        assert np.abs(np.sort(rot["mu"]) - np.sort(base["mu"])).max() < 1e-9
+
+
+def test_coordinate_skill_is_NOT_invariant():
+    """The contrast that motivates the fix: the per-coordinate diagonal moves under
+    rotation, so clipping it cannot be the subspace headline."""
+    V = T["V"][:8]
+    base = subspace_certificate(T["Z"], T["m"], V)
+    rot = subspace_certificate(T["Z"], T["m"], _rotation(8, 5) @ V)
+    assert np.abs(rot["coordinate_skill"] - base["coordinate_skill"]).max() > 1e-3
+
+
+def _counterexample_data(n=40000, d=16, seed=0):
+    """Realise the reviewer's C_V = [[-1, 2], [2, -1]] as actual (Z, F) samples.
+
+    With B = A M and A whitened, C_V = M + M^T - M^T M = 2M - M^2, so M = [[2,-1],[-1,2]]
+    gives eigenvalues (1, -3) with diagonal (-1, -1).
+    """
+    rng = np.random.default_rng(seed)
+    A = rng.standard_normal((n, 2))
+    cov = A.T @ A / n
+    w, U = np.linalg.eigh(cov)
+    A = A @ (U / np.sqrt(w)) @ U.T                     # exactly whitened
+    M = np.array([[2.0, -1.0], [-1.0, 2.0]])
+    B = A @ M
+    Z = np.concatenate([A, rng.standard_normal((n, d - 2))], axis=1)
+    F = np.concatenate([B, rng.standard_normal((n, d - 2))], axis=1)
+    V = np.eye(d)[:2]
+    return Z, F, V
+
+
+def test_diagonal_clipping_reports_zero_where_the_subspace_certifies_one():
+    """The concrete failure of the previous metric, on data rather than on paper:
+    every coordinate looks worse than the prior mean, yet the subspace contains a
+    direction certified at mu = 1."""
+    Z, F, V = _counterexample_data()
+    C_V = project_operator(Z, F, V)
+    assert np.abs(C_V - np.array([[-1.0, 2.0], [2.0, -1.0]])).max() < 0.05
+
+    cert = subspace_certificate(Z, F, V)
+    assert (cert["coordinate_skill"] < 0).all()
+    assert cert["D_coordinate_clipped"] == 0.0          # what the old metric said
+    assert abs(cert["D_cert_subspace"] - 1.0) < 0.05    # what the subspace certifies
+    assert cert["certified_positive_rank"] == 1
+
+
+def test_subspace_score_comes_from_eigenvalues_not_from_the_diagonal():
+    Z, F, V = _counterexample_data()
+    cert = subspace_certificate(Z, F, V)
+    assert cert["D_cert_subspace"] != cert["D_coordinate_clipped"]
+    assert abs(cert["D_cert_subspace"] - np.clip(cert["mu"], 0, None).sum()) < 1e-12
+
+
+def test_projected_operator_matches_the_analytic_restriction():
+    """For the EXACT conditional mean, V C_cert V^T must equal V C_obs V^T."""
+    V = T["V"][:10]
+    C_V = project_operator(T["Z"], T["m"], V)
+    assert np.abs(C_V - V @ T["C_obs"] @ V.T).max() < 0.03
+
+
+def test_numerical_zero_does_not_become_certified_rank():
+    """A decoder that recovers nothing must report rank 0, not k directions of
+    1e-16 'observability'."""
+    rng = np.random.default_rng(0)
+    Z = rng.standard_normal((5000, 16))
+    F = np.zeros_like(Z)
+    cert = subspace_certificate(Z, F, np.eye(16)[:6])
+    assert cert["certified_positive_rank"] == 0
+    assert cert["D_cert_subspace"] == 0.0
+    assert cert["zero_tolerance"] > 0
+
+
+def test_zero_tolerance_is_a_floor_then_scales_with_the_spectrum():
+    eps = np.finfo(np.float64).eps
+    small = zero_tolerance(np.array([1e-3, -1e-3]))
+    assert small == 1e-9, "tiny spectra must fall back to the absolute floor"
+    huge = np.array([1e9, -1e9])
+    assert zero_tolerance(huge) == pytest.approx(len(huge) * eps * 1e9)
+    assert zero_tolerance(huge) > small
+
+
+def test_rank_is_reported_against_the_requested_k():
+    """If only some of the k requested directions are positively certified, that is
+    a result to report, not a number to quietly round up."""
+    Z, F, V = _counterexample_data()
+    cert = subspace_certificate(Z, F, V)
+    assert cert["requested_k"] == 2 and cert["certified_positive_rank"] == 1
+
+
+# --------------------------------------------------------------------------
+# P0-1.1 continued: the eigen-step is itself a selection, so it needs its own
+# cross-fit. Choosing the within-subspace rotation and measuring it on the same
+# held-out samples rectifies noise into certified mass.
+# --------------------------------------------------------------------------
+def _null_case(n, k, d=512, seed=0):
+    """A decoder with ZERO true skill: f is independent of Z, so C_cert = 0 in the
+    population and every certified mass must go to zero."""
+    rng = np.random.default_rng(seed)
+    Z = rng.standard_normal((n, d))
+    F = rng.standard_normal((n, d)) * 0.5
+    V = np.linalg.qr(rng.standard_normal((d, k)))[0].T
+    return Z, F, V
+
+
+def test_inner_crossfit_removes_the_selection_bias_under_the_null():
+    Z, F, V = _null_case(256, 32)
+    c = subspace_certificate(Z, F, V)
+    assert c["crossfit"] and c["D_cert_subspace_insample"] > 0.3
+    assert c["D_cert_subspace"] < 0.05, "inner cross-fit did not remove the bias"
+
+
+def test_selection_bias_is_worse_at_small_n_and_large_k():
+    """Documents the regime where the in-sample version is untrustworthy."""
+    tiny = subspace_certificate(*_null_case(64, 32))["D_cert_subspace_insample"]
+    big = subspace_certificate(*_null_case(1000, 32))["D_cert_subspace_insample"]
+    assert tiny > 1.0 and big < 0.05
+
+
+def test_trace_companion_is_unbiased_for_the_true_restricted_trace():
+    """sum(mu) = tr(C_V) is basis-invariant and unclipped, so it estimates the TRUE
+    restricted trace rather than being rectified upward.
+
+    Note what the null actually is: f is independent of Z but not zero, so
+    C_cert = -Cov(f) = -0.25 I and the restriction to k=32 has trace exactly -8.0.
+    "Zero skill" means the certified MASS is zero, not that the operator vanishes."""
+    traces = [subspace_certificate(*_null_case(256, 32, seed=s))["trace_C_V"]
+              for s in range(8)]
+    assert abs(float(np.mean(traces)) + 8.0) < 0.4
+    # and the clipped headline correctly reports no certified mass
+    masses = [subspace_certificate(*_null_case(256, 32, seed=s))["D_cert_subspace"]
+              for s in range(8)]
+    assert max(masses) < 0.05
+
+
+def test_crossfit_score_is_still_rotation_invariant():
+    """The whole point of the subspace score survives the inner cross-fit: the chosen
+    rotation absorbs R, so the measured eigenvalues are unchanged."""
+    V = T["V"][:16]
+    a = subspace_certificate(T["Z"], T["m"], V)
+    b = subspace_certificate(T["Z"], T["m"], _rotation(16, 7) @ V)
+    assert abs(a["D_cert_subspace"] - b["D_cert_subspace"]) < 1e-9
+    assert abs(a["trace_C_V"] - b["trace_C_V"]) < 1e-9
+
+
+def test_crossfit_score_recovers_real_signal():
+    """Removing the bias must not remove the signal: with the exact conditional mean
+    the cross-fit score still matches the analytic restricted mass."""
+    V = T["V"][:8]
+    c = subspace_certificate(T["Z"], T["m"], V)
+    assert abs(c["D_cert_subspace"] - T["lam"][:8].sum()) < 0.15
+
+
+def test_reported_mu_range_is_consistent_with_the_certified_rank():
+    """After the inner cross-fit mu is ordered by the rotation from half 1, not
+    sorted, so mu[0]/mu[-1] are not the extremes. Reporting a max below the zero
+    tolerance while also reporting a positive rank is self-contradictory."""
+    for case in (_null_case(256, 32), (T["Z"], T["m"], T["V"][:16])):
+        c = subspace_certificate(*case)
+        assert c["mu_max"] == pytest.approx(float(np.max(c["mu"])))
+        assert c["mu_min"] == pytest.approx(float(np.min(c["mu"])))
+        if c["certified_positive_rank"] > 0:
+            assert c["mu_max"] > c["zero_tolerance"]
+        else:
+            assert c["mu_max"] <= c["zero_tolerance"]
