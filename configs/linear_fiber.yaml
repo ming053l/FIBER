@@ -69,6 +69,19 @@ fiber:
     E_learned:    {type: householder, num_reflectors: 128, base: haar,
                    paired_init: true, seeds: [0,1,2]}
 
+    # ---- P0-7: same SUBSPACE, different BASIS. D_cert is identical for all three by
+    # construction (span(AV) = span(V)); only sign coding can differ, so any BER gap
+    # here is a coding-basis result and must not be reported as more observability.
+    # D2 draws from the full O(k) (a QR determinant takes either sign) and is averaged
+    # over draws -- best-of-N would be the same free win the Haar denominator forbids.
+    # D3 explores SO(k): expm of a skew-symmetric matrix has determinant +1.
+    # `seeds` vary the ROTATION; `base_seed` pins the subspace, so every draw here and
+    # every D3 seed live in the SAME subspace as D_spectral seed 0.
+    D2_rot_rand:  {type: rotated_random, base_arm: D_spectral, base_seed: 0,
+                   seeds: [0,1,2,3,4,5]}
+    D3_rot_learn: {type: rotated_learned, base_arm: D_spectral, base_seed: 0, tau: 0.5,
+                   seeds: [0,1,2]}
+
 spectrum:
   # P0-1. The estimated object is the DECODER-CERTIFIED operator
   #   C_cert(f) = E[z_c f_c' + f_c z_c' - f_c f_c']  =  C_obs - E[(m-f)(m-f)']  <=  C_obs

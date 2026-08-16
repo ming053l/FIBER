@@ -22,6 +22,7 @@ import torch
 from fiber.channels import ChannelBank
 from fiber.training import TrainConfig, evaluate, train_extractor
 from fiber.transforms import build_frame
+from fiber.transforms.rotation import RotatedFrame
 from fiber.transforms.spectral import SpectralFrame
 from fiber.utils.config import load_config
 from fiber.utils.logging import get_logger
@@ -32,6 +33,21 @@ log = get_logger("arm")
 
 def build_arm_frame(cfg, arm: str, k: int, seed: int, tag: str, d: int):
     spec = dict(cfg["fiber"]["arms"][arm])
+    if spec["type"] in ("rotated_random", "rotated_learned"):
+        # P0-7: the ambient subspace comes from the certified spectral fit and is
+        # FROZEN; only the in-subspace basis varies between D1, D2 and D3.
+        #
+        # The arm's own seed drives the ROTATION ONLY. `base_seed` is pinned, so every
+        # D2 draw and every D3 seed sits in the SAME subspace as D1 at that base seed.
+        # Letting the arm seed drive both would put different draws in different
+        # subspaces, and the whole subspace-versus-basis decomposition would be
+        # comparing two things at once.
+        base_arm = spec.get("base_arm", "D_spectral")
+        base_seed = int(spec.get("base_seed", 0))
+        base, extra = build_arm_frame(cfg, base_arm, k, base_seed, tag, d)
+        mode = "random" if spec["type"] == "rotated_random" else "learned"
+        return RotatedFrame(base, k=k, mode=mode, seed=seed), {
+            **extra, "rotation_mode": mode, "base_arm": base_arm, "base_seed": base_seed}
     if spec["type"] == "spectral_topk":
         path = Path(cfg["paths"]["data_root"]) / "spectrum" / f"{tag}_seed{seed}.pt"
         if not path.exists():
@@ -99,6 +115,13 @@ def main() -> int:
         # Discovery is MSE-only (P0-4). The sign head is trained afterwards, on the
         # frozen frame, and is what the communication metric reads.
         dcfg.w_sign = 0.0
+        # P0-7 D3 discovers a BASIS, so its surrogate target is smooth-sign rather than
+        # the raw coordinate; tau travels in the arm spec and is therefore part of the
+        # hyperparameter fingerprint the val lock records.
+        if cfg["fiber"]["arms"][args.arm]["type"] == "rotated_learned":
+            dcfg.target_transform = "soft_sign"
+            dcfg.soft_sign_tau = float(cfg["fiber"]["arms"][args.arm].get("tau", 0.5))
+            meta["soft_sign_tau"] = dcfg.soft_sign_tau
         log.info("[%s] discovery on split A (%d epochs)", args.arm, dcfg.epochs)
         _, frame, dhist = train_extractor(
             frame, root, bank, dcfg, split=args.train_split,

@@ -1,0 +1,25 @@
+{
+  "rows": [
+    {
+      "k": 64,
+      "device": "cuda",
+      "seconds_per_step": 0.00163,
+      "ms_per_step": 1.63,
+      "relative_to_k64": 1.0
+    },
+    {
+      "k": 128,
+      "device": "cuda",
+      "seconds_per_step": 0.00166,
+      "ms_per_step": 1.66,
+      "relative_to_k64": 1.02
+    },
+    {
+      "k": 256,
+      "device": "cuda",
+      "seconds_per_step": 0.00196,
+      "ms_per_step": 1.96,
+      "relative_to_k64": 1.2
+    }
+  ]
+}

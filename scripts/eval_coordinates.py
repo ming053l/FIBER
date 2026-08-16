@@ -43,7 +43,10 @@ from select_method import config_fingerprint, file_digest  # noqa: E402
 log = get_logger("eval")
 
 RANDOM_TYPES = {"haar", "signed_permutation", "hadamard", "random_householder"}
-DERIVED_TYPES = {"spectral_topk", "householder"}
+DERIVED_TYPES = {"spectral_topk", "householder", "rotated_learned"}
+# P0-7: same subspace, different basis. Reported in their own section, never as a
+# random-SUBSPACE control and never as the gate denominator.
+BASIS_TYPES = {"spectral_topk", "rotated_random", "rotated_learned"}
 SANITY_TYPES = {"identity"}
 REFERENCE_TYPES = {"ddim_inversion_reference"}
 assert not (RANDOM_TYPES | DERIVED_TYPES) & REFERENCE_TYPES
@@ -290,6 +293,42 @@ def main() -> int:
         report["gate3b"] = {"per_group": g3b, "story": story}
     else:
         lines.append("_Needs both a certified-spectral and a learned arm._\n")
+
+    # ---------------- P0-7 — subspace vs basis --------------------------
+    basis_stems = [s for s in mats if mats[s]["run"]["type"] in BASIS_TYPES]
+    if len({mats[s]["run"]["type"] for s in basis_stems}) > 1:
+        lines.append("\n## P0-7 — same subspace, different coding basis\n")
+        lines.append("D1, D2 and D3 span the **same** subspace, so every certified "
+                     "observability quantity is identical for them by construction "
+                     "(`span(AV) = span(V)`, asserted to 1e-9). Only the sign coding can "
+                     "differ, so any gap below is a **coding-basis** result and must not "
+                     "be reported as more observable information.\n")
+        lines.append("| basis | arm | draws | mean sign BER | spread |")
+        lines.append("|" + "---|" * 5)
+        by_arm = defaultdict(list)
+        for s in basis_stems:
+            by_arm[mats[s]["run"]["arm"]].append(
+                float(np.mean([v.mean() for v in mats[s]["per_group"].values()])))
+        label = {"spectral_topk": "D1 certified eigenbasis",
+                 "rotated_random": "D2 random O(k) basis",
+                 "rotated_learned": "D3 learned SO(k) basis"}
+        basis_report = {}
+        for s in sorted(basis_stems):
+            arm = mats[s]["run"]["arm"]
+            t = mats[s]["run"]["type"]
+            if arm in basis_report:
+                continue
+            vals = by_arm[arm]
+            basis_report[arm] = {"type": t, "n_draws": len(vals),
+                                 "mean_sign_ber": float(np.mean(vals)),
+                                 "spread": float(np.std(vals))}
+            lines.append(f"| {label.get(t, t)} | {arm} | {len(vals)} | "
+                         f"{np.mean(vals):.4f} | ±{np.std(vals):.4f} |")
+        lines.append("\nD2 is averaged over its draws; best-of-N would be the same free "
+                     "win the Haar denominator forbids. A large D2 spread is itself a "
+                     "result: it would mean the coding basis is a major performance "
+                     "factor inside a fixed observable subspace.\n")
+        report["p0_7_basis"] = basis_report
 
     ident = [s for s in mats if mats[s]["run"]["type"] in SANITY_TYPES]
     if ident:

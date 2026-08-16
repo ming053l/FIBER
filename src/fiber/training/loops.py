@@ -44,6 +44,11 @@ class TrainConfig:
     w_sign: float = 1.0
     frame_lr_scale: float = 1.0
     extractor_arch: str = "resnet18"
+    # P0-7 D3: a hard sign target severs the gradient to an in-subspace rotation just
+    # as it does to a frame, so basis discovery uses a smooth surrogate tanh(W/tau).
+    # tau is a hyperparameter and is selected on val like any other, never on test.
+    target_transform: str = "identity"
+    soft_sign_tau: float = 0.5
 
     @classmethod
     def from_config(cls, cfg) -> "TrainConfig":
@@ -78,9 +83,20 @@ def _lr_at(step: int, total: int, cfg: TrainConfig) -> float:
     return cfg.lr * 0.5 * (1 + math.cos(math.pi * min(p, 1.0)))
 
 
+def soft_sign(w: torch.Tensor, tau: float) -> torch.Tensor:
+    """tanh(w/tau): large tau approaches a linear target, small tau approaches sign(w).
+    So tau decides whether basis discovery optimises continuous recoverability or
+    near-sign recoverability -- which is exactly why it cannot be tuned on test."""
+    return torch.tanh(w / tau)
+
+
 def head_losses(out: dict, w_true: torch.Tensor, cfg: TrainConfig):
     loss = w_true.new_zeros(())
     parts = {}
+    if cfg.target_transform == "soft_sign":
+        w_true = soft_sign(w_true, cfg.soft_sign_tau)
+    elif cfg.target_transform != "identity":
+        raise ValueError(f"unknown target_transform {cfg.target_transform!r}")
     if cfg.w_regression and "w_hat" in out:
         # MSE, never L1: the regression head is also the teacher objective and
         # must converge to the conditional MEAN (PLAN.md §3.3).

@@ -328,6 +328,8 @@ experiment, not a supplementary control.
 | C3 | arm E's parameterisation and starting point, frozen | architecture-matched control for E | 1 seed |
 | D | top-k of the **certified** operator `C_cert` | data-derived | 3 seeds (teacher init) |
 | E | learned `R_E = Q_φ H`, `H` a frozen Haar frame | data-derived | 3 seeds |
+| D2 | `A_rand V`, `A_rand ~ Haar` on `O(k)` | random **basis**, same subspace | 6 draws |
+| D3 | `A_φ V`, `A_φ = expm(S − Sᵀ) ∈ SO(k)` | learned **basis**, same subspace | 3 seeds |
 
 **The denominator is Haar (P0-2).** A uniformly random `k`-dimensional subspace is the
 null the scientific claim is against: `derived > Haar` is evidence that the frozen
@@ -356,6 +358,38 @@ never escaped a bad start.
 honest statement rather than a defect: at initialisation the parameterisation
 contributes nothing, so any arm-E gain is attributable to learning. It is retained at
 one seed as an executable check that the base and the paired init hold.
+
+### Subspace versus basis (P0-7)
+
+D1, D2 and D3 span the **same** subspace, so every certified quantity is identical for
+them by construction — `span(AV) = span(V)`, asserted to `1e-9` on `D_cert` and `1e-10`
+on the restricted operator's eigenvalues. Only the sign bits move. Any BER gap between
+them is therefore a **coding-basis** result and may not be reported as more observable
+information; the report gives a subspace score and a basis score separately.
+
+Protocol details that decide whether the decomposition means anything:
+
+- `V` is a **buffer, never a parameter**. If gradients could reach it, D3 would stop
+  being a within-subspace rotation and become subspace discovery again (asserted:
+  `V.grad is None`, `S.grad ≠ None`).
+- `A_φ(0) = I`, so D3 *starts* at D1 and a gain is the rotation's doing rather than a
+  different starting basis.
+- `expm` of a skew-symmetric matrix has determinant `+1`, so D3 explores **`SO(k)`**,
+  not all of `O(k)` — stated as such. D2 does cover both components, since a QR
+  determinant takes either sign (measured 0.47–0.52 positive over 400 draws).
+- Discovery uses the smooth surrogate `tanh(W/τ)`: the hard target `1[W>0]` severs the
+  gradient to a rotation exactly as it does to a frame. `τ` decides whether D3 optimises
+  continuous or near-sign recoverability, so it is an arm hyperparameter, part of the
+  fingerprint the **val** lock records, and never chosen on test.
+- The discovery extractor is discarded; a fresh capacity-matched extractor is trained on
+  split B, as for every other arm, so D3 gets no free extra pass over the data.
+- D2 is **averaged over draws**. Best-of-N would be the same free win the Haar
+  denominator forbids. A large D2 spread is itself a result: it would say the coding
+  basis is a major performance factor inside a fixed observable subspace.
+
+`matrix_exp` costs 1.63 / 1.66 / 1.96 ms per step at `k = 64 / 128 / 256` on the GPU
+(1.20× at the largest `k`, about 1 % of a training step), so it stays the
+parameterisation at every `k`; Cayley or Givens are unnecessary.
 
 The four families also quantify R1's locality axis directly — participation ratio
 `1.0` (signed permutation), `1.1` (random Householder), `5470` (Haar), `16384`

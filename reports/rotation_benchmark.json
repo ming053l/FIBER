@@ -1,0 +1,25 @@
+{
+  "rows": [
+    {
+      "k": 64,
+      "device": "cpu",
+      "seconds_per_step": 0.00168,
+      "ms_per_step": 1.68,
+      "relative_to_k64": 1.0
+    },
+    {
+      "k": 128,
+      "device": "cpu",
+      "seconds_per_step": 0.00347,
+      "ms_per_step": 3.47,
+      "relative_to_k64": 2.07
+    },
+    {
+      "k": 256,
+      "device": "cpu",
+      "seconds_per_step": 0.01141,
+      "ms_per_step": 11.41,
+      "relative_to_k64": 6.79
+    }
+  ]
+}

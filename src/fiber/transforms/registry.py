@@ -5,6 +5,7 @@ from .haar import HaarRandomFrame
 from .hadamard import HadamardFrame
 from .householder import FrozenHouseholderOnHaarFrame, HouseholderFrame
 from .identity import IdentityFrame
+from .rotation import RotatedFrame
 from .signperm import SignedPermutationFrame
 from .spectral import SpectralFrame
 
@@ -16,6 +17,8 @@ FRAMES = {
     "frozen_householder_on_haar": FrozenHouseholderOnHaarFrame,
     "random_householder": FrozenHouseholderOnHaarFrame,   # deprecated alias
     "spectral_topk": SpectralFrame,
+    "rotated_random": RotatedFrame,
+    "rotated_learned": RotatedFrame,
     "householder": HouseholderFrame,
 }
 

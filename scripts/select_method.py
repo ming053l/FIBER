@@ -30,7 +30,9 @@ from fiber.utils.logging import get_logger
 log = get_logger("select")
 
 SELECTION_SPLIT = "val"
-DERIVED_TYPES = {"spectral_topk", "householder"}
+# `rotated_random` is deliberately NOT selectable: it is the random-basis control for
+# D3, not a method. Selecting it would be picking the best of N random bases.
+DERIVED_TYPES = {"spectral_topk", "householder", "rotated_learned"}
 PRIMARY_RANDOM_TYPE = "haar"
 
 
