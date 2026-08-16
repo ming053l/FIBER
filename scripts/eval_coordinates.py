@@ -1,24 +1,24 @@
 #!/usr/bin/env python
-"""Aggregate arm results -> denominators table (Phase 2) and Gates 3A/3B.
+"""Evaluate the LOCKED method on the test split (P0-3).
 
-Comparisons are against RANDOM, never identity (PLAN.md R1): a single latent
-coordinate is spatially local while a Hadamard row is a global functional, so
-identity loses to any global transform for a trivial reason that is not evidence
-for FIBER. Identity is printed for context and excluded from every gate.
+This script is deliberately dumb. It cannot choose the family, the seed, k, the
+hyperparameters or the reference: all of that is decided on `val` by
+`scripts/select_method.py` and frozen in `reports/selection_<tag>.json`, which this
+script requires. Without that artifact it refuses to run.
 
-The gate denominator is the HAAR family (P0-2), averaged over its draws, with the
-spread and the best single draw alongside: claiming "learned > random" from one
-random subspace is indefensible. Haar specifically -- a uniformly random
-k-dimensional subspace -- because "derived > Haar" is evidence that the channel has
-anisotropic observability, while "derived > Hadamard" would only say it beats one
-structured family.
+Comparisons are against RANDOM, never identity (PLAN.md R1). The denominator is the
+Haar family, seed-averaged (P0-2): a uniformly random k-dimensional subspace is the
+null the claim is against, whereas beating Hadamard would only say the directions beat
+one structured family. Signed permutation, Hadamard and random-Householder are
+controls, reported beside the gate and flagged if any of them beats the locked arm.
 
-Signed permutation, Hadamard and random-Householder are CONTROLS, reported next to
-the gate. If any control beats the derived arm, that is flagged in the report:
-otherwise choosing the weakest random family as denominator would hand the derived
-arm a free win, which is precisely what this gate exists to prevent.
+Seeds are replications, never a selection axis. Two intervals are reported: the paired
+sample bootstrap on seed-averaged metrics (conditional on the draws actually made) and
+a hierarchical bootstrap that also resamples the Haar draws and training seeds, which
+is the interval matching the claim about E_{Q~Haar}[BER].
 
-    python scripts/eval_coordinates.py --tag pilot --k 64
+    python scripts/select_method.py   --tag pilot        # first, on val
+    python scripts/eval_coordinates.py --tag pilot       # then, locked, on test
 """
 from __future__ import annotations
 
@@ -30,30 +30,27 @@ from pathlib import Path
 import numpy as np
 
 from fiber.channels import ChannelBank
-from fiber.metrics import gate3a_condition, gate3a_verdict, paired_bootstrap
+from fiber.metrics import (gate3a_condition, gate3a_verdict, hierarchical_paired_bootstrap,
+                           paired_bootstrap)
 from fiber.utils.config import load_config
 from fiber.utils.logging import get_logger
 
 log = get_logger("eval")
 
 RANDOM_TYPES = {"haar", "signed_permutation", "hadamard", "random_householder"}
-PRIMARY_RANDOM_TYPE = "haar"      # the gate denominator (P0-2)
 DERIVED_TYPES = {"spectral_topk", "householder"}
 SANITY_TYPES = {"identity"}
 REFERENCE_TYPES = {"ddim_inversion_reference"}
+assert not (RANDOM_TYPES | DERIVED_TYPES) & REFERENCE_TYPES
 
 
-def load_runs(out_dir: Path, k: int | None) -> list[dict]:
+def load_runs(out_dir: Path, k: int) -> list[dict]:
     runs = []
     for jf in sorted(out_dir.glob("*.json")):
         meta = json.loads(jf.read_text())
-        if k is not None and meta["k"] != k:
+        if meta.get("k") != k or not jf.with_suffix(".npz").exists():
             continue
-        npz = jf.with_suffix(".npz")
-        if not npz.exists():
-            log.warning("%s has no arrays, skipping", jf.name)
-            continue
-        meta["_npz"] = npz
+        meta["_npz"] = jf.with_suffix(".npz")
         runs.append(meta)
     return runs
 
@@ -66,15 +63,14 @@ def per_sample(run: dict, split: str, attack: str):
         return z[key], z[f"{split}|{attack}|sample_ids"]
 
 
-def group_matrix(runs: list[dict], split: str, attacks: list[str], bank: ChannelBank):
-    """{run_stem: {group: per_sample_ber}} averaged over the attacks in a group,
+def group_matrix(runs, split, attacks, bank):
+    """{run_stem: {group: per-sample BER}} averaged over the attacks in a group and
     aligned across runs by sample_id."""
     groups = defaultdict(list)
     for a in attacks:
         groups[bank.group_of(a)].append(a)
     out, ref_ids = {}, None
     for run in runs:
-        stem = f"{run['arm']}_s{run['seed']}"
         per_group = {}
         for g, atts in groups.items():
             cols = []
@@ -90,7 +86,7 @@ def group_matrix(runs: list[dict], split: str, attacks: list[str], bank: Channel
                 cols.append(v)
             if cols:
                 per_group[g] = np.mean(cols, axis=0)
-        out[stem] = {"per_group": per_group, "run": run}
+        out[f"{run['arm']}_s{run['seed']}"] = {"per_group": per_group, "run": run}
     return out, sorted(groups)
 
 
@@ -98,186 +94,172 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="configs/linear_fiber.yaml")
     ap.add_argument("--tag", default="pilot")
-    ap.add_argument("--k", type=int, default=None)
     ap.add_argument("--split", default="test")
+    ap.add_argument("--selection", default=None)
+    ap.add_argument("--results-dir", default=None)
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
 
+    if args.split == "val":
+        raise SystemExit("val is the SELECTION split; run scripts/select_method.py. "
+                         "Evaluating the gate on val would defeat the lock (P0-3).")
+
     cfg = load_config(args.config)
     bank = ChannelBank(cfg)
-    out_dir = Path(cfg["paths"]["data_root"]) / "results" / args.tag
-    runs = load_runs(out_dir, args.k)
+    sel_path = Path(args.selection or (Path(cfg["paths"]["reports_dir"]) /
+                                       f"selection_{args.tag}.json"))
+    if not sel_path.exists():
+        raise SystemExit(
+            f"{sel_path} not found. Test evaluation is locked to a val-selected method "
+            "(P0-3): run scripts/select_method.py --tag " + args.tag + " first.")
+    sel = json.loads(sel_path.read_text())
+    locked_arm = sel["selected"]["arm"]
+    locked_k = int(sel["selected"]["k"])
+    ref_arm = sel["random_reference"]["arm"]
+
+    out_dir = Path(args.results_dir or (Path(cfg["paths"]["data_root"]) / "results" / args.tag))
+    runs = load_runs(out_dir, locked_k)
     if not runs:
-        raise SystemExit(f"no runs in {out_dir} (k={args.k})")
-    ks = sorted({r["k"] for r in runs})
-    log.info("%d runs, k in %s", len(runs), ks)
+        raise SystemExit(f"no runs at the locked k={locked_k} in {out_dir}")
+    mats, groups = group_matrix(runs, args.split, bank.eval, bank)
 
-    report: dict = {"tag": args.tag, "split": args.split, "k": args.k, "ks_present": ks}
-    lines: list[str] = []
-    lines.append(f"# FIBER results — `{args.tag}`, split `{args.split}`\n")
+    def stems_where(pred):
+        return [s for s, m in mats.items() if pred(m["run"])]
 
-    # ---------------- Phase 2: denominators, per k and per attack --------
-    lines.append("## Denominators (Phase 2)\n")
-    lines.append("Mean sign BER per attack. Chance is 0.5 by construction "
-                 "(`W ~ N(0,I)` so the sign bits are uniform).\n")
-    for k in ks:
-        rk = [r for r in runs if r["k"] == k]
-        attacks = bank.eval
-        lines.append(f"\n### k = {k}\n")
-        header = "| arm | seed | " + " | ".join(attacks) + " | mean |"
-        lines.append(header)
-        lines.append("|" + "---|" * (len(attacks) + 3))
-        has_ref = any(r["type"] in REFERENCE_TYPES for r in rk)
-        for r in sorted(rk, key=lambda r: (r["arm"], r["seed"])):
-            res = r["results"].get(args.split, {})
-            vals = [res.get(a, {}).get("sign_ber", float("nan")) for a in attacks]
-            mark = " †" if r["type"] in REFERENCE_TYPES else ""
-            lines.append(f"| {r['arm']}{mark} | {r['seed']} | " +
-                         " | ".join(f"{v:.4f}" for v in vals) +
-                         f" | {np.nanmean(vals):.4f} |")
-        if has_ref:
-            lines.append("\n† prompt-assisted DDIM inversion — **violates the receiver "
-                         "protocol** (it uses the prompt). Diagnostic only: it separates "
-                         "'weak channel' from 'weak extractor'. Never a baseline, never in a gate.")
+    locked_stems = stems_where(lambda r: r["arm"] == locked_arm)
+    haar_stems = stems_where(lambda r: r["arm"] == ref_arm)
+    if not locked_stems:
+        raise SystemExit(f"locked arm {locked_arm} has no runs on {args.split}")
+    if not haar_stems:
+        raise SystemExit(f"reference arm {ref_arm} has no runs on {args.split}")
+    control_stems = stems_where(lambda r: r["type"] in RANDOM_TYPES and r["arm"] != ref_arm)
 
-    # ---------------- Gates 3A / 3B -------------------------------------
-    k_gate = args.k or (ks[-1] if len(ks) == 1 else int(cfg["fiber"]["robust_dims"]))
-    gate_runs = [r for r in runs if r["k"] == k_gate]
-    mats, groups = group_matrix(gate_runs, args.split, bank.eval, bank)
+    report = {"tag": args.tag, "split": args.split, "k": locked_k,
+              "selection": {"file": str(sel_path), "arm": locked_arm,
+                            "commit": sel.get("commit"),
+                            "config_fingerprint": sel.get("config_fingerprint")},
+              "n_locked_seeds": len(locked_stems), "n_haar_draws": len(haar_stems)}
+    lines = [f"# FIBER — locked evaluation, `{args.tag}`, split `{args.split}`\n",
+             f"Method locked on **val** by `{sel_path.name}` "
+             f"(commit `{sel.get('commit')}`, config `{sel.get('config_fingerprint')}`):\n",
+             f"- locked arm: **{locked_arm}**, k = {locked_k}, "
+             f"seeds {sel['selected']['seeds']} (replications, never selected over)",
+             f"- denominator: **{ref_arm}** ({sel['random_reference']['type']}), "
+             f"seeds {sel['random_reference']['seeds']}\n",
+             "This script cannot choose any of the above; it reads them.\n"]
 
-    def stems_of(types):
-        return [s for s, m in mats.items() if m["run"]["type"] in types]
+    # ---------------- descriptive table (no selection happens here) -------
+    lines.append("## Per-arm sign BER (descriptive)\n")
+    header = "| arm | seed | " + " | ".join(bank.eval) + " | mean |"
+    lines.append(header)
+    lines.append("|" + "---|" * (len(bank.eval) + 3))
+    for stem in sorted(mats):
+        r = mats[stem]["run"]
+        res = r["results"].get(args.split, {})
+        vals = [res.get(a, {}).get("sign_ber", float("nan")) for a in bank.eval]
+        mark = " †" if r["type"] in REFERENCE_TYPES else (" **[locked]**" if r["arm"] == locked_arm else "")
+        lines.append(f"| {r['arm']}{mark} | {r['seed']} | " +
+                     " | ".join(f"{v:.4f}" for v in vals) + f" | {np.nanmean(vals):.4f} |")
+    if any(mats[s]["run"]["type"] in REFERENCE_TYPES for s in mats):
+        lines.append("\n† prompt-assisted DDIM inversion — **violates the receiver protocol**. "
+                     "Diagnostic only; never a baseline, never in a gate.")
 
-    # Reference runs are excluded from every gate by construction: they are not in
-    # RANDOM_TYPES or DERIVED_TYPES, and this assert keeps it that way.
-    assert not (RANDOM_TYPES | DERIVED_TYPES) & REFERENCE_TYPES
+    # ---------------- Gate 3A on the locked method ------------------------
+    provisional = args.tag != "full"
+    lines.append(f"\n## Gate 3A — locked method vs Haar (k = {locked_k})\n")
+    conditions = {}
+    for g in groups:
+        haar_draws = [mats[s]["per_group"][g] for s in haar_stems]
+        locked_seeds = [mats[s]["per_group"][g] for s in locked_stems]
+        reference = np.mean(haar_draws, axis=0)
+        treatment = np.mean(locked_seeds, axis=0)
+        cond = paired_bootstrap(reference, treatment,
+                                resamples=int(cfg["eval"]["bootstrap_resamples"]), seed=0)
+        hier = hierarchical_paired_bootstrap(haar_draws, locked_seeds,
+                                             resamples=2000, seed=0)
+        control_means = defaultdict(list)
+        for s in control_stems:
+            control_means[mats[s]["run"]["arm"]].append(float(mats[s]["per_group"][g].mean()))
+        controls = {a: float(np.mean(v)) for a, v in control_means.items()}
+        beaten_by = {a: m for a, m in controls.items() if m < float(treatment.mean())}
+        conditions[g] = {
+            **gate3a_condition(cond, cfg["gate3a"]),
+            "hierarchical_ci": [hier.ci_low, hier.ci_high],
+            "hierarchical_delta": hier.mean_delta,
+            "haar_spread": float(np.std([d.mean() for d in haar_draws])),
+            "controls": controls, "controls_beating_locked": beaten_by,
+        }
+    verdict = gate3a_verdict(conditions, cfg["gate3a"], provisional=provisional)
+    report["gate3a"] = {**verdict, "conditions": conditions}
 
-    random_stems, derived_stems = stems_of(RANDOM_TYPES), stems_of(DERIVED_TYPES)
-    lines.append(f"\n## Gate 3A — existence of observable coordinates (k = {k_gate})\n")
-
-    if not random_stems or not derived_stems:
-        lines.append("_Not enough arms yet: Gate 3A needs at least one random draw "
-                     "and one data-derived arm._\n")
-        report["gate3a"] = {"verdict": "NOT_RUN", "random_arms": random_stems,
-                            "derived_arms": derived_stems}
+    lines.append(f"**Verdict: {verdict['verdict']}** "
+                 f"({verdict['n_passed']}/{verdict['n_required']} channel groups"
+                 + (", provisional: a pilot may not close the question)" if provisional else ")") + "\n")
+    lines.append("| group | Haar E_Q[BER] | spread | locked BER | ΔBER | CI95 (paired) | "
+                 "CI95 (hierarchical) | rel | pass |")
+    lines.append("|" + "---|" * 9)
+    for g, c in conditions.items():
+        lines.append(
+            f"| {g} | {c['baseline']:.4f} | ±{c['haar_spread']:.4f} | {c['treatment']:.4f} | "
+            f"{c['mean_delta']:+.4f} | [{c['ci_low']:+.4f}, {c['ci_high']:+.4f}] | "
+            f"[{c['hierarchical_ci'][0]:+.4f}, {c['hierarchical_ci'][1]:+.4f}] | "
+            f"{c['relative_reduction']*100:.1f}% | {'yes' if c['passed'] else 'no'} |")
+    lines.append("\nThe paired interval is conditional on the Haar draws actually made; the "
+                 "hierarchical one resamples draws and seeds too, which is the interval that "
+                 "matches a claim about `E_{Q~Haar}[BER]`. Gate thresholds use the paired "
+                 "interval and the hierarchical one is reported beside it.\n")
+    flagged = {g: c["controls_beating_locked"] for g, c in conditions.items()
+               if c["controls_beating_locked"]}
+    if flagged:
+        lines.append("\n> **A control beats the locked arm.** If a structured random family "
+                     "is stronger than the data-derived one, the Haar comparison alone "
+                     "overstates the result.\n")
+        for g, ctrls in flagged.items():
+            lines.append(f">   - {g}: " + ", ".join(f"{a} {m:.4f}" for a, m in
+                                                    sorted(ctrls.items(), key=lambda x: x[1])))
+        lines.append("")
     else:
-        n_derived_arms = len({mats[s]["run"]["arm"] for s in derived_stems})
-        alpha = 0.05 / max(n_derived_arms, 1)     # the gate takes min over arms
-        by_family = defaultdict(list)
-        for s in random_stems:
-            by_family[mats[s]["run"]["arm"]].append(s)
-        haar_stems = [s for s in random_stems
-                      if mats[s]["run"]["type"] == PRIMARY_RANDOM_TYPE]
-        if not haar_stems:
-            raise SystemExit(
-                f"no {PRIMARY_RANDOM_TYPE} runs at k={k_gate}: Gate 3A's denominator is a "
-                "uniformly random subspace (P0-2). Run arm C2_haar before evaluating.")
+        lines.append("\nNo control family beat the locked arm in any group.\n")
 
-        conditions, per_arm = {}, defaultdict(dict)
+    # ---------------- Gate 3B — framing only ------------------------------
+    lines.append("\n## Gate 3B — learning vs characterisation (framing only)\n")
+    spectral = stems_where(lambda r: r["type"] == "spectral_topk")
+    learned = stems_where(lambda r: r["type"] == "householder")
+    if spectral and learned:
+        g3b = {}
         for g in groups:
-            rand_stack = np.stack([mats[s]["per_group"][g] for s in haar_stems])
-            # Denominator is the HAAR family, seed-averaged. Not "the strongest random
-            # family" -- that framing lets the gate quietly pick whichever null is
-            # hardest to beat, and it answers a weaker question. Controls are reported
-            # beside it and flagged if any of them beats the derived arm.
-            reference = rand_stack.mean(axis=0)
-            best_draw = float(rand_stack.mean(axis=1).min())
-            control_means = {a: float(np.mean([mats[s]["per_group"][g] for s in ss]))
-                             for a, ss in by_family.items()}
-            for s in derived_stems:
-                res = paired_bootstrap(reference, mats[s]["per_group"][g],
-                                       resamples=int(cfg["eval"]["bootstrap_resamples"]),
-                                       seed=0, alpha=alpha)
-                per_arm[g][s] = gate3a_condition(res, cfg["gate3a"])
-            best = min(per_arm[g], key=lambda s: mats[s]["per_group"][g].mean())
-            derived_ber = float(mats[best]["per_group"][g].mean())
-            beaten_by = {a: m for a, m in control_means.items() if m < derived_ber}
-            conditions[g] = {**per_arm[g][best], "selected_arm": best,
-                             "reference_family": PRIMARY_RANDOM_TYPE,
-                             "random_mean": float(reference.mean()),
-                             "random_spread": float(rand_stack.mean(axis=1).std()),
-                             "random_best_draw": best_draw,
-                             "n_random_draws": len(haar_stems),
-                             "control_means": control_means,
-                             "controls_beating_derived": beaten_by}
-        verdict = gate3a_verdict(conditions, cfg["gate3a"])
-        report["gate3a"] = {**verdict, "alpha_per_arm": alpha, "conditions": conditions}
+            sp = np.mean([mats[s]["per_group"][g] for s in spectral], axis=0)
+            le = np.mean([mats[s]["per_group"][g] for s in learned], axis=0)
+            r = paired_bootstrap(sp, le, resamples=2000, seed=0)
+            g3b[g] = r.as_dict()
+            lines.append(f"- **{g}**: certified-spectral {r.baseline:.4f} vs learned "
+                         f"{r.treatment:.4f} (Δ {r.mean_delta:+.4f}, "
+                         f"CI95 [{r.ci_low:+.4f}, {r.ci_high:+.4f}])")
+        wins = sum(1 for r in g3b.values() if r["ci_low"] > 0)
+        losses = sum(1 for r in g3b.values() if r["ci_high"] < 0)
+        story = ("direct optimisation improves discovery" if wins > losses else
+                 "the observability geometry is discoverable in closed form"
+                 if wins == losses else
+                 "trust the certified spectral result; the optimisation is the weak part")
+        lines.append(f"\nStory: _{story}_. Never a kill gate. Both families are compared as "
+                     "seed averages — best-seed selection is not available here.\n")
+        report["gate3b"] = {"per_group": g3b, "story": story}
+    else:
+        lines.append("_Needs both a certified-spectral and a learned arm._\n")
 
-        lines.append(f"**Verdict: {verdict['verdict']}** "
-                     f"({verdict['n_passed']}/{verdict['n_required']} channel groups, "
-                     f"Bonferroni alpha = {alpha:.3f} over {n_derived_arms} derived arms)\n")
-        lines.append("| group | reference family | E_Q[BER] | spread | best draw | derived | BER | ΔBER | CI95 | rel | pass |")
-        lines.append("|" + "---|" * 11)
-        for g, c in conditions.items():
-            lines.append(
-                f"| {g} | {c['reference_family']} | {c['random_mean']:.4f} | ±{c['random_spread']:.4f} | "
-                f"{c['random_best_draw']:.4f} | {c['selected_arm']} | {c['treatment']:.4f} | "
-                f"{c['mean_delta']:+.4f} | [{c['ci_low']:+.4f}, {c['ci_high']:+.4f}] | "
-                f"{c['relative_reduction']*100:.1f}% | {'yes' if c['passed'] else 'no'} |")
-        lines.append("\nThe denominator is the **Haar** family, seed-averaged: a uniformly "
-                     "random k-dimensional subspace is the null the claim is against. "
-                     "`derived > Hadamard` would only say the directions beat one structured "
-                     "family. The best single draw is context, not the reference — a gate "
-                     "against one lucky draw would be indefensible in either direction.\n")
-        flagged = {g: c["controls_beating_derived"] for g, c in conditions.items()
-                   if c["controls_beating_derived"]}
-        if flagged:
-            lines.append("\n> **A control beats the selected derived arm.** Reported here "
-                         "rather than buried: if a structured random family is stronger than "
-                         "the data-derived one, the Haar comparison alone overstates the "
-                         "result.\n")
-            for g, ctrls in flagged.items():
-                lines.append(f">   - {g}: " + ", ".join(f"{a} {m:.4f}" for a, m in
-                                                        sorted(ctrls.items(), key=lambda x: x[1])))
-            lines.append("")
-        else:
-            lines.append("\nNo control family beat the selected derived arm in any group.\n")
-        lines.append("\nThe gate needs all three of `CI95(Δ) > 0`, relative reduction ≥ "
-                     f"{cfg['gate3a']['target_relative_reduction']*100:.0f}%, absolute "
-                     f"reduction ≥ {cfg['gate3a']['min_absolute_reduction']}, in ≥ "
-                     f"{cfg['gate3a']['min_conditions_improved']} of 5 groups. The only kill "
-                     "condition is data-derived ≈ random.\n")
-
-        # ---- Gate 3B: framing only, never a kill gate
-        spectral = [s for s in derived_stems if mats[s]["run"]["type"] == "spectral_topk"]
-        learned = [s for s in derived_stems if mats[s]["run"]["type"] == "householder"]
-        lines.append("\n## Gate 3B — learning vs characterisation (framing only)\n")
-        if spectral and learned:
-            g3b = {}
-            for g in groups:
-                sp = np.mean([mats[s]["per_group"][g] for s in spectral], axis=0)
-                le = np.mean([mats[s]["per_group"][g] for s in learned], axis=0)
-                r = paired_bootstrap(sp, le, resamples=2000, seed=0)   # + => learned wins
-                g3b[g] = r.as_dict()
-                lines.append(f"- **{g}**: spectral {r.baseline:.4f} vs learned "
-                             f"{r.treatment:.4f} (Δ {r.mean_delta:+.4f}, "
-                             f"CI95 [{r.ci_low:+.4f}, {r.ci_high:+.4f}])")
-            wins = sum(1 for r in g3b.values() if r["ci_low"] > 0)
-            losses = sum(1 for r in g3b.values() if r["ci_high"] < 0)
-            story = ("learning robust communication coordinates" if wins > losses else
-                     "the Generative Observability Spectrum is discoverable in closed form"
-                     if wins == losses else
-                     "believe the spectral result; the optimisation is the weak part")
-            lines.append(f"\nStory: _{story}_. None of these outcomes stops the project.\n")
-            report["gate3b"] = {"per_group": g3b, "story": story}
-        else:
-            lines.append("_Needs both a spectral and a learned arm._\n")
-
-    # identity, for context only
-    ident = [r for r in gate_runs if r["type"] in SANITY_TYPES]
+    ident = [s for s in mats if mats[s]["run"]["type"] in SANITY_TYPES]
     if ident:
-        m = np.mean([np.mean([v["sign_ber"] for v in r["results"][args.split].values()])
-                     for r in ident])
+        m = float(np.mean([np.mean(list(mats[s]["per_group"].values())) for s in ident]))
         lines.append(f"\n> Identity arm mean sign BER: {m:.4f} — sanity only. Identity loses "
                      "to any global transform for a trivial locality reason (R1) and is "
                      "excluded from every gate.\n")
 
     out = Path(args.out or (Path(cfg["paths"]["reports_dir"]) /
-                            f"results_{args.tag}_{args.split}.md"))
+                            f"gate3_{args.tag}_{args.split}.md"))
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text("\n".join(lines) + "\n")
     out.with_suffix(".json").write_text(json.dumps(report, indent=2, default=float))
-    log.info("wrote %s", out)
+    log.info("%s -> %s", verdict["verdict"], out)
     return 0
 
 

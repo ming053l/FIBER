@@ -73,9 +73,14 @@ done
 echo "===== Prompt-assisted reference (diagnostic only; violates the protocol) ====="
 run python scripts/ddim_reference.py --tag "$TAG" --arm C_hadamard --k "$K" --limit 128
 
-echo "===== Gates ====="
-run python scripts/eval_coordinates.py --tag "$TAG" --k "$K" --split test
-run python scripts/eval_coordinates.py --tag "$TAG" --k "$K" --split test_heldout_prompts
+echo "===== Selection (VAL only) — everything choosable is chosen here ====="
+run python scripts/select_method.py --tag "$TAG"
+
+echo "===== Gates (TEST, locked) ====="
+# eval_coordinates cannot pick the family, the seed, k or the reference: it reads
+# reports/selection_$TAG.json and refuses to run without it (P0-3).
+run python scripts/eval_coordinates.py --tag "$TAG" --split test
+run python scripts/eval_coordinates.py --tag "$TAG" --split test_heldout_prompts
 
 if [ ${#failed[@]} -gt 0 ]; then
   echo "===== ${#failed[@]} step(s) failed ====="

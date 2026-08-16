@@ -426,8 +426,23 @@ learn it before spending Phase 3.
 
 ### Gate 3A — Existence of observable coordinates *(the scientific gate)*
 
+**Selection is locked before test is touched (P0-3).** Everything choosable — the
+data-derived family, `k`, hyperparameters, which seeds count as replications — is
+decided on `val` by `scripts/select_method.py`, which writes
+`reports/selection_<tag>.json` with the commit SHA and config fingerprint.
+`scripts/eval_coordinates.py` then *reads* that artifact and refuses to run without it;
+it cannot select a family, a seed, a `k` or a reference, and it refuses `--split val`.
+Seeds are replications, never a selection axis: metrics are seed-averaged before the
+bootstrap. `tests/test_locked_selection.py` constructs artifacts where the val winner
+and the test winner are different arms and asserts the locked one is reported.
+
+Two intervals are reported. The **paired** bootstrap on seed-averaged metrics is
+conditional on the Haar draws actually made and carries the gate thresholds; the
+**hierarchical** bootstrap additionally resamples the Haar draws and training seeds and
+is the interval matching a claim about `E_{Q~Haar}[BER]`.
+
 ```
-min( BER_spectral , BER_learned )  <  BER_random
+BER_locked  <  BER_Haar
 ```
 
 with, in **≥3 of 5** channel groups, all of:
@@ -439,6 +454,8 @@ with, in **≥3 of 5** channel groups, all of:
 | absolute reduction | ≥ **0.02** |
 
 Both thresholds are required so that `0.005 → 0.004` cannot be sold as "20 % better".
+A pilot run may only return `PROVISIONAL_PASS` / `PROVISIONAL_FAIL` / `INCONCLUSIVE`;
+`PASS` and `KILL` require the full protocol.
 Paired bootstrap, not CI overlap: every arm is evaluated on the *same*
 `(z_i, prompt_i, attack_i)`, so the paired difference is the correct statistic.
 Held-out latents **and** held-out prompts. Orthogonality asserted: `‖QᵀQ − I‖_∞ < 1e-5`.

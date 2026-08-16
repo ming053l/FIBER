@@ -52,7 +52,10 @@ def main() -> int:
     ap.add_argument("--epochs", type=int, default=None)
     ap.add_argument("--discovery-epochs", type=int, default=None)
     ap.add_argument("--batch-size", type=int, default=None)
-    ap.add_argument("--eval-splits", nargs="*", default=["test", "test_heldout_prompts"])
+    # val is evaluated too, because ALL model selection happens there (P0-3) and the
+    # test evaluation is not allowed to choose anything.
+    ap.add_argument("--eval-splits", nargs="*",
+                    default=["val", "test", "test_heldout_prompts"])
     # Overrides for smoke-testing the pipeline before the full cache exists.
     # Leave them alone for real runs: the cross-fit protocol is the experiment.
     ap.add_argument("--train-split", default="train")
