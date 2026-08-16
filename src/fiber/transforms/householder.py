@@ -118,11 +118,13 @@ class FrozenHouseholderOnHaarFrame(HouseholderFrame):
     move it by only ~sqrt(m)*2/sqrt(d) = 0.18; reaching a Haar-like draw would need
     m ~ d/4 = 4096. So this control behaves like arm A, and PLAN.md R1 applies to it.
 
-    This is a statement about the INITIALISATION, not about capacity: m >= k
-    Householder reflections can represent any k-frame exactly. But it means the
-    LEARNED arm starts essentially at identity -- the one starting point R1 says is
-    bad for a trivial locality reason -- so an arm-E failure would be confounded with
-    a poor init. See PLAN.md and the P0-4 entry in reports/p0_fix_plan.md.
+    This concerns the INITIALISATION, not representational capacity: the reflector
+    count controls the expressivity of the learned frame, and `scripts/audit_reflector_
+    capacity.py` (B3) audits empirically whether the configured count suffices at each
+    k rather than asserting a theorem without a citation. What it does mean is that the
+    LEARNED arm starts essentially at identity -- the one starting point R1 says is bad
+    for a trivial locality reason -- so an arm-E failure would be confounded with a poor
+    init. See PLAN.md and the P0-4 entry in reports/p0_fix_plan.md.
     """
 
     def __init__(self, d: int, k: int, num_reflectors: int = 128, seed: int = 0, **kw):

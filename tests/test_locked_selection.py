@@ -418,3 +418,36 @@ def test_structural_seeds_are_weighted_equally_regardless_of_replication_count(t
     assert abs(cand["val_sign_ber"] - 0.45) < 0.005, \
         f"flat file average leaked in: {cand['val_sign_ber']:.4f}"
     assert abs(cand["val_sign_ber_per_structure_seed"]["0"] - 0.40) < 0.005
+
+
+def test_run_stem_separates_the_analysis_scope():
+    """The remaining collision: the P0-7 basis analysis reruns D_spectral at the SAME
+    arm, k, seed, architecture and receiver seed as the Gate run. Without the scope in
+    the stem it overwrote the Gate run and flipped its analysis_scope, after which the
+    selector -- which reads gate scope only -- would have lost that seed entirely."""
+    gate = _run_stem("D_spectral", 64, 0, "resnet18", 0, "gate")
+    basis = _run_stem("D_spectral", 64, 0, "resnet18", 0, "p0_7_basis")
+    control = _run_stem("D_spectral", 64, 0, "resnet18", 0, "receiver_control")
+    assert len({gate, basis, control}) == 3
+    assert gate.endswith("_scgate")
+
+
+def test_same_unit_in_two_scopes_coexists_and_only_gate_is_selected(tmp_path):
+    d = tmp_path / "results"
+    d.mkdir()
+    _scoped_run(d, "C2_haar", "haar", 0, 0.50, 0.50)
+    gate = _scoped_run(d, "D_spectral_gate", "spectral_topk", 0, 0.40, 0.40, scope="gate")
+    basis = _scoped_run(d, "D_spectral_basis", "spectral_topk", 0, 0.05, 0.05,
+                        scope="p0_7_basis")
+    for jf, arm in ((gate, "D_spectral"), (basis, "D_spectral")):
+        blob = json.loads(jf.read_text())
+        blob["arm"] = arm
+        jf.write_text(json.dumps(blob))
+    assert gate.exists() and basis.exists(), "the two scopes did not coexist"
+
+    sel = tmp_path / "selection.json"
+    assert _run("select_method.py", "--tag", "unit", "--results-dir", str(d),
+                "--out", str(sel)).returncode == 0
+    cand = next(c for c in json.loads(sel.read_text())["candidates"]
+                if c["arm"] == "D_spectral")
+    assert abs(cand["val_sign_ber"] - 0.40) < 0.02, "a p0_7_basis run entered the Gate pool"

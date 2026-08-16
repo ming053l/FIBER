@@ -34,15 +34,21 @@ log = get_logger("arm")
 BASIS_ONLY_TYPES = {"rotated_random", "rotated_learned"}
 
 
-def run_stem(arm: str, k: int, seed: int, extractor_arch: str, receiver_seed: int) -> str:
-    """A run's identity is (arm, k, structure seed, receiver architecture, receiver seed).
+def run_stem(arm: str, k: int, seed: int, extractor_arch: str, receiver_seed: int,
+             scope: str = "gate") -> str:
+    """A run's identity is (arm, k, structure seed, receiver architecture, receiver seed,
+    analysis scope). Anything less and runs overwrite each other on disk.
 
-    Anything less and runs overwrite each other on disk. Concretely, before this the
-    P0-5 receiver control reran C2/D/E at seed 0 with `--extractor-arch spatial` under
-    the SAME stem as the primary receiver, so it silently replaced the Gate runs and the
-    selector then treated a spatial-receiver result as a replication of the ResNet one.
+    Two collisions this has already had to fix:
+      * the P0-5 receiver control reran C2/D/E at seed 0 with `--extractor-arch spatial`
+        under the same stem as the primary receiver, silently replacing the Gate runs;
+      * the P0-7 basis analysis reruns D_spectral at seed 0 with receiver seed 0 -- the
+        same arm, k, seed, architecture and receiver as the Gate run. Without the scope
+        in the stem it overwrote the Gate run AND flipped its analysis_scope to
+        p0_7_basis, at which point the selector skips it and the Gate loses that seed
+        entirely.
     """
-    return f"{arm}_k{k}_s{seed}_rx{extractor_arch}_r{receiver_seed}"
+    return f"{arm}_k{k}_s{seed}_rx{extractor_arch}_r{receiver_seed}_sc{scope}"
 
 
 def build_arm_frame(cfg, arm: str, k: int, seed: int, tag: str, d: int):
@@ -196,7 +202,7 @@ def main() -> int:
 
     out_dir = Path(cfg["paths"]["data_root"]) / "results" / args.tag
     out_dir.mkdir(parents=True, exist_ok=True)
-    stem = run_stem(args.arm, k, args.seed, tcfg.extractor_arch, receiver_seed)
+    stem = run_stem(args.arm, k, args.seed, tcfg.extractor_arch, receiver_seed, scope)
     np.savez_compressed(out_dir / f"{stem}.npz", **arrays)
     rows = frame.rows().detach().cpu().contiguous()
     rows_digest = hashlib.blake2s(rows.numpy().tobytes(), digest_size=16).hexdigest()
