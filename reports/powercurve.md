@@ -330,10 +330,22 @@ The empirical null reproduces the analytic reference: mean 0.00393 against
 `1/(n-1) = 0.00392`, maximum absolute difference 0.00009 over 36 runs. So `1/(n-1)` was
 in fact adequate here — but that is now a measurement rather than an assumption.
 
+p-values use `(1 + #{T_perm >= T_obs}) / (B + 1)`, not `#/B`: with a finite number of
+permutations the plain ratio can report `p = 0`, which claims more than B draws support,
+and the observed statistic is itself one valid arrangement. The floor here is
+`1/2001 = 0.0005`.
+
 Across all 36 runs, 3 have `p < 0.05` against 1.8 expected by chance. Bonferroni over 36
-tests puts the threshold at 0.0014 and none of the three approaches it (smallest
-p = 0.013). Of those three, the smallest is **C2_haar** at k=8 seed 2 — the random
-reference — and its sign BER is 0.5040, worse than chance.
+tests puts the threshold at 0.00139 and **none of the three reaches it**:
+
+| arm | k | seed | N | observed | p |
+|---|---|---|---|---|---|
+| C2_haar | 8 | 2 | full | 0.00910 | 0.0135 |
+| D_spectral | 64 | 0 | 300 | 0.00548 | 0.0155 |
+| D_spectral | 16 | 1 | full | 0.00638 | 0.0425 |
+
+The smallest is **C2_haar** — the random reference — and its sign BER is 0.5040, worse
+than chance.
 
 | arm | k | seed | observed | perm null | perm sd | p |
 |---|---|---|---|---|---|---|

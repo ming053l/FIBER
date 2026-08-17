@@ -145,7 +145,12 @@ def main() -> int:
                      "perm_null_mean": float(null.mean()),
                      "perm_null_sd": float(null.std(ddof=1)),
                      "perm_null_q95": float(np.quantile(null, 0.95)),
-                     "p_one_sided": float((null >= obs).mean()),
+                     # (1 + #{T_pi >= T_obs}) / (B + 1), not #/B: with a finite
+                     # number of permutations the plain ratio can report p = 0, which
+                     # claims more than B draws can support. The observed statistic is
+                     # itself one valid arrangement, so it belongs in the count.
+                     "p_one_sided": float((1 + (null >= obs).sum()) / (args.perms + 1)),
+                     "p_rule": "(1 + #{T_perm >= T_obs}) / (B + 1)",
                      "perms": args.perms})
         log.info("%-46s obs %.5f  perm-null %.5f +- %.5f  p=%.3f  analytic %.5f",
                  rows[-1]["stem"][:46], obs, null.mean(), null.std(ddof=1),

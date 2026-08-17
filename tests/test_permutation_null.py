@@ -86,3 +86,19 @@ def test_the_null_width_scales_with_k_as_the_reported_spreads_did(k):
     null = permutation_null(_pure_noise(rng, k=k), 400, rng)
     assert abs(null.mean() - 1 / (N - 1)) < 0.0005
     assert null.std(ddof=1) > 0
+
+
+def test_the_p_value_can_never_be_exactly_zero():
+    """(1 + #) / (B + 1), not # / B. With B draws, p = 0 claims more than the draws can
+    support -- and the observed statistic is itself one valid arrangement, so it counts."""
+    rng = np.random.default_rng(6)
+    data = _pure_noise(rng)
+    # a statistic no permutation can reach
+    obs = 1e9
+    B = 200
+    null = permutation_null(data, B, rng)
+    naive = float((null >= obs).mean())
+    corrected = float((1 + (null >= obs).sum()) / (B + 1))
+    assert naive == 0.0
+    assert corrected == pytest.approx(1 / (B + 1))
+    assert 0 < corrected <= 1

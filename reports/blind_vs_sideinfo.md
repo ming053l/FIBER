@@ -110,32 +110,60 @@ If the experiment returns `D_bs >> D_bb`, the first question asked will be wheth
 conditioning helped or whether the larger model simply learned more easily. Without an
 answer prepared in advance, the number is not interpretable and should not be produced.
 
-The control that isolates information from capacity is a **shuffled-conditioning
-placebo**: the same architecture, fed `S` from a DIFFERENT sample.
+The control that isolates information from capacity is a shuffled-conditioning placebo.
+But `f(Y)` and `f(Y, S)` still differ in architecture, so three arms leave the
+capacity step and the distribution step tangled. **Four arms**, each isolating one thing:
 
-    blind                 f(Y)
-    capacity-matched      f(Y, S_shuffled)     S permuted across the split
-    true side information  f(Y, S_correct)
+| arm | input | isolates |
+|---|---|---|
+| `f(Y)` | image only | the legacy blind reference |
+| `f(Y, S_null)` | side architecture, a **fixed** conditioning (null token / global mean) | architecture and capacity alone — no sample-specific information of any kind |
+| `f(Y, S_shuffled)` | side architecture, the empirical `S` marginal, wrong pairing | having the real conditioning *distribution* without the pairing |
+| `f(Y, S_correct)` | side architecture, correct `S` | the paired side-information effect |
 
-Across the second and third arms the architecture, the input dimensionality, the
-parameter count, the optimiser and the budget are identical. The single difference is
-whether `S` is correctly paired with `(Y, Z)`. The hierarchy to look for is
+so each step answers one question:
 
-    (Y, S_shuffled) ~ Y     and     (Y, S_correct) >> (Y, S_shuffled)
+    f(Y)            -> f(Y, S_null)        architecture / capacity effect
+    f(Y, S_null)    -> f(Y, S_shuffled)    real conditioning distribution, no pairing
+    f(Y, S_shuffled)-> f(Y, S_correct)     PAIRED side information -- the quantity of interest
 
-which cannot be explained by capacity, because the placebo has all of it and none of the
-information. The converse pattern — the placebo already gaining over blind — would say
-the extra width alone is doing work, and the side arm's number could not then be read as
-an information effect at all.
+`S_null` must be registered in advance (a null token, or the split's mean conditioning),
+not chosen once the numbers are in. Architecture, input dimensionality, parameter count,
+optimiser and budget are identical across the last three.
+
+The pattern that would support a side-information effect is a flat first two steps and a
+large third. The converse — a gain already at `f(Y, S_null)` — would say the extra width
+alone is doing work, and no arm's number could then be read as an information effect.
 
 Note this is the same logical shape as the P0-5 receiver control (which isolated the
 pooling architecture from the frame) and the C3 frozen-Householder arm (which isolated
 the parameterisation from the learning). It is not a new kind of control for this project,
 which is a good sign.
 
-The permutation must be **within the split and applied once**, frozen like any other
-protocol choice, so a "placebo" is not silently re-randomised each epoch into an easier
-noise-averaging task.
+### The shuffle must be a different-conditioning derangement
+
+`pi(i) != i` is **not** enough. If two samples share a conditioning, `S_pi(i)` can equal
+`S_i` and the "placebo" is then fed correct side information for those samples — the
+control silently leaks the thing it exists to withhold. The requirement is on the value,
+not the index:
+
+    S_pi(i) != S_i      for every i,   not merely   pi(i) != i
+
+Implementation: digest each conditioning tensor, then draw a derangement constrained on
+digests — within the split, fixed seed, and the realised permutation written into the run
+manifest so the placebo is auditable rather than re-derivable-in-principle. If no valid
+derangement exists (a split dominated by one conditioning), that must fail loudly, not
+fall back to an ordinary shuffle.
+
+Measured on the current pilot index: 2000 train samples, 2000 distinct prompts, maximum
+repeat count 1 — so today the guard degenerates to an ordinary derangement. That is a
+property of the config (`sample_prompts` draws without replacement, one prompt per
+sample) and not a law; a smaller `num_train_prompts` would reintroduce collisions, which
+is exactly when a silent fallback would be most damaging.
+
+The permutation must also be **applied once and frozen**, like any other protocol choice.
+Re-randomising each epoch turns the placebo into an easier noise-averaging task, and it
+could then beat the blind arm for a reason that has nothing to do with information.
 
 ## Not yet decided
 
