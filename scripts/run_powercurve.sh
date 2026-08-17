@@ -35,6 +35,14 @@ DEV=${DEV:-cuda:0}
 cd "$(dirname "$0")/.."
 export PYTHONPATH=src
 
+# Fail on the first line rather than 18 times: a missing environment otherwise produces
+# a full sweep of instant failures that the loop below would report one by one and then
+# still finish with "done".
+python -c "import numpy, torch, fiber" 2>/dev/null || {
+  echo "environment not ready (numpy/torch/fiber not importable). Activate the conda"
+  echo "environment first; PYTHONPATH=src alone is not enough."; exit 2; }
+FAILURES=0
+
 # N -> epochs, chosen so epochs * ceil(N/16) ~= 2320
 declare -A EPOCHS=( [100]=331 [300]=122 [928]=40 )
 
@@ -46,8 +54,12 @@ for N in 100 300 928; do
         --tag "$TAG" --cache-tag "$CACHE" --arm "$ARM" --seed 0 --k "$K" \
         --subset-size "$N" --subset-seed "$S" --receiver-seed "$S" \
         --scope powercurve --epochs "${EPOCHS[$N]}" \
-        --device "$DEV" || echo "FAILED N=$N $ARM s=$S"
+        --device "$DEV" || { FAILURES=$((FAILURES+1)); echo "FAILED N=$N $ARM s=$S"; }
     done
   done
 done
+if [ "$FAILURES" -ne 0 ]; then
+  echo "$FAILURES runs FAILED -- the sweep is incomplete and must not be read as one"
+  exit 1
+fi
 echo "done"

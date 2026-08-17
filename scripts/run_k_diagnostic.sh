@@ -13,6 +13,14 @@ DEV=${DEV:-cuda:0}
 cd "$(dirname "$0")/.."
 export PYTHONPATH=src
 
+# Fail on the first line rather than 18 times: a missing environment otherwise produces
+# a full sweep of instant failures that the loop below would report one by one and then
+# still finish with "done".
+python -c "import numpy, torch, fiber" 2>/dev/null || {
+  echo "environment not ready (numpy/torch/fiber not importable). Activate the conda"
+  echo "environment first; PYTHONPATH=src alone is not enough."; exit 2; }
+FAILURES=0
+
 for K in 8 16 64; do
   for ARM in C2_haar D_spectral; do
     for S in 0 1 2; do
@@ -20,8 +28,12 @@ for K in 8 16 64; do
       python -W ignore scripts/train_coordinates.py \
         --tag "$TAG" --cache-tag "$CACHE" --arm "$ARM" --seed 0 --k "$K" \
         --receiver-seed "$S" --scope powercurve --epochs 40 \
-        --device "$DEV" || echo "FAILED k=$K $ARM s=$S"
+        --device "$DEV" || { FAILURES=$((FAILURES+1)); echo "FAILED k=$K $ARM s=$S"; }
     done
   done
 done
+if [ "$FAILURES" -ne 0 ]; then
+  echo "$FAILURES runs FAILED -- the sweep is incomplete and must not be read as one"
+  exit 1
+fi
 echo "done"
