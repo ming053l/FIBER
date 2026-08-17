@@ -55,6 +55,44 @@ def config_fingerprint(cfg) -> str:
     return hashlib.blake2s(blob, digest_size=8).hexdigest()
 
 
+class SyntheticGenerator:
+    """A stand-in for FrozenGenerator that makes pixels out of z arithmetically.
+
+    It exists so the whole protocol -- caching, the --post-lock gate, training,
+    selection, the lock, the test materialisation, the locked evaluation and the gate --
+    can be exercised end to end on a CPU in under a minute. NOTHING it produces is
+    evidence about the diffusion channel, and every artifact it touches is stamped
+    `synthetic_pixels: true` so a dry-run result cannot be mistaken for one later.
+
+    z is drawn exactly as the real generator draws it (same derive_seed, same CPU
+    randn, same dtype rounding), so split disjointness and the W = Rz target are real.
+    Only G is fake, and it is deliberately a LOSSY function of z -- upsampled, offset by
+    a prompt-dependent constant, clipped and quantised to uint8 -- so the recoverable
+    information is partial rather than trivially perfect.
+    """
+
+    def __init__(self, cfg):
+        lc = cfg["latent"]
+        self.latent_shape = (int(lc["channels"]), int(lc["height"]), int(lc["width"]))
+        self.res = int(cfg["model"]["resolution"])
+        self.dtype = torch.float16 if cfg["model"]["dtype"] == "float16" else torch.float32
+
+    def sample_latent(self, *seed_parts, batch: int = 1) -> torch.Tensor:
+        g = torch.Generator(device="cpu").manual_seed(derive_seed(*seed_parts) % (2**63 - 1))
+        z = torch.randn(batch, *self.latent_shape, generator=g, dtype=torch.float32)
+        return z.to(self.dtype).float()
+
+    def generate(self, z: torch.Tensor, prompts) -> np.ndarray:
+        if z.dim() == 3:
+            z = z.unsqueeze(0)
+        img = torch.nn.functional.interpolate(z[:, :3], size=(self.res, self.res),
+                                              mode="bilinear", align_corners=False)
+        off = torch.tensor([[(int(hashlib.blake2s(p.encode(), digest_size=2).hexdigest(), 16)
+                              % 64) - 32] for p in prompts], dtype=torch.float32)
+        img = 128.0 + 48.0 * img + off[:, :, None, None]
+        return img.clamp(0, 255).to(torch.uint8).permute(0, 2, 3, 1).numpy()
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="configs/linear_fiber.yaml")
@@ -69,6 +107,10 @@ def main() -> int:
     ap.add_argument("--batch", type=int, default=8)
     ap.add_argument("--shard-size", type=int, default=500)
     ap.add_argument("--limit", type=int, default=0, help="debug: stop after N images/split")
+    ap.add_argument("--synthetic", action="store_true",
+                    help="PLUMBING ONLY: make pixels arithmetically instead of loading "
+                         "the diffusion model. Every artifact is stamped "
+                         "synthetic_pixels so it cannot be read as evidence.")
     args = ap.parse_args()
 
     cfg = load_config(args.config)
@@ -86,7 +128,10 @@ def main() -> int:
     log.info("index ok: %s", report["counts"])
 
     fingerprint = config_fingerprint(cfg)
-    gen = FrozenGenerator(GeneratorSpec.from_config(cfg), cfg["latent"])
+    gen = (SyntheticGenerator(cfg) if args.synthetic
+           else FrozenGenerator(GeneratorSpec.from_config(cfg), cfg["latent"]))
+    if args.synthetic:
+        log.warning("SYNTHETIC pixels: this cache is a plumbing fixture, not evidence")
     splits = args.splits or sorted({r.split for r in records})
     test_splits = [s for s in splits if s.startswith("test")]
     if test_splits and not args.post_lock:
@@ -176,6 +221,7 @@ def main() -> int:
             # batched matmuls reduce in a different order at a different batch size,
             # so re-generating at another batch does NOT reproduce these pixels.
             done.write_text(json.dumps({"n": n, "shard_size": args.shard_size,
+                                        "synthetic_pixels": bool(args.synthetic),
                                         "batch": args.batch, "fingerprint": fingerprint,
                                         # written only here, when the pixels were made
                                         "selection_sha": lock_sha if split.startswith("test") else None,
@@ -186,6 +232,9 @@ def main() -> int:
 
     manifest = {
         "tag": tag,
+        # Read by the locked evaluator, which refuses to produce a gate artifact from
+        # synthetic pixels unless the run is explicitly declared a dry run.
+        "synthetic_pixels": bool(args.synthetic),
         "config": str(cfg["_config_path"]),
         "config_fingerprint": fingerprint,
         "counts": report["counts"],

@@ -184,8 +184,23 @@ def main() -> int:
         tc = json.loads(cache_manifest.read_text())
         # Every shard must carry the binding, not just the manifest: a manifest can be
         # rewritten over skipped pixels, a per-shard marker written at generation cannot.
-        test_cache_post_lock = (tc.get("selection_sha") == file_digest(sel_path)
-                                and tc.get("generated_after_lock") is True
+        # Fail closed on a MISMATCH, rather than downgrading the claim to False. The
+        # test pixels carry a cryptographic binding to the lock bytes they were
+        # generated under; if the lock no longer hashes to that, the lock changed after
+        # the test set was materialised. Recording False would let an edited lock
+        # through with nothing but a quieter boolean to show for it -- measured: editing
+        # selection_<tag>.json before this step used to exit 0.
+        # Having NO manifest at all stays legitimate: that is test pixels generated
+        # pre-lock, the weaker "never accessed" claim, and it is reported as such.
+        if tc.get("selection_sha") != file_digest(sel_path):
+            raise SystemExit(
+                f"{cache_manifest} binds the test pixels to selection_sha "
+                f"{tc.get('selection_sha')}, but {sel_path.name} now hashes to "
+                f"{file_digest(sel_path)}. The lock changed after the test set was "
+                "generated.\nRegenerate the test pixels under the current lock "
+                "(scripts/cache_native_dataset.py --post-lock), or delete this manifest "
+                "deliberately to fall back to the weaker 'never accessed' claim.")
+        test_cache_post_lock = (tc.get("generated_after_lock") is True
                                 and not tc.get("shards_not_bound_to_this_lock"))
     bank = ChannelBank(cfg)
     if locked_attacks:
