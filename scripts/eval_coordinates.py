@@ -230,6 +230,16 @@ def main() -> int:
                             "locked_runs": [e["stem"] for e in sel["selected_runs"]],
                             "locked_reference_runs": [e["stem"] for e in sel["reference_runs"]]},
               "n_locked_seeds": len(locked_stems), "n_haar_draws": len(haar_stems)}
+    sc = sel.get("seed_completeness", {})
+    incomplete_banner = []
+    if sc and not sc.get("complete", True):
+        detail = "; ".join(f"{a} missing {s}" for a, s in sc.get("missing", {}).items())
+        incomplete_banner = [
+            "\n> **Registered seeds are missing:** " + detail + ".",
+            "> The lock was taken with `--allow-incomplete`, so these numbers average "
+            "the seeds that survived. A seed that crashed or was deleted stops counting, "
+            "which biases every arm it belonged to.\n"]
+
     lines = [f"# FIBER — locked evaluation, `{args.tag}`, split `{args.split}`\n",
              f"Method locked on **val** by `{sel_path.name}` "
              f"(commit `{sel.get('commit')}`, config `{sel.get('config_fingerprint')}`):\n",
@@ -239,7 +249,8 @@ def main() -> int:
              f"seeds {sel['random_reference']['seeds']}",
              f"- exact locked runs: `{', '.join(e['stem'] for e in sel['selected_runs'])}`",
              f"- exact reference runs: `{', '.join(e['stem'] for e in sel['reference_runs'])}`\n",
-             "This script cannot choose any of the above; it reads them.\n"]
+             "This script cannot choose any of the above; it reads them.\n",
+             *incomplete_banner]
 
     # ---------------- descriptive table (no selection happens here) -------
     lines.append("## Per-arm sign BER (descriptive)\n")

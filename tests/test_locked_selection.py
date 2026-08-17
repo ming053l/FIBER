@@ -108,7 +108,7 @@ def _test_manifest(dirpath: Path, sel: Path) -> Path:
 def test_selection_picks_the_val_winner(crossed_runs, tmp_path):
     sel = tmp_path / "selection.json"
     p = _run("select_method.py", "--tag", "unit", "--results-dir", str(crossed_runs),
-             "--out", str(sel))
+             "--out", str(sel), "--allow-incomplete")
     assert p.returncode == 0, p.stderr
     blob = json.loads(sel.read_text())
     assert blob["selected"]["arm"] == "D_spectral"
@@ -120,7 +120,7 @@ def test_test_evaluation_reports_the_val_winner_not_the_test_winner(crossed_runs
     must still not be the reported method."""
     sel = tmp_path / "selection.json"
     assert _run("select_method.py", "--tag", "unit", "--results-dir", str(crossed_runs),
-                "--out", str(sel)).returncode == 0
+                "--out", str(sel), "--allow-incomplete").returncode == 0
     out = tmp_path / "gate.md"
     p = _run("eval_coordinates.py", "--tag", "unit", "--results-dir", str(crossed_runs),
              "--selection", str(sel), "--split", "test", "--out", str(out),
@@ -157,7 +157,7 @@ def test_selection_cannot_read_a_test_key():
 def test_selection_records_provenance(crossed_runs, tmp_path):
     sel = tmp_path / "selection.json"
     _run("select_method.py", "--tag", "unit", "--results-dir", str(crossed_runs),
-         "--out", str(sel))
+         "--out", str(sel), "--allow-incomplete")
     blob = json.loads(sel.read_text())
     for key in ("commit", "config_fingerprint", "written_at", "selection_rule", "locked"):
         assert key in blob
@@ -182,7 +182,7 @@ def test_gate_denominator_is_the_haar_family_not_its_best_draw(crossed_runs, tmp
     """Point 6 of the audit: no picking a lucky or unlucky Haar draw on test."""
     sel = tmp_path / "selection.json"
     _run("select_method.py", "--tag", "unit", "--results-dir", str(crossed_runs),
-         "--out", str(sel))
+         "--out", str(sel), "--allow-incomplete")
     out = tmp_path / "gate.md"
     _run("eval_coordinates.py", "--tag", "unit", "--results-dir", str(crossed_runs),
          "--selection", str(sel), "--split", "test", "--out", str(out),
@@ -197,7 +197,7 @@ def test_pilot_verdict_cannot_be_a_final_kill(crossed_runs, tmp_path):
     """Secondary cleanup C: a rehearsal may not close the scientific question."""
     sel = tmp_path / "selection.json"
     _run("select_method.py", "--tag", "unit", "--results-dir", str(crossed_runs),
-         "--out", str(sel))
+         "--out", str(sel), "--allow-incomplete")
     out = tmp_path / "gate.md"
     _run("eval_coordinates.py", "--tag", "unit", "--results-dir", str(crossed_runs),
          "--selection", str(sel), "--split", "test", "--out", str(out),
@@ -211,7 +211,7 @@ def test_hierarchical_interval_is_reported_beside_the_paired_one(crossed_runs, t
     """Haar draws are themselves a sample; the claim is about E_Q[BER]."""
     sel = tmp_path / "selection.json"
     _run("select_method.py", "--tag", "unit", "--results-dir", str(crossed_runs),
-         "--out", str(sel))
+         "--out", str(sel), "--allow-incomplete")
     out = tmp_path / "gate.md"
     _run("eval_coordinates.py", "--tag", "unit", "--results-dir", str(crossed_runs),
          "--selection", str(sel), "--split", "test", "--out", str(out),
@@ -226,10 +226,12 @@ def test_hierarchical_interval_is_reported_beside_the_paired_one(crossed_runs, t
 # P0-3.1: the lock must name EXACT runs. Identifying only (arm, k) means a run
 # dropped into the results directory after selection silently joins the average.
 # --------------------------------------------------------------------------
-def _lock(runs_dir, tmp_path):
+def _lock(runs_dir, tmp_path, *extra):
+    """Fixtures write partial arm sets on purpose, so completeness is waived here and
+    tested directly in its own tests instead."""
     sel = tmp_path / "selection.json"
     p = _run("select_method.py", "--tag", "unit", "--results-dir", str(runs_dir),
-             "--out", str(sel))
+             "--out", str(sel), "--allow-incomplete", *extra)
     assert p.returncode == 0, p.stderr
     return sel
 
@@ -348,7 +350,7 @@ def test_a_basis_arm_can_never_win_gate_3a(tmp_path):
 
     sel = tmp_path / "selection.json"
     assert _run("select_method.py", "--tag", "unit", "--results-dir", str(d),
-                "--out", str(sel)).returncode == 0
+                "--out", str(sel), "--allow-incomplete").returncode == 0
     blob = json.loads(sel.read_text())
     assert blob["selected"]["arm"] == "D_spectral", "a basis arm won the scientific gate"
 
@@ -365,7 +367,8 @@ def test_p0_7_comparator_is_the_pinned_spectral_seed_not_an_average(tmp_path):
         _write_rot_run(d, "D2_rot_rand", "rotated_random", s, 0.52, 0.52, base_seed=0)
 
     sel = tmp_path / "selection.json"
-    _run("select_method.py", "--tag", "unit", "--results-dir", str(d), "--out", str(sel))
+    _run("select_method.py", "--tag", "unit", "--results-dir", str(d), "--out", str(sel),
+         "--allow-incomplete")
     out = tmp_path / "gate.md"
     p = _run("eval_coordinates.py", "--tag", "unit", "--results-dir", str(d),
              "--selection", str(sel), "--split", "test", "--out", str(out),
@@ -399,7 +402,8 @@ def test_basis_spread_marginalises_the_receiver_seed(tmp_path):
                 jf.write_text(json.dumps(blob))
 
     sel = tmp_path / "selection.json"
-    _run("select_method.py", "--tag", "unit", "--results-dir", str(d), "--out", str(sel))
+    _run("select_method.py", "--tag", "unit", "--results-dir", str(d), "--out", str(sel),
+         "--allow-incomplete")
     out = tmp_path / "gate.md"
     p = _run("eval_coordinates.py", "--tag", "unit", "--results-dir", str(d),
              "--selection", str(sel), "--split", "test", "--out", str(out),
@@ -450,7 +454,7 @@ def test_receiver_control_runs_never_enter_gate_selection(tmp_path):
                 scope="receiver_control")
     sel = tmp_path / "selection.json"
     assert _run("select_method.py", "--tag", "unit", "--results-dir", str(d),
-                "--out", str(sel)).returncode == 0
+                "--out", str(sel), "--allow-incomplete").returncode == 0
     blob = json.loads(sel.read_text())
     cands = {c["arm"]: c["val_sign_ber"] for c in blob["candidates"]}
     assert "D_spectral_sp" not in cands, "a receiver control entered the Gate pool"
@@ -470,7 +474,7 @@ def test_structural_seeds_are_weighted_equally_regardless_of_replication_count(t
 
     sel = tmp_path / "selection.json"
     assert _run("select_method.py", "--tag", "unit", "--results-dir", str(d),
-                "--out", str(sel)).returncode == 0
+                "--out", str(sel), "--allow-incomplete").returncode == 0
     blob = json.loads(sel.read_text())
     cand = next(c for c in blob["candidates"] if c["arm"] == "D_spectral")
     assert cand["receiver_replications"] == {"0": 2, "1": 1}
@@ -504,7 +508,7 @@ def test_same_unit_in_two_scopes_coexists_and_only_gate_is_selected(tmp_path):
 
     sel = tmp_path / "selection.json"
     assert _run("select_method.py", "--tag", "unit", "--results-dir", str(d),
-                "--out", str(sel)).returncode == 0
+                "--out", str(sel), "--allow-incomplete").returncode == 0
     cand = next(c for c in json.loads(sel.read_text())["candidates"]
                 if c["arm"] == "D_spectral")
     assert abs(cand["val_sign_ber"] - 0.40) < 0.02, "a p0_7_basis run entered the Gate pool"
@@ -689,3 +693,74 @@ def test_debug_mode_requires_a_throwaway_directory(crossed_runs, tmp_path):
              "--results-dir", str(crossed_runs), "--debug")
     assert p.returncode != 0
     assert "--debug requires --out-dir" in (p.stdout + p.stderr)
+
+
+# ==========================================================================
+# B2: a registered seed that is missing must stop the lock, not quietly drop out
+# of the average.
+# ==========================================================================
+def _arm_seeds(arm):
+    return CFG["fiber"]["arms"][arm]["seeds"]
+
+
+def test_a_missing_registered_seed_stops_the_lock(tmp_path):
+    """Averaging over whatever files exist is survivorship bias: a seed that crashed or
+    was deleted simply stops counting, and the arm it belonged to looks better."""
+    d = tmp_path / "results"
+    d.mkdir()
+    for s in _arm_seeds("C2_haar"):
+        _scoped_run(d, "C2_haar", "haar", s, 0.50, 0.50)
+    registered = _arm_seeds("D_spectral")
+    assert len(registered) > 1
+    for s in registered[:-1]:                       # last registered seed never wrote
+        _scoped_run(d, "D_spectral", "spectral_topk", s, 0.40, 0.40)
+
+    p = _run("select_method.py", "--tag", "unit", "--results-dir", str(d),
+             "--out", str(tmp_path / "sel.json"))
+    assert p.returncode != 0
+    out = p.stdout + p.stderr
+    assert "registered seeds are missing" in out and "survivorship" in out
+    assert str(registered[-1]) in out
+
+
+def test_a_reduced_seed_set_may_be_declared_and_is_recorded(tmp_path):
+    """A pilot legitimately runs fewer draws. That is allowed, but it has to be
+    declared rather than inferred from which files happen to exist."""
+    d = tmp_path / "results"
+    d.mkdir()
+    for s in (0, 1):
+        _scoped_run(d, "C2_haar", "haar", s, 0.50, 0.50)
+        _scoped_run(d, "D_spectral", "spectral_topk", s, 0.40, 0.40)
+    sel = tmp_path / "sel.json"
+    p = _run("select_method.py", "--tag", "unit", "--results-dir", str(d), "--out", str(sel),
+             "--registered-seeds", "C2_haar=0,1", "--registered-seeds", "D_spectral=0,1")
+    assert p.returncode == 0, p.stderr
+    sc = json.loads(sel.read_text())["seed_completeness"]
+    assert sc["complete"] and sc["enforced"] and sc["source"] == "config+cli"
+    assert sc["registered"]["D_spectral"] == [0, 1]
+
+
+def test_incompleteness_is_recorded_and_flagged_in_the_report(tmp_path):
+    d = tmp_path / "results"
+    d.mkdir()
+    for s in (0, 1):
+        _scoped_run(d, "C2_haar", "haar", s, 0.50, 0.50)
+    _scoped_run(d, "D_spectral", "spectral_topk", 0, 0.40, 0.40)
+    sel = _lock(d, tmp_path)
+    sc = json.loads(sel.read_text())["seed_completeness"]
+    assert not sc["complete"] and sc["enforced"] is False
+
+    p, out = _gate(d, sel, tmp_path, "incomplete.md")
+    assert p.returncode == 0, p.stderr
+    text = out.read_text()
+    assert "Registered seeds are missing" in text and "survived" in text
+
+
+def test_unknown_arm_in_a_seed_declaration_is_rejected(tmp_path):
+    d = tmp_path / "results"
+    d.mkdir()
+    _scoped_run(d, "C2_haar", "haar", 0, 0.50, 0.50)
+    _scoped_run(d, "D_spectral", "spectral_topk", 0, 0.40, 0.40)
+    p = _run("select_method.py", "--tag", "unit", "--results-dir", str(d),
+             "--out", str(tmp_path / "s.json"), "--registered-seeds", "NoSuchArm=0")
+    assert p.returncode != 0 and "unknown arm" in (p.stdout + p.stderr)

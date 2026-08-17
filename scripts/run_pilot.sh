@@ -109,7 +109,21 @@ echo "===== Prompt-assisted reference (diagnostic only; violates the protocol) =
 run python scripts/ddim_reference.py --tag "$TAG" --arm C_hadamard --k "$K" --limit 128
 
 echo "===== Selection (VAL only) — everything choosable is chosen here ====="
-run python scripts/select_method.py --tag "$TAG"
+# The pilot deliberately runs fewer draws than the config registers, so the reduced set
+# is DECLARED here and recorded in the lock. Left undeclared, selection would hard-fail
+# rather than quietly average whichever seeds happened to write (B2).
+DECLARE=""
+for a in A_identity C2_haar B_signperm C_hadamard C3_frozen_hh D_spectral E_learned \
+         D2_rot_rand D3_rot_learn; do
+  case "$a" in
+    A_identity|C3_frozen_hh) sd="0" ;;
+    C2_haar|B_signperm|C_hadamard) sd=$(echo $RANDOM_SEEDS | tr ' ' ',') ;;
+    D2_rot_rand) sd="0,1,2,3" ;;
+    *) sd=$(echo $DERIVED_SEEDS | tr ' ' ',') ;;
+  esac
+  DECLARE="$DECLARE --registered-seeds $a=$sd"
+done
+run python scripts/select_method.py --tag "$TAG" $DECLARE
 
 echo "===== TEST computed for the FIRST time, from the frozen checkpoints (B1) ====="
 # Nothing above touched test: train_coordinates hard-fails on a test eval split. This

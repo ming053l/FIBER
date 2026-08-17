@@ -63,6 +63,41 @@ def config_fingerprint(cfg) -> str:
                            digest_size=8).hexdigest()
 
 
+def registered_seeds(cfg, overrides: dict[str, list[int]] | None = None) -> dict:
+    """The seeds each arm was PRE-REGISTERED to run, from the config unless explicitly
+    overridden. A reduced set is allowed -- a pilot legitimately runs fewer draws -- but
+    it has to be declared, not inferred from which files happen to exist."""
+    out = {arm: sorted(spec.get("seeds", [])) for arm, spec in cfg["fiber"]["arms"].items()}
+    for arm, seeds in (overrides or {}).items():
+        if arm not in out:
+            raise SystemExit(f"--registered-seeds names an unknown arm {arm!r}")
+        out[arm] = sorted(seeds)
+    return out
+
+
+def check_completeness(runs: list[dict], registered: dict, k: int) -> dict:
+    """Every registered seed of every competing arm must be present.
+
+    Averaging over whatever files exist is survivorship bias with no warning: a seed
+    that crashed, or one that was deleted, simply stops counting, and an arm whose worst
+    draw failed to write looks better than it is.
+    """
+    present: dict[str, set] = defaultdict(set)
+    for r in runs:
+        if r["k"] == k:
+            present[r["arm"]].add(r.get("structure_seed", r["seed"]))
+    report, missing = {}, {}
+    for arm, seeds in registered.items():
+        if not seeds or arm not in present:
+            continue                      # an arm nobody ran is absent, not incomplete
+        gap = sorted(set(seeds) - present[arm])
+        report[arm] = {"registered": seeds, "present": sorted(present[arm]),
+                       "missing": gap}
+        if gap:
+            missing[arm] = gap
+    return {"per_arm": report, "missing": missing, "complete": not missing}
+
+
 def run_stem(r: dict) -> str:
     """Identify a run without requiring the loader to have attached a path, so select()
     stays unit-testable on plain summaries."""
@@ -165,7 +200,18 @@ def main() -> int:
     ap.add_argument("--results-dir", default=None)
     ap.add_argument("--out", default=None)
     ap.add_argument("--allow-dirty", action="store_true")
+    ap.add_argument("--registered-seeds", action="append", default=[],
+                    metavar="ARM=0,1,2",
+                    help="declare a reduced seed set for an arm; recorded in the lock")
+    ap.add_argument("--allow-incomplete", action="store_true",
+                    help="proceed with missing registered seeds; recorded in the lock "
+                         "and flagged in the gate report")
     args = ap.parse_args()
+
+    overrides = {}
+    for spec in args.registered_seeds:
+        arm, _, seeds = spec.partition("=")
+        overrides[arm] = [int(x) for x in seeds.split(",") if x != ""]
 
     cfg = load_config(args.config)
     prov = require_clean("a selection lock", allow_dirty=args.allow_dirty)
@@ -175,8 +221,20 @@ def main() -> int:
     if not runs:
         raise SystemExit(f"no runs with {SELECTION_SPLIT} results in {out_dir}")
 
+    registered = registered_seeds(cfg, overrides)
     chosen = select(runs, bank.eval)
     winner = chosen["winner"]
+    completeness = check_completeness(runs, registered, winner["k"])
+    if not completeness["complete"]:
+        detail = "; ".join(f"{a} missing {s}" for a, s in completeness["missing"].items())
+        if not args.allow_incomplete:
+            raise SystemExit(
+                f"registered seeds are missing at k={winner['k']}: {detail}.\n"
+                "Averaging over the survivors is survivorship bias -- a crashed or "
+                "deleted seed silently stops counting. Re-run them, declare a smaller "
+                "set with --registered-seeds ARM=0,1,..., or pass --allow-incomplete, "
+                "which is recorded in the lock and flagged in the gate report.")
+        log.warning("proceeding with missing registered seeds: %s", detail)
     winner_runs = [r for r in runs if run_stem(r) in set(winner["runs"])]
     ref_runs = [r for r in runs if r["type"] == PRIMARY_RANDOM_TYPE and r["k"] == winner["k"]]
     locked_stems = {run_stem(r) for r in winner_runs} | {run_stem(r) for r in ref_runs}
@@ -215,6 +273,9 @@ def main() -> int:
         # leaving the evaluated population choosable at test time would still allow a
         # post-hoc decision -- `--limit 100` and `--limit 0` are different experiments.
         "test_protocol": {"splits": ["test", "test_heldout_prompts"], "limit": 0},
+        "seed_completeness": {**completeness, "registered": registered,
+                              "enforced": not args.allow_incomplete,
+                              "source": "config+cli" if overrides else "config"},
         "candidates": chosen["candidates"],
         # FULL sha: the locked evaluator refuses to run unless HEAD matches, so an
         # abbreviation is not enough to pin the code the lock was taken under.

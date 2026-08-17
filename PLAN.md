@@ -577,6 +577,15 @@ runs, after which the selector would have read a spatial-receiver result as a
 replication of the ResNet one. Gate selection reads `analysis_scope = gate` only;
 `receiver_control` and `p0_7_basis` runs belong to their own analyses.
 
+**Every registered seed must be present (B2).** Selection reads the seeds each arm was
+pre-registered to run and **hard-fails** if any are missing, because averaging over
+whatever files exist is survivorship bias with no warning: a seed that crashed or was
+deleted simply stops counting, and the arm it belonged to looks better than it is. A
+reduced set is allowed — a pilot legitimately runs fewer draws — but it must be
+*declared* with `--registered-seeds ARM=0,1,...` and is recorded in the lock, not
+inferred from the filesystem. `--allow-incomplete` exists, is recorded, and puts a
+banner at the top of the gate report.
+
 Replications aggregate **hierarchically**: receiver repetitions are averaged within a
 structural seed before structural seeds are averaged. A flat mean over files would
 weight a structural seed by how many receiver repetitions it happened to have — with
