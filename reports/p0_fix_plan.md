@@ -415,3 +415,111 @@ against the subspace distance `‖P_phi − P*‖_F` with `P = RᵀR`, and tabul
 fit over `k ∈ {16, 64, 128, 256}` and `m ∈ {64, 128, 256, 512}`. If `m = 128` cannot fit
 `k = 256`, either scale `m(k)` or restrict the locked gate to `k = 64` and report the rest
 as a capacity-sensitive ablation.
+
+
+---
+
+## Pre-full-run blocker: the selection lock is not mechanically write-once
+
+**CLOSED `83006b8`.** `write_once()` (tmp + `os.link`), 3 tests, negative control.
+
+Raised while the provisional triage was running, so it is recorded rather than fixed —
+editing source would abort the run.
+
+`evaluate_locked.py` refuses to overwrite an official test evaluation, but
+`select_method.py` ends with a plain `out.write_text(...)`. Running it twice on the same
+tag silently replaces the lock. And now that `reports/` sits under `ARTIFACT_PREFIXES`,
+`require_clean()` will not flag that overwrite either: the two changes are individually
+right and jointly leave the lock itself unprotected.
+
+This does not invalidate the running triage — the driver selects once, moves straight
+into the post-lock cache, and triage carries no PASS/KILL authority — but the full
+protocol must not start until:
+
+* `select_method.py` refuses when `reports/selection_<tag>.json` exists, and writes with
+  exclusive create (`open(..., "x")`) so a concurrent run cannot race it;
+* two adversarial tests cover a second selection on the same tag, and a silent
+  overwrite;
+* optionally, the first post-lock cache records a `selection_sha` witness that the
+  cache generator and the evaluator both re-check, so a lock edited *in place* after
+  creation is caught as well as one replaced wholesale.
+
+## Pre-full-run blocker: D_cert^LCB is not a lower bound
+
+**CLOSED `1f5a20c`.** `sum_j max(L_fj, 0)`, max over folds by majorisation. Null 0.548 -> 0.001; power retained. 4 tests.
+
+The current estimator takes, per bootstrap replicate, `Σ_j max(μ̂*_j, 0)` and then the
+α-quantile of that. Near the boundary `μ_j = 0` the positive part rectifies noise into
+mass in *every* replicate, so the low quantile of a non-smooth positive-part functional
+carries no one-sided coverage. Demonstrated with terms whose true mass is exactly zero
+at `k = 64, N = 256`:
+
+```
+true positive mass                       0.000
+quantile of rectified mass  (current)    1.849     <- claims mass where there is none
+sum of max(directional LCB, 0) (fix)     0.000
+```
+
+The fix uses the simultaneous directional bounds the code already computes. On the
+simultaneous event `L_fj ≤ μ_j` for every `j`, so
+
+```
+Σ_j max(L_fj, 0)  ≤  Σ_j max(μ_j, 0)  ≤  tr(C_V)_+
+```
+
+the last step because the diagonal of `C_V` in any orthonormal basis is majorized by its
+eigenvalues and `max(·, 0)` is convex. The Bonferroni over `k` and folds is already in
+place; what changes is only that the rectification happens *after* the bound rather than
+inside the bootstrap.
+
+**Consequence for the triage numbers.** The spatial teacher's reported
+`D_cert^LCB = 6.619` is not a valid lower bound and must not be quoted as one. Its point
+estimate `D_cert = 7.348` is unaffected — that is a plug-in estimate, not a bound.
+
+## Pre-full-run blocker: trace_C_V should use every held-out sample
+
+**CLOSED `c677a88`.** Full held-out; sd ratio 1.412 vs sqrt(2). 2 tests.
+
+`trace_C_V` is currently `mu.sum()`, and with the inner cross-fit on, `mu` comes from one
+measurement fold. The trace is linear and basis-invariant, so it needs no inner
+eigenvector cross-fit at all and should be computed over the full held-out set. The
+triage's −41.8 / −47.2 / +7.12 remain diagnostic in sign and magnitude; the formal table
+should not reuse a half-split trace.
+
+## Correction to how validity FAIL was described
+
+`C_cert(f) = C_obs − Cov(m−f) ⪯ C_obs` holds for **any** decoder `f`, so a failed
+validity check does not void the `C_cert` numbers. What it does mean is that the bound is
+probably loose and that the geometry may not be called intrinsic or architecture-stable.
+An earlier reading of the triage output overstated this as "no result can be a
+conclusion".
+
+## Top priority after the triage: an end-to-end dry run
+
+**CLOSED `d2036b1`.** `tests/test_end_to_end_dryrun.py`, 44 s, 8 attacks, one of which (lock edited before the locked evaluation) was ACCEPTED and is now fail-closed. 11 tests.
+
+Five of the six defects found once the pipeline was actually executed were
+cross-component contract failures — a renamed field read elsewhere, failure that did not
+propagate, a variable used before assignment, a guard blocking the pipeline it guards, a
+parser shifting paths that a new filter had started to depend on. None was reachable
+from any single component's unit tests, and there were 302 of those.
+
+The missing test is a synthetic end-to-end run over the whole chain —
+`cache → train → select → lock → materialise test → evaluate_locked → gate` — that then
+attacks it: a second selection, a dirty tree, an edited lock, a swapped cache, a missing
+checkpoint. It belongs in the suite that runs on every push, not in a checklist.
+
+
+---
+
+# Status after the four pre-full-run blockers (2026-08-17)
+
+All four closed; see `reports/pre_full_run_blockers.md`. 322 tests. HEAD `d2036b1`.
+
+The blockers were protocol, not science. They do not change the triage's finding,
+which is that **no arm beat chance** and the experiment therefore had no resolving
+power to discriminate arms at pilot scale.
+
+Next, and explicitly NOT part of any gate: an exploratory power diagnostic
+(learning curve). It is registered here before it is run, so its status cannot be
+revised afterwards.
