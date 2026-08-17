@@ -134,6 +134,7 @@ def main() -> int:
 
     protocol = sel.get("test_protocol", {"splits": ["test", "test_heldout_prompts"],
                                          "limit": 0})
+    locked_attacks = protocol.get("attacks")
     splits = args.splits if (args.debug and args.splits) else protocol["splits"]
     limit = args.limit if (args.debug and args.limit is not None) else int(protocol["limit"])
     now_fp = config_fingerprint(cfg)
@@ -165,6 +166,8 @@ def main() -> int:
                                 and tc.get("generated_after_lock") is True
                                 and not tc.get("shards_not_bound_to_this_lock"))
     bank = ChannelBank(cfg)
+    if locked_attacks:
+        bank.eval = list(locked_attacks)
     root = Path(cfg["paths"]["cache_dir"]) / args.tag
 
     entries = (sel["selected_runs"] + sel["reference_runs"] + sel.get("context_runs", []))

@@ -106,6 +106,9 @@ def main() -> int:
     ap.add_argument("--crossfit", default=None, help="'A', 'B' or 'none'")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--device", default="cuda:0")
+    ap.add_argument("--eval-attacks", nargs="*", default=None,
+                    help="restrict the evaluated attacks (triage uses one per family); "
+                         "recorded in the run so the locked test evaluation matches")
     ap.add_argument("--scope", default=None,
                     choices=["gate", "receiver_control", "p0_7_basis"],
                     help="which analysis this run belongs to; the Gate selector reads "
@@ -129,6 +132,11 @@ def main() -> int:
     prov = require_clean("a training run", allow_dirty=args.allow_dirty)
     set_determinism(cfg)
     bank = ChannelBank(cfg)
+    if args.eval_attacks:
+        unknown = [a for a in args.eval_attacks if a not in bank.attacks]
+        if unknown:
+            raise SystemExit(f"unknown attacks {unknown}")
+        bank.eval = list(args.eval_attacks)
     root = Path(cfg["paths"]["cache_dir"]) / args.tag
     d = int(cfg["latent"]["dim"])
     k = args.k or int(cfg["fiber"]["robust_dims"])
@@ -249,7 +257,7 @@ def main() -> int:
         "extractor_arch": tcfg.extractor_arch,
         **prov,
         "train_config": {kk: vv for kk, vv in tcfg.__dict__.items()},
-        "eval_splits": list(args.eval_splits),
+        "eval_splits": list(args.eval_splits), "eval_attacks": list(bank.eval),
         "crossfit_eval_split": xfit_eval, "train_split": args.train_split,
         "limit": args.limit,
         "epochs": tcfg.epochs, "final_train_loss": hist[-1]["loss"],

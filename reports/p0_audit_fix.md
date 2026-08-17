@@ -199,10 +199,13 @@ against rotations of one while claiming the subspace was fixed.
 
 1. **B3 is complete** (`reports/b3_capacity.md`, swept from `bdd02ba` on a clean tree,
    no cell hitting the step limit). The pre-registered rule selected
-   `m(k) = {16: 64, 64: 128, 128: 256, 256: 256}`; the config keeps its floor of 128 and
-   records `reflectors_by_k`. **The main setting `k = 64, m = 128` is sufficient and
-   unchanged.** Every reachable cell is `≥ 0.9999`, so the generic shortfalls are
-   coverage rather than optimisation. The generic Haar target is a stress test, so a
+   `m*_B3(k) = {16: 64, 64: 128, 128: 256, 256: 256}`; production applies a floor, so
+   `m_configured(k) = max(128, m*_B3(k)) = {16: 128, 64: 128, 128: 256, 256: 256}` — the
+   two differ only at `k = 16`. **The main setting `k = 64, m = 128` is sufficient and
+   unchanged.** The collapse of the three dimension-infeasible cells is attributable to
+   insufficient generic coverage; for the two dimension-feasible marginal cells the gap
+   is **not identified** as capacity versus optimisation, and the larger `m` is chosen
+   conservatively by the rule rather than by an unsupported attribution. The generic Haar target is a stress test, so a
    below-threshold cell does not predict that arm E cannot find the *channel-optimal*
    subspace — it is a necessity argument about capacity.
 2. **The pilot cache predates the lock.** `evaluate_locked.py` detects this and

@@ -40,18 +40,26 @@ A below-threshold fit is called a capacity limit **only** where the Grassmann co
 | **128** | **1.0000** | **0.9999** | **1.0000** | **1.0000** |
 | **256** | **1.0000** | **1.0000** | **0.9999** | **1.0000** |
 
-Every reachable cell is **≥ 0.9999**. So whenever the target provably lies in the family, the optimiser finds it — the generic shortfall is **coverage**, not optimisation, initialisation or budget. Note `(k=256, m=128)` fits a reachable target to 1.0000 while failing the generic dimension count: the counting argument bounds coverage of the whole Grassmannian, never the reachability of one particular target.
+Every reachable cell is **≥ 0.9999**: whenever the target provably lies in the family, the optimiser finds it. `(k=256, m=128)` fits a reachable target to 1.0000 while failing the generic dimension count, which makes the scope of the counting argument concrete — it bounds coverage of the whole Grassmannian, never the reachability of one target.
+
+**How far this attributes the generic shortfalls.** The collapse of the three dimension-infeasible cells — `(128, 64)`, `(256, 64)`, `(256, 128)` — is attributable to insufficient generic coverage, since coverage is analytically impossible there. For the dimension-*feasible* cells that fall short, `(64, 64)` at 0.9766 and `(128, 128)` at 0.9883, the remaining gap is **not identified** as capacity versus optimisation: a reachable target reaching 1.0 shows the optimiser can fit *some* family-internal targets, not that the generic landscape is free of optimisation difficulty. Those cells stay `marginal_fit`, and the larger `m` is selected conservatively by the pre-registered empirical rule rather than by an attribution the data does not support.
 
 ## Recommended m(k)
 
-| k | recommended m | by class |
+| k | `m*_B3(k)` | by class |
 |---|---|---|
 | 16 | **64** | 64:empirically_sufficient, 128:empirically_sufficient, 256:empirically_sufficient, 512:empirically_sufficient |
 | 64 | **128** | 64:marginal_fit, 128:empirically_sufficient, 256:empirically_sufficient, 512:empirically_sufficient |
 | 128 | **256** | 64:structurally_insufficient, 128:marginal_fit, 256:empirically_sufficient, 512:empirically_sufficient |
 | 256 | **256** | 64:structurally_insufficient, 128:structurally_insufficient, 256:empirically_sufficient, 512:empirically_sufficient |
 
-**The configured main setting `k = 64, m = 128` is sufficient and is not changed.** Only the `k` sweep needs more reflectors, and `k = 128` is the one cell where the configured 128 is merely marginal (0.9883).
+The rule selects `m*_B3(k) = {16: 64, 64: 128, 128: 256, 256: 256}`. Production keeps a floor of 128, so what is configured is
+
+```
+m_configured(k) = max(128, m*_B3(k)) = {16: 128, 64: 128, 128: 256, 256: 256}
+```
+
+The two differ only at `k = 16`, where the floor is more conservative than the rule requires. **The main setting `k = 64, m = 128` is sufficient and is not changed.** Only the `k` sweep needs more reflectors, and `k = 128` is the one cell where the configured 128 is merely marginal (0.9883).
 
 ## What this does and does not establish
 
