@@ -134,6 +134,7 @@ def main() -> int:
         # The bound is what the word "certified" has to rest on: tau only excludes
         # floating-point noise, a one-sided LCB above zero is a claim.
         "D_cert_LCB": sub.get("D_cert_LCB"),
+        "D_cert_LCB_per_fold": sub.get("D_cert_LCB_per_fold"),
         # a count of positive quadratic forms, NOT a rank -- see the inertia field
         "certified_positive_direction_count": sub.get("certified_positive_direction_count"),
         "certified_positive_inertia": sub.get("certified_positive_inertia"),

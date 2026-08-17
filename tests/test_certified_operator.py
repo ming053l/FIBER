@@ -679,3 +679,58 @@ def test_per_sample_terms_average_to_the_operator_diagonal_exactly():
 def test_multiplicity_spans_directions_and_folds():
     c = subspace_certificate(T["Z"], T["m"], T["V"][:8], bootstrap=200)
     assert c["per_direction_correction"] == "bonferroni over k and folds"
+
+
+# --- the certified mass bound must actually be a bound ----------------------------
+
+def _near_null(n, k, eps, d=512, seed=0):
+    """f independent of Z at scale eps, so C_cert = -eps^2 I: every true eigenvalue is
+    negative and the true certified mass sum_j max(lambda_j, 0) is exactly 0. Small eps
+    is the interesting regime -- it puts the per-direction sampling noise ACROSS zero,
+    where a rectified statistic has nowhere to go but up."""
+    rng = np.random.default_rng(seed)
+    return (rng.standard_normal((n, d)), rng.standard_normal((n, d)) * eps,
+            np.linalg.qr(rng.standard_normal((d, k)))[0].T)
+
+
+def test_certified_mass_bound_is_zero_under_a_near_null():
+    """Bootstrapping sum_j max(b_j, 0) directly cannot produce this. That statistic is
+    non-negative, so its whole distribution -- and therefore every quantile of it --
+    sits above zero even when the truth is exactly zero."""
+    v = [subspace_certificate(*_near_null(256, 128, 0.1, seed=s), bootstrap=400)
+         for s in range(4)]
+    assert float(np.mean([x["D_cert_LCB"] for x in v])) < 0.05, "positive mass under H0"
+
+
+def test_a_lower_bound_never_exceeds_its_own_point_estimate():
+    """Self-evident without knowing the truth, and the sharpest statement of the bug:
+    the old estimator reported LCB 0.55 against a point estimate of 0.42."""
+    for s in range(4):
+        for eps, k in ((0.1, 128), (0.03, 128), (0.5, 32)):
+            c = subspace_certificate(*_near_null(256, k, eps, seed=s), bootstrap=400)
+            assert c["D_cert_LCB"] <= c["D_cert_subspace"] + 1e-9, (
+                f"LCB {c['D_cert_LCB']:.4f} > point estimate "
+                f"{c['D_cert_subspace']:.4f} at eps={eps}, k={k}")
+
+
+def test_the_corrected_bound_still_detects_real_skill():
+    """A bound that is always zero would satisfy the two tests above and be useless."""
+    rng = np.random.default_rng(0)
+    d, k, a, sig = 256, 32, 0.5, 0.3
+    Z = rng.standard_normal((256, d))
+    F = a * Z + sig * rng.standard_normal((256, d))
+    V = np.linalg.qr(rng.standard_normal((d, k)))[0].T
+    c = subspace_certificate(Z, F, V, bootstrap=400)
+    per_direction = 2 * a - a * a - sig * sig          # 0.66
+    assert 0 < c["D_cert_LCB"] < c["D_cert_subspace"]
+    assert c["D_cert_subspace"] == pytest.approx(k * per_direction, rel=0.10)
+
+
+def test_mass_bound_is_derived_from_the_directional_bounds():
+    """It must be sum_j max(L_j, 0) of the reported per-direction bounds, not a
+    separately bootstrapped statistic -- otherwise the two can disagree and the alpha
+    budget is spent twice."""
+    c = subspace_certificate(*_near_null(256, 64, 0.2, seed=3), bootstrap=400)
+    assert max(c["D_cert_LCB_per_fold"]) == pytest.approx(c["D_cert_LCB"])
+    for L, m in zip(c["lcb_per_direction_per_fold"], c["D_cert_LCB_per_fold"]):
+        assert float(np.clip(L, 0, None).sum()) == pytest.approx(m)

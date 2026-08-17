@@ -289,19 +289,40 @@ def subspace_certificate(Z, F, V, center: bool = True, tol: float | None = None,
             # folds, so alpha/(2k) per direction per fold by a union bound, which needs
             # no independence between the folds. The total mass is one statistic per
             # fold, hence alpha/2.
-            lcbs.append(np.quantile(boot, alpha / (n_folds * max(len(mu_f), 1)), axis=0))
-            masses.append(float(np.quantile(np.clip(boot, 0, None).sum(axis=1),
-                                            alpha / n_folds)))
+            L = np.quantile(boot, alpha / (n_folds * max(len(mu_f), 1)), axis=0)
+            lcbs.append(L)
+            # The mass bound is DERIVED from the directional ones rather than
+            # bootstrapped on its own. sum_j max(b_j, 0) is a non-negative statistic, so
+            # under a null where the true mu_j sit at zero its whole bootstrap
+            # distribution lives on the positive half-line and EVERY quantile of it is
+            # positive -- the old line reported a "lower bound" of 0.55 where the truth
+            # is exactly 0, and, self-evidently, one larger than its own point estimate
+            # (0.55 > 0.42 at k=128).
+            # Valid version: on the event {mu_fj >= L_fj for all j}, which the Bonferroni
+            # correction already buys at 1 - alpha/n_folds, monotonicity of max(.,0)
+            # gives sum_j max(L_fj, 0) <= sum_j max(mu_fj, 0). Costs no extra alpha.
+            masses.append(float(np.clip(L, 0, None).sum()))
         lcb = np.mean(lcbs, axis=0)
         stats = {**stats, "lcb_per_direction": lcb,
+                 "lcb_per_direction_per_fold": [np.asarray(L) for L in lcbs],
                  # NOT a rank: these are quadratic forms along k chosen directions, and
                  # positive quadratic forms do not count positive eigenvalues.
                  # C = [[1,2],[2,1]] has diagonal (1,1) but eigenvalues (3,-1), so its
                  # positive inertia is 1 while this count would say 2.
                  "certified_positive_direction_count": int((lcb > 0).sum()),
-                 "D_cert_LCB": float(np.mean(masses)),
+                 # max, not mean: each fold's bound is valid for the SAME target. For any
+                 # orthonormal frame U within V, sum_j max(u_j^T C u_j, 0) <= sum_j
+                 # max(lambda_j, 0) -- the diagonal is majorised by the spectrum and
+                 # sum max(.,0) is Schur-convex -- so both folds lower-bound the true
+                 # certified mass despite measuring in different rotated frames. A union
+                 # bound makes them hold simultaneously at 1 - alpha, and the larger of
+                 # two simultaneously valid lower bounds is a lower bound.
+                 "D_cert_LCB": float(max(masses)),
+                 "D_cert_LCB_per_fold": [float(m) for m in masses],
                  "bootstrap_resamples": int(bootstrap), "alpha": alpha,
                  "per_direction_correction": "bonferroni over k and folds",
+                 "mass_bound_derivation": "sum_j max(L_fj, 0) from the simultaneous "
+                                          "directional bounds; no separate alpha",
                  **stats}
 
     fold_mass = [float(np.clip(m, 0, None).sum()) for m, _ in folds]
