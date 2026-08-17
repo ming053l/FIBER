@@ -26,7 +26,7 @@ import numpy as np
 from fiber.channels import ChannelBank
 from fiber.utils.config import load_config
 from fiber.utils.logging import get_logger
-from fiber.utils.provenance import require_clean
+from fiber.utils.provenance import require_clean, write_once
 
 log = get_logger("select")
 
@@ -234,6 +234,13 @@ def main() -> int:
 
     cfg = load_config(args.config)
     prov = require_clean("a selection lock", allow_dirty=args.allow_dirty)
+    out = Path(args.out or (Path(cfg["paths"]["reports_dir"]) / f"selection_{args.tag}.json"))
+    # Fail here rather than after loading every run: this is only the courtesy check,
+    # write_once below is the guarantee (this one is racy by construction).
+    if out.exists():
+        raise SystemExit(
+            f"{out} already exists: this tag has already been locked. Selection is "
+            "write-once -- use a new --tag.")
     bank = ChannelBank(cfg)
     out_dir = Path(args.results_dir or (Path(cfg["paths"]["data_root"]) / "results" / args.tag))
     runs = load_val_runs(out_dir)
@@ -311,9 +318,7 @@ def main() -> int:
         "written_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "locked": True,
     }
-    out = Path(args.out or (Path(cfg["paths"]["reports_dir"]) / f"selection_{args.tag}.json"))
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(selection, indent=2))
+    write_once(out, json.dumps(selection, indent=2), what="a selection lock")
 
     for c in sorted(chosen["candidates"], key=lambda c: c["val_sign_ber"]):
         log.info("%-14s k=%-4d %-18s val BER %.4f %s", c["arm"], c["k"], c["type"],

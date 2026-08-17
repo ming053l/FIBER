@@ -9,7 +9,10 @@ artifact cannot be generated from an edited working tree by accident.
 """
 from __future__ import annotations
 
+import os
 import subprocess
+import tempfile
+from pathlib import Path
 
 
 def _git(*args: str, strip: bool = True) -> str | None:
@@ -69,3 +72,44 @@ def require_clean(what: str = "this artifact", allow_dirty: bool = False,
             + "\nCommit first, or pass --allow-dirty for a throwaway run. An artifact "
               "from an uncommitted tree is 'some commit plus an unknown diff'.")
     return p
+
+
+def write_once(path, text: str, what: str = "this artifact"):
+    """Create `path` exclusively. Refuse, loudly, if it is already there.
+
+    A selection lock whose file can be overwritten is not a lock: re-running selection
+    after seeing a test number would silently replace the artifact the test evaluation
+    claims to be bound to, and nothing downstream could tell. `require_clean()` does not
+    catch this -- `reports/` is an artifact prefix, so a rewritten lock leaves the tree
+    just as "clean" as a first one.
+
+    tmp + `os.link` rather than a plain O_EXCL open, so the artifact is never partially
+    visible: `link` is atomic and fails if the destination exists, so an interrupted
+    write leaves a temp file rather than a truncated lock that still parses.
+    """
+    path = Path(path)
+    if path.exists():
+        raise SystemExit(
+            f"refusing to overwrite {path}: {what} is write-once. It already exists, "
+            "which means either this selection has already been locked, or an earlier "
+            "attempt left it behind.\nA lock that can be rewritten cannot support "
+            "'the method was chosen before the test set was touched'. Use a new --tag, "
+            "or delete the file deliberately if you are certain no test evaluation has "
+            "been run against it.")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=path.name + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as fh:
+            fh.write(text)
+            fh.flush()
+            os.fsync(fh.fileno())
+        try:
+            os.link(tmp, path)
+        except FileExistsError:
+            # lost the race against a concurrent selection; the first writer wins
+            raise SystemExit(
+                f"refusing to overwrite {path}: {what} is write-once and was created "
+                "concurrently by another process.")
+    finally:
+        os.unlink(tmp)
+    return path

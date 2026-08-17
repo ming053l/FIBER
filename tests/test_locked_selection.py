@@ -926,3 +926,63 @@ def test_spectrum_reuse_requires_the_same_image_cache():
         Path("scripts/fit_observability_spectrum.py").read_text()
     assert '"cache_tag": args.cache_tag or args.tag' in \
         Path("scripts/compare_teachers.py").read_text()
+
+
+# --- write-once: a lock that can be overwritten is not a lock ---------------------
+
+def test_a_second_selection_cannot_replace_an_existing_lock(crossed_runs, tmp_path):
+    """The adversarial version: the second attempt would have locked a DIFFERENT arm.
+
+    Without write-once this is the whole attack -- run selection, look at the test
+    number, re-run selection with a tweaked candidate set, and the lock file now names
+    the arm you wanted. require_clean() cannot see it: reports/ is an artifact prefix,
+    so the rewrite leaves the tree exactly as clean as the first write did.
+    """
+    sel = tmp_path / "selection.json"
+    assert _run("select_method.py", "--tag", "unit", "--results-dir", str(crossed_runs),
+                "--out", str(sel), "--allow-incomplete").returncode == 0
+    first = sel.read_bytes()
+    assert json.loads(first)["selected"]["arm"] == "D_spectral"
+
+    # a second candidate set in which E_learned is the val winner
+    other = tmp_path / "results2"
+    other.mkdir()
+    for s in (0, 1):
+        _write_run(other, "C2_haar", "haar", s, val_ber=0.50, test_ber=0.50)
+        _write_run(other, "D_spectral", "spectral_topk", s, val_ber=0.48, test_ber=0.46)
+        _write_run(other, "E_learned", "householder", s, val_ber=0.30, test_ber=0.30)
+
+    p = _run("select_method.py", "--tag", "unit", "--results-dir", str(other),
+             "--out", str(sel), "--allow-incomplete")
+    assert p.returncode != 0, "a second selection overwrote the lock"
+    assert "write-once" in (p.stderr + p.stdout) or "already been locked" in (p.stderr + p.stdout)
+    assert sel.read_bytes() == first, "the lock changed under a refused second selection"
+
+
+def test_write_once_holds_when_the_early_check_is_bypassed(tmp_path):
+    """The existence check in main() is racy by construction (TOCTOU). This asserts the
+    guarantee is in the writer, not in that check -- including against a pre-existing
+    file that is NOT valid JSON, so a lock cannot be cleared by corrupting it."""
+    from fiber.utils.provenance import write_once
+
+    for existing in (b'{"selected": {"arm": "D_spectral"}}', b"", b"{trunc"):
+        p = tmp_path / "lock.json"
+        p.write_bytes(existing)
+        with pytest.raises(SystemExit) as e:
+            write_once(p, '{"selected": {"arm": "E_learned"}}', what="a selection lock")
+        assert "write-once" in str(e.value)
+        assert p.read_bytes() == existing
+        p.unlink()
+
+
+def test_write_once_leaves_no_temp_file_behind(tmp_path):
+    """An interrupted write must not leave something a later reader mistakes for a lock,
+    and a refused write must not litter the reports directory."""
+    from fiber.utils.provenance import write_once
+
+    d = tmp_path / "reports"
+    write_once(d / "lock.json", '{"a": 1}')
+    with pytest.raises(SystemExit):
+        write_once(d / "lock.json", '{"a": 2}')
+    assert sorted(f.name for f in d.iterdir()) == ["lock.json"]
+    assert json.loads((d / "lock.json").read_text()) == {"a": 1}
