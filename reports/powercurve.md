@@ -149,3 +149,50 @@ Do **not** cache 10k. The next suspects are the prompt-free receiver bottleneck 
 target/frame, not data volume. Pre-registered follow-up: the k in {8, 16, 64} diagnostic.
 If k=8 generalises where k=64 does not, the problem is task dimensionality; if k=8 is
 also flat, it is not.
+
+---
+
+# Follow-up: the k in {8, 16, 64} diagnostic
+
+**Status: pre-registered, not yet run.** Same discipline: reading rule fixed before the
+numbers arrive, `--scope powercurve`, invisible to the selector.
+
+## Why
+
+The curve says the limiter is not data volume. The next cheapest hypothesis is **task
+dimensionality**: 64 simultaneous targets from one 512-dimensional pooled feature vector,
+trained on 928 images. If k=8 generalises where k=64 does not, the receiver is being
+asked for too many coordinates at once. If k=8 is also flat, dimensionality is not the
+limiter either, and what remains is the prompt-free receiver protocol or the target.
+
+The three subspaces are **nested**: `SpectralFrame` takes `rows[:k]` of the same
+`triage1_seed0` fit, so span(k=8) is a subspace of span(k=16) is a subspace of span(k=64).
+The k=8 frame is the 8 most observable directions that fit found — the most favourable
+case available, which is what a diagnostic wants.
+
+Design: k in {8, 16, 64} x {C2_haar, D_spectral} x 3 receiver seeds = 18 runs. Full split
+B (928) throughout, 40 epochs, so the optimisation budget is constant and k is the only
+variable. The frame comes from commit `48e8351`, before the provenance fix; it is reused
+deliberately and none of the closed fixes touch its eigenvectors.
+
+## Reading rule, fixed in advance
+
+`(1/k) sum_j rho_j^2` is compared against the null `1/(n-1) = 0.00392` at n=256, and
+sign BER against 0.5, at each k, per receiver seed.
+
+**Dimensionality is the limiter** if at k=8, in at least 2 of 3 receiver seeds,
+`(1/k) sum_j rho_j^2` exceeds the null by more than the between-seed spread, and the
+effect shrinks monotonically as k grows.
+
+**Dimensionality is not the limiter** if k=8 sits at the null like k=64. In that case the
+remaining suspects are the prompt-free receiver protocol (H(Y) with no prompt) and the
+target/frame — and the honest next step is a falsification experiment on those, not a
+larger run of the same design.
+
+A smaller k makes the AGGREGATE readouts noisier, not cleaner: BER's standard error is
+`0.5/sqrt(n*k)` and the spread of the mean over k coordinates scales as `1/sqrt(k)`. So a
+k=8 point that merely looks different is not evidence; it has to clear its own spread.
+
+## Result
+
+*(to be filled in after the run)*
