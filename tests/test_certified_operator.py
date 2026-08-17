@@ -734,3 +734,29 @@ def test_mass_bound_is_derived_from_the_directional_bounds():
     assert max(c["D_cert_LCB_per_fold"]) == pytest.approx(c["D_cert_LCB"])
     for L, m in zip(c["lcb_per_direction_per_fold"], c["D_cert_LCB_per_fold"]):
         assert float(np.clip(L, 0, None).sum()) == pytest.approx(m)
+
+
+def test_trace_uses_every_held_out_sample_not_the_measurement_half():
+    """The trace needs no inner cross-fit. It is linear in the per-sample terms, so it
+    is unbiased, and invariant to the within-subspace rotation, so a rotation chosen on
+    the same samples cannot select anything favourable out of it. Splitting it only
+    halved the sample."""
+    Z, F, V = _null_case(256, 32, seed=0)
+    c = subspace_certificate(Z, F, V)
+    assert c["n_trace"] == Z.shape[0]
+    assert c["trace_C_V"] == pytest.approx(float(np.trace(project_operator(Z, F, V))),
+                                           abs=1e-9)
+
+
+def test_full_heldout_trace_has_the_variance_of_twice_the_sample():
+    """sqrt(2) tighter than the fold-0 version, which is the whole point of the change.
+    Both remain unbiased -- this buys precision, not a different estimand."""
+    full, fold0 = [], []
+    for s in range(100):
+        c = subspace_certificate(*_null_case(256, 32, seed=s))
+        full.append(c["trace_C_V"])
+        fold0.append(c["trace_C_V_fold0"])
+    full, fold0 = np.array(full), np.array(fold0)
+    assert abs(full.mean() + 8.0) < 0.15 and abs(fold0.mean() + 8.0) < 0.20
+    ratio = fold0.std(ddof=1) / full.std(ddof=1)
+    assert 1.2 < ratio < 1.7, f"expected ~sqrt(2), got {ratio:.3f}"

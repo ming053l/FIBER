@@ -141,7 +141,8 @@ def main() -> int:
         "weyl_radius": sub.get("weyl_radius"),
         "fold_masses": sub.get("fold_masses"),
         "D_cert_subspace_insample": sub["D_cert_subspace_insample"],
-        "trace_C_V": sub["trace_C_V"],
+        "trace_C_V": sub["trace_C_V"], "n_trace": sub["n_trace"],
+        "trace_C_V_fold0": sub["trace_C_V_fold0"],
         "inner_crossfit": sub["crossfit"], "rotation_split": sub["rotation_split"],
         # numerical, NOT certified: tau excludes floating-point noise only. The
         # certified quantity is the inertia below, which carries a confidence radius.

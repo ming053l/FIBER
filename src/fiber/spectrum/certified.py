@@ -347,7 +347,17 @@ def subspace_certificate(Z, F, V, center: bool = True, tol: float | None = None,
         # N (measured 0.44 at N=64, k=32 where the certified mass is 0; 0.00 by
         # N=256). Report both: the mass answers "how much is certified", the trace
         # answers "is this decoder net-positive at all" and can be negative.
-        "trace_C_V": float(mu.sum()),
+        # ALL held-out samples, not the fold's measurement half. The inner cross-fit
+        # exists because sum_j max(.,0) is a max-type functional and rectifies noise
+        # chosen on the same samples. The trace is neither: it is linear in the
+        # per-sample terms, so it is unbiased, and it is invariant to the within-
+        # subspace rotation, so there is nothing for a rotation to select. Splitting it
+        # threw away half the sample for no inferential gain -- it only widened the one
+        # statistic here that can be negative and is therefore the honest answer to
+        # "is this decoder net-positive at all".
+        "trace_C_V": float(mu_in.sum()),
+        "trace_C_V_fold0": float(mu.sum()),
+        "n_trace": int(np.shape(Z)[0]),
         # NOT a significance statement: tau only rules out floating-point noise.
         # `statistically_certified_rank` above is the one that counts directions whose
         # one-sided lower bound clears zero.
