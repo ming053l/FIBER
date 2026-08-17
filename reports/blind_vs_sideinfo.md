@@ -283,10 +283,14 @@ the first term vanishes because `m_b` is `Y`-measurable and `E[h | Y] = 0`. Henc
 a genuine one-sided certificate of the side-information gain, rather than a difference of
 two certificates.
 
-**It needs no new operator machinery.** `C_gain(h)` is algebraically identical to
-`C_cert(f) = E[z f^T + f z^T - f f^T]` with `f` replaced by `h`, so
-`CertifiedObservabilityOperator`, `fit_certified`, the inner cross-fit and the bootstrap
-all apply verbatim.
+**The operator machinery carries over — but only once `h` is validly constructed.**
+`C_gain(h)` is algebraically identical to `C_cert(f) = E[z f^T + f z^T - f f^T]` with `f`
+replaced by `h`, so `CertifiedObservabilityOperator`, `fit_certified`, the inner cross-fit
+and the bootstrap apply to it unchanged. That is a statement about the estimator, not
+about validity: cross-fitting prevents a residual from absorbing its own fitting noise,
+and it does **not** establish `E[h | Y] = 0`. Misspecification leaves `b(Y)` behind just
+the same. So this stays a Phase B extension rather than riding along with the pilot —
+otherwise it opens a second certification-validity problem while the first is unresolved.
 
 **The whole difficulty moves into `E[h | Y] = 0`.** The natural construction is
 residualisation, `h = g(Y, S) - g_hat(Y)` with `g_hat` cross-fitted — and it must be
@@ -299,3 +303,95 @@ and that last term is **sign-indefinite**, so the bound fails rather than loosen
 route therefore does not eliminate the difficulty; it exchanges an unidentifiable
 quantity (`E_s - E_b`) for one that cross-fitting can at least attack, and it makes the
 failure mode checkable.
+
+
+---
+
+# Phase A — preregistration
+
+**Locked before implementation.** Every choice below is fixed; none may be revised once
+numbers exist.
+
+## The three engineering choices
+
+**Fusion: late.** `S` never touches the image trunk. The existing receiver is
+`Y -> ResNet18 trunk -> h_Y in R^512 -> linear heads`. The side branch is
+`S -> side encoder -> h_S`, and `[h_Y, h_S]` feeds the *same* prediction heads. Early
+fusion or cross-attention is rejected for the pilot: if the result improved, it would not
+be separable from "conditioning rewrote the image feature extractor". All three side arms
+use one identical side architecture.
+
+**`S_null` = the training-split mean conditioning tensor.**
+
+    S_null = (1/N_train) sum_{i in train} S_i
+
+computed once on train and reused unchanged for val and test. Not a learned null token,
+not a zero tensor: this is deterministic, carries no sample-specific information, has
+exactly the shape of a real `S`, adds no parameters, and is far less likely to act as an
+out-of-distribution shortcut. If `S` is a token sequence the mean is taken per token
+position and per feature, preserving the tensor shape — never pooled first.
+
+**Margins.** `eps_BER = 0.007`, grounded in the largest measured between-receiver-seed
+sd, 0.00681 (D_spectral, k=16). **No `eps_R`, no `eps_D`.**
+
+An `eps_R = 0.0015` derived from D_spectral's own spread (max 0.00134) would ignore the
+largest measured spread across arms, C2_haar at k=8 with 0.00315 — twice the margin. A
+margin below the noise floor makes the equivalence test unpassable by construction, which
+is the mirror image of the `p > 0.05` fallacy and just as attackable. Widening it to
+~0.005 instead would exceed the zero-correlation reference `1/(n-1) = 0.00392` itself, so
+"equivalent" would permit a difference the size of the entire signal scale. Neither is
+acceptable, so `R2_lin` carries no equivalence gate. Same reasoning as for `D_cert`:
+equivalence margins are set only on quantities whose scale is already stable.
+
+## Roles of the readouts
+
+| readout | positive contrast | placebo equivalence |
+|---|---|---|
+| sign BER | yes | **yes**, `eps_BER = 0.007` |
+| `R2_lin` | yes (secondary, paired) | no |
+| `Delta D_dec` | yes (secondary, paired) | no |
+| `Delta C_side` | **not claimed by Phase A at all** | — |
+
+`R2_lin` is a secondary *inferential* contrast, not a descriptive aside: correct-vs-
+shuffled is reported with paired CIs and the empirical permutation null. If side
+information works, `BER` falling and `R2_lin` rising are two independent operational views
+and agreement between them is worth much more than either alone.
+
+## Primary treatment
+
+    f(Y, S_correct)   vs   f(Y, S_shuffled)
+
+paired across receiver seeds. Identical architecture, input shape, capacity, `S` marginal
+and training budget; the only intervention is the pairing.
+
+## Placebo chain — two separate equivalence tests, not one
+
+    f(Y)           <-> f(Y, S_null)        architecture / capacity effect
+    f(Y, S_null)   <-> f(Y, S_shuffled)    empirical S distribution, no pairing
+
+Each BER contrast must fall inside `[-0.007, +0.007]` **on its own**. Failure of either
+does not stop the experiment; it narrows what correct-vs-shuffled can mean:
+
+* first fails -> the side architecture has an operational effect by itself;
+* second fails -> the real `S` distribution changes receiver behaviour even mispaired.
+
+## Replication: 6 receiver seeds
+
+At the previously measured worst-case sd of 0.00681, the TOST 90% CI half-width is
+
+    3 seeds  0.01148   (exceeds the margin — no resolving power)
+    5 seeds  0.00649   (+0.00051 headroom — minimum viable)
+    6 seeds  0.00560   (+0.00140 headroom)
+
+6 seeds is chosen: 2.7x the headroom of 5 for four extra runs. Stated precisely, since
+this is a design property and not a prediction: *if the true placebo difference is near
+zero and the variance is comparable to the previously measured worst case, six receiver
+seeds give the equivalence test enough precision to pass.* It does not guarantee passing.
+
+4 arms x 6 seeds = 24 runs.
+
+## Phase gate
+
+Phase B — the direct `C_gain(h)` certificate and the `E[h|Y] = 0` residualisation problem
+— is opened **only** if Phase A shows a strong `S_correct >> S_shuffled` effect. Building
+inference machinery for an effect that may not exist is the wrong order.
