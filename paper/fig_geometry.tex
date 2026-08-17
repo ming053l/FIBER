@@ -1,0 +1,43 @@
+% Fig. 2 -- what "observable" means. One inference: an isotropic prior becomes an
+% anisotropic observability ellipsoid, direction by direction.
+\begin{tikzpicture}[scale=1.0,
+  every node/.style={font=\small},
+  ax/.style={->,>=stealth,thin,gray!70},
+  dir/.style={->,>=stealth,semithick},
+  prior/.style={draw=gray!55,fill=gray!8,thick},
+  post/.style={draw=accent,fill=accent!10,thick}]
+
+% ---------- (a) isotropic prior ----------
+\begin{scope}[shift={(0,0)}]
+  \node[anchor=south] at (0,1.75) {\textbf{(a)} prior $Z\sim\mathcal N(0,I)$};
+  \draw[prior] (0,0) circle (1.25);
+  \foreach \a/\l in {90/{$v_1$},210/{$v_2$},330/{$v_3$}}
+    \draw[dir,gray!80] (0,0) -- (\a:1.25) node[pos=1.16] {\l};
+  \node[font=\footnotesize,gray!70] at (0,-1.75) {$\Var(v^\top Z)=1$ for all $v$};
+\end{scope}
+
+% ---------- (b) posterior narrowing, direction by direction ----------
+\begin{scope}[shift={(4.1,0)}]
+  \node[anchor=south] at (0,1.75) {\textbf{(b)} posterior after observing $Y$};
+  \foreach \i/\y/\s/\lab in {1/0.95/0.22/{$v_1$},2/0.05/0.60/{$v_2$},3/-0.85/1.00/{$v_3$}}{
+    \draw[gray!45] (-1.35,\y) -- (1.35,\y);
+    \draw[domain=-1.35:1.35,samples=60,smooth,gray!75,thin,dashed]
+      plot (\x,{\y+0.42*exp(-(\x*\x)/(2*1.0*1.0))});
+    \draw[domain=-1.35:1.35,samples=60,smooth,accent,semithick]
+      plot (\x,{\y+0.42*(1.0/\s)^0.5*exp(-(\x*\x)/(2*\s*\s))});
+    \node[font=\footnotesize] at (-1.75,\y+0.15) {\lab};
+  }
+  \node[font=\footnotesize,gray!70,align=center] at (0,-1.85)
+    {$v^\top C_{\mathrm{obs}} v = 1-\Exp[\Var(v^\top Z\mid Y)]$};
+\end{scope}
+
+% ---------- (c) the ellipsoid ----------
+\begin{scope}[shift={(8.4,0)}]
+  \node[anchor=south] at (0,1.75) {\textbf{(c)} $C_{\mathrm{obs}}=V\Lambda V^\top$};
+  \draw[prior,dashed,fill=none] (0,0) circle (1.25);
+  \draw[post,rotate=20] (0,0) ellipse (1.25 and 0.30);
+  \draw[dir,accent,rotate=20] (0,0) -- (1.25,0) node[right,pos=1.05] {$\lambda_1\!\approx\!1$};
+  \draw[dir,accent,rotate=20] (0,0) -- (0,0.30) node[above,pos=1.3] {$\lambda_2$};
+  \node[font=\footnotesize,gray!70] at (0,-1.75) {$\lambda_3\!\approx\!0$: collapsed};
+\end{scope}
+\end{tikzpicture}

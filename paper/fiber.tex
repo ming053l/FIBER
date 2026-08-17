@@ -1,414 +1,374 @@
-
-\documentclass{article} % For LaTeX2e
+\documentclass{article}
 \usepackage{iclr2026_conference,times}
-
-% Optional math commands from https://github.com/goodfeli/dlbook_notation.
 \input{math_commands.tex}
 
 \usepackage{hyperref}
 \usepackage{url}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{booktabs}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,calc}
 
+\definecolor{accent}{RGB}{196,58,90}
 
-\title{Formatting Instructions for ICLR 2026 \\ Conference Submissions}
+\newtheorem{proposition}{Proposition}
+\newtheorem{theorem}{Theorem}
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}
 
-% Authors must not appear in the submitted version. They should be hidden
-% as long as the \iclrfinalcopy macro remains commented out below.
-% Non-anonymous submissions will be rejected without review.
+% \Cov and \Var come from math_commands.tex
+\DeclareMathOperator{\Exp}{\mathbb{E}}
+\newcommand{\Cobs}{C_{\mathrm{obs}}}
+\newcommand{\Ccert}{C_{\mathrm{cert}}}
+\newcommand{\Dcert}{D_{\mathrm{cert}}}
 
-\author{Antiquus S.~Hippocampus, Natalia Cerebro \& Amelie P. Amygdale \thanks{ Use footnote for providing further information
-about author (webpage, alternative address)---\emph{not} for acknowledging
-funding agencies.  Funding acknowledgements go at the end of the paper.} \\
-Department of Computer Science\\
-Cranberry-Lemon University\\
-Pittsburgh, PA 15213, USA \\
-\texttt{\{hippo,brain,jen\}@cs.cranberry-lemon.edu} \\
-\And
-Ji Q. Ren \& Yevgeny LeNet \\
-Department of Computational Neuroscience \\
-University of the Witwatersrand \\
-Joburg, South Africa \\
-\texttt{\{robot,net\}@wits.ac.za} \\
-\AND
-Coauthor \\
-Affiliation \\
-Address \\
-\texttt{email}
-}
+\title{What Survives a Frozen Generative Channel,\\ and to Whom}
 
-% The \author macro works with any number of authors. There are two commands
-% used to separate the names and addresses of multiple authors: \And and \AND.
-%
-% Using \And between authors leaves it to \LaTeX{} to determine where to break
-% the lines. Using \AND forces a linebreak at that point. So, if \LaTeX{}
-% puts 3 of 4 authors names on the first line, and the last on the second
-% line, try using \AND instead of \And before the third author name.
+\author{Anonymous}
 
 \newcommand{\fix}{\marginpar{FIX}}
 \newcommand{\new}{\marginpar{NEW}}
 
-%\iclrfinalcopy % Uncomment for camera-ready version, but NOT for submission.
+\iclrfinalcopy
+
 \begin{document}
-
-
 \maketitle
 
 \begin{abstract}
-The abstract paragraph should be indented 1/2~inch (3~picas) on both left and
-right-hand margins. Use 10~point type, with a vertical spacing of 11~points.
-The word \textsc{Abstract} must be centered, in small caps, and in point size 12. Two
-line spaces precede the abstract. The abstract must be limited to one
-paragraph.
+\textbf{[Abstract written last: its final claim depends on the Phase A outcome.]}
+A frozen text-to-image diffusion model is a channel from its initial latent $Z$ to the
+image it produces. We ask what information about $Z$ remains recoverable from the image
+after transmission, and show that the right object is not a scalar capacity but a
+\emph{geometry}: the covariance of the Bayes posterior mean,
+$\Cobs=\Cov(\Exp[Z\mid Y])$, whose eigenvectors are latent directions ordered by how much
+of their prior uncertainty an observer can remove. Because the Bayes decoder is
+unavailable, we give an estimator that is a \emph{certificate} rather than a proxy: for
+any decoder $f$, $\Ccert(f)=\Cobs-\Cov(m-f)\preceq\Cobs$, so every direction it reports
+is one the channel really carries. We then observe that observability is not a property
+of the channel alone. Writing $\Cobs(\mathcal I_R)$ for a receiver with information set
+$\mathcal I_R$, the tower property gives
+$\Cobs(Y,S)\succeq\Cobs(Y)$ for any side information $S$: knowing what the generator was
+conditioned on can only enlarge the observable geometry, never shrink it. We instantiate
+this on Stable Diffusion v1.5 with a four-arm capacity- and distribution-matched ladder
+that isolates \emph{paired} conditioning from architecture and from the conditioning
+marginal.
 \end{abstract}
 
-\section{Submission of conference papers to ICLR 2026}
+\section{Introduction}
 
-ICLR requires electronic submissions, processed by
-\url{https://openreview.net/}. See ICLR's website for more instructions.
+A generative model that is used the same way twice is a channel. Fix the weights, fix the
+sampler, and the map from an initial latent $Z$ to the produced image $X=G(Z,S)$ is a
+deterministic function; put the image through compression, resizing or noise and the
+observation $Y$ is a channel output. This view is implicit whenever anyone hides
+information in generated content, edits an image by moving its latent, or asks whether a
+sample can be traced back to its seed. It is rarely made explicit, and when it is, it is
+usually reduced to a single number: how many bits survive.
 
-If your paper is ultimately accepted, the statement {\tt
-  {\textbackslash}iclrfinalcopy} should be inserted to adjust the
-format to the camera ready requirements.
+\paragraph{The dominant view, stated fairly.}
+Work on latent-space watermarking and inversion asks \emph{which} encoding to use --- which
+subspace, which pattern, which decoder --- and reports one aggregate: bit error rate under
+a set of attacks. That is a reasonable engineering target, and for a deployed watermark it
+is the target. It also quietly assumes that the channel treats the latent isotropically,
+so that the encoding is a design choice made against a featureless background.
 
-The format for the submissions is a variant of the NeurIPS format.
-Please read carefully the instructions below, and follow them
-faithfully.
+\paragraph{What that framing hides.}
+However, this perspective obscures a prior question: \emph{is the background featureless?}
+A frozen generative channel does not attenuate every latent direction equally. Some
+directions of $Z$ leave a strong, recoverable imprint on the image; others are consumed by
+the sampler and the decoder and leave essentially nothing. An aggregate bit rate averages
+over that structure and therefore cannot distinguish ``this encoding is bad'' from ``this
+direction was never observable.'' Worse, it cannot distinguish either from a third
+possibility that turns out to matter: ``this direction is not observable \emph{to this
+receiver}.''
 
-\subsection{Style}
+\paragraph{The object we propose.}
+We replace the scalar with a geometry. For a receiver that sees $Y$, define
+\[
+  \Cobs \;=\; \Cov\bigl(\Exp[Z\mid Y]\bigr),
+\]
+the covariance of the Bayes posterior mean. Its quadratic form has a direct reading:
+$v^\top\Cobs v=\Var(\Exp[v^\top Z\mid Y])$, and when $Z\sim\mathcal N(0,I)$ this equals
+$1-\Exp[\Var(v^\top Z\mid Y)]$ --- the fraction of direction $v$'s prior uncertainty an
+observer can remove. Its eigendecomposition $\Cobs=V\Lambda V^\top$ orders latent
+directions by observability, and the leading eigenspace is the most observable latent
+subspace. A scalar capacity is a trace; the geometry is the object the trace summarises.
 
-Papers to be submitted to ICLR 2026 must be prepared according to the
-instructions presented here.
+\paragraph{Making it estimable without the Bayes decoder.}
+$\Exp[Z\mid Y]$ is not available. The tempting substitute, $\Cov(f(Y))$ for a trained
+decoder $f$, is not a bound in either direction: a badly scaled decoder can report more
+apparent observability than the channel contains. We instead use
+\[
+  \Ccert(f)\;=\;\Exp\bigl[z_c f_c^\top + f_c z_c^\top - f_c f_c^\top\bigr]
+  \;=\;\Cobs-\Cov(m-f)\;\preceq\;\Cobs ,
+\]
+which is a \emph{certificate}: whatever it reports, the channel carries at least that much.
+The price is that $\Ccert$ is indefinite, and that is not a technicality --- it is what
+distinguishes a certificate from a proxy, and it changes how the object must be estimated
+and drawn.
 
-%% Please note that we have introduced automatic line number generation
-%% into the style file for \LaTeXe. This is to help reviewers
-%% refer to specific lines of the paper when they make their comments. Please do
-%% NOT refer to these line numbers in your paper as they will be removed from the
-%% style file for the final version of accepted papers.
+\paragraph{Observable to whom.}
+The final step is that $\Cobs$ is not a property of the channel alone. Write
+$\Cobs(\mathcal I_R)=\Cov(\Exp[Z\mid\mathcal I_R])$ for a receiver with information set
+$\mathcal I_R$. A blind receiver has $\mathcal I_b=Y$; a receiver that also knows the
+conditioning the generator used has $\mathcal I_s=(Y,S)$. Since
+$\Exp[\Exp[Z\mid Y,S]\mid Y]=\Exp[Z\mid Y]$, the law of total covariance gives
+$\Cobs(Y,S)-\Cobs(Y)=\Exp[\Cov(\Exp[Z\mid Y,S]\mid Y)]\succeq0$. Side information cannot
+reduce observability, and may enlarge it \emph{directionally}. Whether it does so
+materially for a real diffusion channel is an empirical question, and it is the one our
+main experiment is designed to answer.
 
-Authors are required to use the ICLR \LaTeX{} style files obtainable at the
-ICLR website. Please make sure you use the current files and
-not previous versions. Tweaking the style files may be grounds for rejection.
+\paragraph{Contributions.}
+\begin{itemize}
+  \item \textbf{Framework.} Latent observability through a frozen generative channel as a
+  geometry $\Cobs$ rather than a scalar rate, with a linear--Gaussian bridge showing it is
+  the global Bayesian counterpart of the local Fisher geometry.
+  \item \textbf{Estimator.} A decoder-certified operator $\Ccert(f)\preceq\Cobs$ with a
+  cross-fitted, held-out, bootstrap-bounded estimator, and the reasons $\Cov(f)$ and
+  diagonal clipping fail.
+  \item \textbf{Receiver conditioning.} Monotonicity of observability in the receiver's
+  information set, together with an explicit statement of why the difference of two
+  certificates does \emph{not} inherit it.
+  \item \textbf{Experiments.} \textbf{[Phase A pending.]}
+\end{itemize}
 
-\subsection{Retrieval of style files}
+\section{Method}
 
-The style files for ICLR and other conference information are available online at:
-\begin{center}
-   \url{http://www.iclr.cc/}
-\end{center}
-The file \verb+iclr2026_conference.pdf+ contains these
-instructions and illustrates the
-various formatting requirements your ICLR paper must satisfy.
-Submissions must be made using \LaTeX{} and the style files
-\verb+iclr2026_conference.sty+ and \verb+iclr2026_conference.bst+ (to be used with \LaTeX{}2e). The file
-\verb+iclr2026_conference.tex+ may be used as a ``shell'' for writing your paper. All you
-have to do is replace the author, title, abstract, and text of the paper with
-your own.
+\subsection{Bayesian observability geometry of frozen generative channels}
+\label{sec:geometry}
 
-The formatting instructions contained in these style files are summarized in
-sections \ref{gen_inst}, \ref{headings}, and \ref{others} below.
+\emph{What is observable?}
 
-\section{General formatting instructions}
-\label{gen_inst}
+Let $Z\sim\mathcal N(0,I_d)$ be the initial latent, $S$ the conditioning actually supplied
+to the generator, $X=G(Z,S)$ the produced image with $G$ frozen, and $Y=T(X)$ the
+observation after a transmission channel $T$ (compression, resizing, noise, blur). The
+receiver sees $Y$ and nothing else unless stated otherwise.
 
-The text must be confined within a rectangle 5.5~inches (33~picas) wide and
-9~inches (54~picas) long. The left margin is 1.5~inch (9~picas).
-Use 10~point type with a vertical spacing of 11~points. Times New Roman is the
-preferred typeface throughout. Paragraphs are separated by 1/2~line space,
-with no indentation.
+\begin{definition}[Observability operator]
+$\Cobs=\Cov\bigl(\Exp[Z\mid Y]\bigr)$.
+\end{definition}
 
-Paper title is 17~point, in small caps and left-aligned.
-All pages should start at 1~inch (6~picas) from the top of the page.
+Its quadratic form is the quantity of interest:
+$v^\top\Cobs v=\Var\bigl(\Exp[v^\top Z\mid Y]\bigr)$, and by the law of total variance,
+for $\|v\|=1$ and $Z\sim\mathcal N(0,I)$,
+\begin{equation}
+  v^\top\Cobs v \;=\; 1-\Exp\bigl[\Var(v^\top Z\mid Y)\bigr] \;\in\;[0,1].
+  \label{eq:quadform}
+\end{equation}
+So $v^\top\Cobs v$ is the fraction of the prior uncertainty in direction $v$ that an
+observation removes: $1$ means $v^\top Z$ is recoverable, $0$ means the channel destroyed
+it. Writing $\Cobs=V\Lambda V^\top$, eigenvectors are observable latent directions,
+eigenvalues are direction-wise observability strengths, and the top-$k$ eigenspace is the
+most observable $k$-dimensional latent subspace. Figure~\ref{fig:geometry} is this
+definition and nothing else.
 
-Authors' names are
-set in boldface, and each name is placed above its corresponding
-address. The lead author's name is to be listed first, and
-the co-authors' names are set to follow. Authors sharing the
-same address can be on the same line.
-
-Please pay special attention to the instructions in section \ref{others}
-regarding figures, tables, acknowledgments, and references.
-
-
-There will be a strict upper limit of \textbf{9 pages} for the main text of the initial submission, with unlimited additional pages for citations. This limit will be expanded to \textbf{10 pages} for rebuttal/camera ready.
-
-\section{Headings: first level}
-\label{headings}
-
-First level headings are in small caps,
-flush left and in point size 12. One line space before the first level
-heading and 1/2~line space after the first level heading.
-
-\subsection{Headings: second level}
-
-Second level headings are in small caps,
-flush left and in point size 10. One line space before the second level
-heading and 1/2~line space after the second level heading.
-
-\subsubsection{Headings: third level}
-
-Third level headings are in small caps,
-flush left and in point size 10. One line space before the third level
-heading and 1/2~line space after the third level heading.
-
-\section{Citations, figures, tables, references}
-\label{others}
-
-These instructions apply to everyone, regardless of the formatter being used.
-
-\subsection{Citations within the text}
-
-Citations within the text should be based on the \texttt{natbib} package
-and include the authors' last names and year (with the ``et~al.'' construct
-for more than two authors). When the authors or the publication are
-included in the sentence, the citation should not be in parenthesis using \verb|\citet{}| (as
-in ``See \citet{Hinton06} for more information.''). Otherwise, the citation
-should be in parenthesis using \verb|\citep{}| (as in ``Deep learning shows promise to make progress
-towards AI~\citep{Bengio+chapter2007}.'').
-
-The corresponding references are to be listed in alphabetical order of
-authors, in the \textsc{References} section. As to the format of the
-references themselves, any style is acceptable as long as it is used
-consistently.
-
-\subsection{Footnotes}
-
-Indicate footnotes with a number\footnote{Sample of the first footnote} in the
-text. Place the footnotes at the bottom of the page on which they appear.
-Precede the footnote with a horizontal rule of 2~inches
-(12~picas).\footnote{Sample of the second footnote}
-
-\subsection{Figures}
-
-All artwork must be neat, clean, and legible. Lines should be dark
-enough for purposes of reproduction; art work should not be
-hand-drawn. The figure number and caption always appear after the
-figure. Place one line space before the figure caption, and one line
-space after the figure. The figure caption is lower case (except for
-first word and proper nouns); figures are numbered consecutively.
-
-Make sure the figure caption does not get separated from the figure.
-Leave sufficient space to avoid splitting the figure and figure caption.
-
-You may use color figures.
-However, it is best for the
-figure captions and the paper body to make sense if the paper is printed
-either in black/white or in color.
-\begin{figure}[h]
-\begin{center}
-%\framebox[4.0in]{$\;$}
-\fbox{\rule[-.5cm]{0cm}{4cm} \rule[-.5cm]{4cm}{0cm}}
-\end{center}
-\caption{Sample figure caption.}
+\begin{figure}[t]
+\centering
+\input{fig_geometry.tex}
+\caption{Observability is anisotropic even when the prior is not. (a) Every unit direction
+starts with the same prior variance. (b) Observing $Y$ narrows the posterior by different
+amounts in different directions; dashed grey is the prior, solid colour the posterior.
+(c) Collecting those numbers gives $\Cobs$, an ellipsoid inside the prior ball whose axes
+are the observable directions and whose lengths are $\lambda_j=1-\Exp[\Var(v_j^\top Z\mid
+Y)]$. A scalar bit rate is the trace of this object.}
+\label{fig:geometry}
 \end{figure}
 
-\subsection{Tables}
+\paragraph{Relation to Fisher information.}
+The definition is global and Bayesian; the familiar local object is not. The two agree in
+the linear--Gaussian case, which locates $\Cobs$ rather than replacing it.
 
-All tables must be centered, neat, clean and legible. Do not use hand-drawn
-tables. The table number and title always appear before the table. See
-Table~\ref{sample-table}.
+\begin{proposition}[Fisher bridge]
+\label{prop:fisher}
+Let $Y=AZ+\varepsilon$ with $Z\sim\mathcal N(0,I)$, $\varepsilon\sim\mathcal N(0,\Sigma_
+\varepsilon)$ independent, and let $J_F=A^\top\Sigma_\varepsilon^{-1}A$ be the Fisher
+information of $Y$ about $Z$. Then
+\[
+  \Cobs \;=\; J_F\,(I+J_F)^{-1},
+\]
+so $\Cobs$ and $J_F$ share eigenvectors and $\lambda_{\mathrm{obs},j}=\lambda_{F,j}/(1+
+\lambda_{F,j})$.
+\end{proposition}
+\begin{proof}
+The posterior precision is $I+J_F$, so $\Cov(Z\mid Y)=(I+J_F)^{-1}$ and
+$\Cobs=\Cov(Z)-\Exp[\Cov(Z\mid Y)]=I-(I+J_F)^{-1}=J_F(I+J_F)^{-1}$.
+\end{proof}
 
-Place one line space before the table title, one line space after the table
-title, and one line space after the table. The table title must be lower case
-(except for first word and proper nouns); tables are numbered consecutively.
+Fisher information asks whether two nearby latent states are locally distinguishable;
+$\Cobs$ asks how much of a direction is globally inferable under the prior. The map
+$\mu\mapsto\mu/(1+\mu)$ compresses an unbounded local quantity into $[0,1)$, which is
+exactly the range that \eqref{eq:quadform} predicts and that our implementation
+enforces as an invariant on every estimated spectrum.
 
-\begin{table}[t]
-\caption{Sample table title}
-\label{sample-table}
-\begin{center}
-\begin{tabular}{ll}
-\multicolumn{1}{c}{\bf PART}  &\multicolumn{1}{c}{\bf DESCRIPTION}
-\\ \hline \\
-Dendrite         &Input terminal \\
-Axon             &Output terminal \\
-Soma             &Cell body (contains cell nucleus) \\
-\end{tabular}
-\end{center}
-\end{table}
+\subsection{Decoder-certified observability}
+\label{sec:certificate}
 
-\section{Default Notation}
+\emph{How can observability be measured without knowing the Bayes decoder?}
 
-In an attempt to encourage standardized notation, we have included the
-notation file from the textbook, \textit{Deep Learning}
-\cite{goodfellow2016deep} available at
-\url{https://github.com/goodfeli/dlbook_notation/}.  Use of this style
-is not required and can be disabled by commenting out
-\texttt{math\_commands.tex}.
+$m(Y)=\Exp[Z\mid Y]$ is unavailable, so let $f$ be a decoder trained to approximate it.
+The natural substitute $\Cov(f(Y))$ is not usable: it is not a lower bound on $\Cobs$ for
+an approximate decoder, and its error grows with the decoder's scale rather than with its
+quality. We use instead, with $z_c,f_c$ the centred latent and decoder output,
+\begin{equation}
+  \Ccert(f)\;=\;\Exp\bigl[z_cf_c^\top+f_cz_c^\top-f_cf_c^\top\bigr].
+  \label{eq:ccert}
+\end{equation}
 
+\begin{theorem}[Certificate]
+\label{thm:cert}
+For any square-integrable $f$, $\ \Ccert(f)=\Cobs-\Cov(m-f)\preceq\Cobs$, with equality
+iff $f=m$ almost surely.
+\end{theorem}
 
-\centerline{\bf Numbers and Arrays}
-\bgroup
-\def\arraystretch{1.5}
-\begin{tabular}{p{1in}p{3.25in}}
-$\displaystyle a$ & A scalar (integer or real)\\
-$\displaystyle \va$ & A vector\\
-$\displaystyle \mA$ & A matrix\\
-$\displaystyle \tA$ & A tensor\\
-$\displaystyle \mI_n$ & Identity matrix with $n$ rows and $n$ columns\\
-$\displaystyle \mI$ & Identity matrix with dimensionality implied by context\\
-$\displaystyle \ve^{(i)}$ & Standard basis vector $[0,\dots,0,1,0,\dots,0]$ with a 1 at position $i$\\
-$\displaystyle \text{diag}(\va)$ & A square, diagonal matrix with diagonal entries given by $\va$\\
-$\displaystyle \ra$ & A scalar random variable\\
-$\displaystyle \rva$ & A vector-valued random variable\\
-$\displaystyle \rmA$ & A matrix-valued random variable\\
-\end{tabular}
-\egroup
-\vspace{0.25cm}
+\noindent\textbf{Consequence.} Every direction $\Ccert$ reports is one the channel really
+carries: a better decoder can only raise the certificate, never inflate it past the truth.
+This is what makes the estimate falsifiable rather than merely optimistic.
 
-\centerline{\bf Sets and Graphs}
-\bgroup
-\def\arraystretch{1.5}
+\paragraph{$\Ccert$ is indefinite, and that is the point.}
+$\Cov(f)$ is positive semidefinite by construction --- which is precisely why it cannot be
+a bound. $\Ccert$ can have negative eigenvalues, and their magnitude measures decoder
+misspecification in that direction. Two consequences follow and both are easy to get
+wrong. First, any solver that ranks by $|\lambda|$ --- every SVD-based routine --- returns
+the directions the decoder is \emph{worst} on as the leading ones; the eigensolver must be
+algebraically largest. Second, $\Ccert\preceq\Cobs$ orders quadratic forms, not volumes:
+drawing the certificate as a smaller ellipsoid nested inside $\Cobs$ is wrong whenever
+$\Ccert$ has a negative direction. Figure~\ref{fig:certificate} draws it as a signed
+spectrum instead.
 
-\begin{tabular}{p{1.25in}p{3.25in}}
-$\displaystyle \sA$ & A set\\
-$\displaystyle \R$ & The set of real numbers \\
-$\displaystyle \{0, 1\}$ & The set containing 0 and 1 \\
-$\displaystyle \{0, 1, \dots, n \}$ & The set of all integers between $0$ and $n$\\
-$\displaystyle [a, b]$ & The real interval including $a$ and $b$\\
-$\displaystyle (a, b]$ & The real interval excluding $a$ but including $b$\\
-$\displaystyle \sA \backslash \sB$ & Set subtraction, i.e., the set containing the elements of $\sA$ that are not in $\sB$\\
-$\displaystyle \gG$ & A graph\\
-$\displaystyle \parents_\gG(\ervx_i)$ & The parents of $\ervx_i$ in $\gG$
-\end{tabular}
-\vspace{0.25cm}
+\begin{figure}[t]
+\centering
+\input{fig_certificate.tex}
+\caption{The certificate is not a smaller ellipsoid. (a) $\Cobs$ is positive semidefinite
+with eigenvalues in $[0,1]$, so it has an ellipsoid. (b) $\Ccert(f)$ is indefinite: its
+positive part is the certified observability mass $\Dcert$, and its negative part measures
+where the decoder is misspecified. $\Ccert\preceq\Cobs$ is an ordering of quadratic forms,
+so nesting the two as volumes would misstate the object being estimated.}
+\label{fig:certificate}
+\end{figure}
 
+\paragraph{Estimating it without reading back the decoder's own noise.}
+Three separations are required, and each removes a distinct optimism.
+\emph{(i) Teacher/operator split.} The decoder is fit on $A_{\mathrm{teacher}}$ and
+$\Ccert$ is estimated on a disjoint $A_{\mathrm{operator}}$; sharing them lets the
+operator read back the decoder's fitting noise as observability.
+\emph{(ii) Held-out spectrum.} Directions are chosen on the fitting split and their
+eigenvalues re-estimated on held-out data; in-sample spectra exceed the theoretical bound
+of \eqref{eq:quadform} substantially.
+\emph{(iii) Inner cross-fit.} Scoring a discovered subspace by
+$\Dcert(V)=\sum_j\max(\mu_j,0)$ with $\mu=\mathrm{eig}(V\Ccert^{\mathrm{held}}V^\top)$ is a
+max-type functional, so choosing the within-subspace rotation and measuring its eigenvalues
+on the same samples rectifies noise into positive mass. The rotation is therefore chosen on
+one half of the held-out samples and measured on the other.
+The reported quantity is a subspace property: clipping the \emph{diagonal} of
+$V\Ccert V^\top$ instead is basis-dependent and can report zero where the subspace contains
+a certified direction one rotation away.
 
-\centerline{\bf Indexing}
-\bgroup
-\def\arraystretch{1.5}
+\subsection{Receiver-conditional observability}
+\label{sec:receiver}
 
-\begin{tabular}{p{1.25in}p{3.25in}}
-$\displaystyle \eva_i$ & Element $i$ of vector $\va$, with indexing starting at 1 \\
-$\displaystyle \eva_{-i}$ & All elements of vector $\va$ except for element $i$ \\
-$\displaystyle \emA_{i,j}$ & Element $i, j$ of matrix $\mA$ \\
-$\displaystyle \mA_{i, :}$ & Row $i$ of matrix $\mA$ \\
-$\displaystyle \mA_{:, i}$ & Column $i$ of matrix $\mA$ \\
-$\displaystyle \etA_{i, j, k}$ & Element $(i, j, k)$ of a 3-D tensor $\tA$\\
-$\displaystyle \tA_{:, :, i}$ & 2-D slice of a 3-D tensor\\
-$\displaystyle \erva_i$ & Element $i$ of the random vector $\rva$ \\
-\end{tabular}
-\egroup
-\vspace{0.25cm}
+\emph{How does observability depend on what the receiver knows?}
 
+Nothing so far ties $\Cobs$ to $Y$ specifically. Let $\mathcal I_R$ be the receiver's
+information set and define $\Cobs(\mathcal I_R)=\Cov(\Exp[Z\mid\mathcal I_R])$. Two
+receivers concern us: the blind one, $\mathcal I_b=Y$, and one that additionally knows the
+conditioning the generator used, $\mathcal I_s=(Y,S)$. We take $S=C(P)$ to be the
+sample-specific conditioning embedding actually supplied to the generator, not the raw
+prompt $P$: this asks what happens when the receiver knows what the generator knew, and
+keeps the choice of text encoder out of the comparison.
 
-\centerline{\bf Calculus}
-\bgroup
-\def\arraystretch{1.5}
-\begin{tabular}{p{1.25in}p{3.25in}}
-% NOTE: the [2ex] on the next line adds extra height to that row of the table.
-% Without that command, the fraction on the first line is too tall and collides
-% with the fraction on the second line.
-$\displaystyle\frac{d y} {d x}$ & Derivative of $y$ with respect to $x$\\ [2ex]
-$\displaystyle \frac{\partial y} {\partial x} $ & Partial derivative of $y$ with respect to $x$ \\
-$\displaystyle \nabla_\vx y $ & Gradient of $y$ with respect to $\vx$ \\
-$\displaystyle \nabla_\mX y $ & Matrix derivatives of $y$ with respect to $\mX$ \\
-$\displaystyle \nabla_\tX y $ & Tensor containing derivatives of $y$ with respect to $\tX$ \\
-$\displaystyle \frac{\partial f}{\partial \vx} $ & Jacobian matrix $\mJ \in \R^{m\times n}$ of $f: \R^n \rightarrow \R^m$\\
-$\displaystyle \nabla_\vx^2 f(\vx)\text{ or }\mH( f)(\vx)$ & The Hessian matrix of $f$ at input point $\vx$\\
-$\displaystyle \int f(\vx) d\vx $ & Definite integral over the entire domain of $\vx$ \\
-$\displaystyle \int_\sS f(\vx) d\vx$ & Definite integral with respect to $\vx$ over the set $\sS$ \\
-\end{tabular}
-\egroup
-\vspace{0.25cm}
+\begin{theorem}[Monotonicity of receiver-conditional observability]
+\label{thm:mono}
+Let $m_b(Y)=\Exp[Z\mid Y]$ and $m_s(Y,S)=\Exp[Z\mid Y,S]$. Then
+\[
+  \Cobs(Y,S)-\Cobs(Y)\;=\;\Exp\bigl[\Cov(m_s\mid Y)\bigr]\;\succeq\;0 .
+\]
+\end{theorem}
+\begin{proof}
+$\Exp[m_s\mid Y]=m_b$ by the tower property, so the law of total covariance gives
+$\Cov(m_s)=\Cov(\Exp[m_s\mid Y])+\Exp[\Cov(m_s\mid Y)]=\Cov(m_b)+\Exp[\Cov(m_s\mid Y)]$.
+\end{proof}
 
-\centerline{\bf Probability and Information Theory}
-\bgroup
-\def\arraystretch{1.5}
-\begin{tabular}{p{1.25in}p{3.25in}}
-$\displaystyle P(\ra)$ & A probability distribution over a discrete variable\\
-$\displaystyle p(\ra)$ & A probability distribution over a continuous variable, or over
-a variable whose type has not been specified\\
-$\displaystyle \ra \sim P$ & Random variable $\ra$ has distribution $P$\\% so thing on left of \sim should always be a random variable, with name beginning with \r
-$\displaystyle  \E_{\rx\sim P} [ f(x) ]\text{ or } \E f(x)$ & Expectation of $f(x)$ with respect to $P(\rx)$ \\
-$\displaystyle \Var(f(x)) $ &  Variance of $f(x)$ under $P(\rx)$ \\
-$\displaystyle \Cov(f(x),g(x)) $ & Covariance of $f(x)$ and $g(x)$ under $P(\rx)$\\
-$\displaystyle H(\rx) $ & Shannon entropy of the random variable $\rx$\\
-$\displaystyle \KL ( P \Vert Q ) $ & Kullback-Leibler divergence of P and Q \\
-$\displaystyle \mathcal{N} ( \vx ; \vmu , \mSigma)$ & Gaussian distribution %
-over $\vx$ with mean $\vmu$ and covariance $\mSigma$ \\
-\end{tabular}
-\egroup
-\vspace{0.25cm}
+\noindent\textbf{Consequence.} Observability is not a property of the channel alone. Side
+information can only enlarge the observable geometry, and the gain
+$\Delta C_{\mathrm{side}}=\Exp[\Cov(m_s\mid Y)]$ has a direct reading: how much the
+posterior mean still moves once $Y$ is known.
 
-\centerline{\bf Functions}
-\bgroup
-\def\arraystretch{1.5}
-\begin{tabular}{p{1.25in}p{3.25in}}
-$\displaystyle f: \sA \rightarrow \sB$ & The function $f$ with domain $\sA$ and range $\sB$\\
-$\displaystyle f \circ g $ & Composition of the functions $f$ and $g$ \\
-  $\displaystyle f(\vx ; \vtheta) $ & A function of $\vx$ parametrized by $\vtheta$.
-  (Sometimes we write $f(\vx)$ and omit the argument $\vtheta$ to lighten notation) \\
-$\displaystyle \log x$ & Natural logarithm of $x$ \\
-$\displaystyle \sigma(x)$ & Logistic sigmoid, $\displaystyle \frac{1} {1 + \exp(-x)}$ \\
-$\displaystyle \zeta(x)$ & Softplus, $\log(1 + \exp(x))$ \\
-$\displaystyle || \vx ||_p $ & $\normlp$ norm of $\vx$ \\
-$\displaystyle || \vx || $ & $\normltwo$ norm of $\vx$ \\
-$\displaystyle x^+$ & Positive part of $x$, i.e., $\max(0,x)$\\
-$\displaystyle \1_\mathrm{condition}$ & is 1 if the condition is true, 0 otherwise\\
-\end{tabular}
-\egroup
-\vspace{0.25cm}
+\paragraph{The estimator does not inherit the ordering.}
+Theorem~\ref{thm:mono} is about Bayes quantities. With two \emph{approximate} decoders,
+\begin{equation}
+  \Ccert^{\mathrm{side}}(f_s)-\Ccert^{\mathrm{blind}}(f_b)
+  \;=\;\Delta C_{\mathrm{side}}-(E_s-E_b),\qquad
+  E_s=\Cov(m_s-f_s),\ E_b=\Cov(m_b-f_b),
+  \label{eq:contrast}
+\end{equation}
+so the estimated difference can have negative eigenvalues although the population
+difference cannot, and can equally \emph{overstate} the gain when the side decoder fits
+more easily ($E_s<E_b$). Neither $E_s$ nor $E_b$ is observable, and no matching of
+architecture, budget or training loss identifies them: $\mathrm{MSE}(f)=\mathrm{MMSE}+
+\text{approximation error}$, and side information changes the irreducible term itself. We
+therefore call \eqref{eq:contrast} the \emph{decoder-certified side-information
+contrast}, never a certified gain, and register in advance that a statistically credible
+negative direction in it invalidates a Bayes-level reading rather than showing that side
+information hurts.
 
+\subsection{From observability geometry to operational coordinates}
+\label{sec:operational}
 
+\emph{How do observable directions become operational coordinates?}
 
-\section{Final instructions}
-Do not change any aspects of the formatting parameters in the style files.
-In particular, do not modify the width or length of the rectangle the text
-should fit into, and do not change font sizes (except perhaps in the
-\textsc{References} section; see below). Please note that pages should be
-numbered.
+Let $V_k=[v_1,\dots,v_k]^\top$ be the leading $k$ rows of the certified spectrum and define
+the latent coordinates
+\begin{equation}
+  W \;=\; V_kZ .
+  \label{eq:coords}
+\end{equation}
+Because $V_kV_k^\top=I_k$ and $Z\sim\mathcal N(0,I)$, we have $W\sim\mathcal N(0,I_k)$
+exactly: choosing a subspace changes which coordinates are read, not the prior they are
+read against. This is what makes different choices of $V_k$ comparable at all.
 
-\section{Preparing PostScript or PDF files}
+Geometry discovery and operational evaluation are then kept apart. $V_k$ is discovered from
+$\Ccert$ on the discovery split and frozen; a \emph{fresh} receiver $H(Y)$ --- or
+$H(Y,S)$ --- is trained on a disjoint split to predict $W$, and is evaluated on held-out
+samples under a fixed set of channel perturbations. We report sign bit error rate, the
+linear explained variance $R^2_{\mathrm{lin}}=\frac1k\sum_j\rho_j^2$, and coordinate MSE.
 
-Please prepare PostScript or PDF files with paper size ``US Letter'', and
-not, for example, ``A4''. The -t
-letter option on dvips will produce US Letter files.
+\paragraph{Operational hypothesis, not a theorem.}
+The framework predicts an ordering:
+\begin{equation}
+  \Dcert(V_a)>\Dcert(V_b)\ \Longrightarrow\ V_a\ \text{should show better held-out
+  recoverability than}\ V_b .
+  \label{eq:hypothesis}
+\end{equation}
+This is an empirical claim about a trained receiver, not a consequence of
+Theorem~\ref{thm:cert}, and we test it rather than assume it. A geometry-free reference is
+available throughout: a Haar-random $k$-frame $V_{\mathrm{Haar}}$, which is the correct
+null for ``the channel is anisotropic'' because it is a uniformly drawn subspace rather
+than a structured one.
 
-Consider directly generating PDF files using \verb+pdflatex+
-(especially if you are a MiKTeX user).
-PDF figures must be substituted for EPS figures, however.
+\section{Experiments}
 
-Otherwise, please generate your PostScript and PDF files with the following commands:
-\begin{verbatim}
-dvips mypaper.dvi -t letter -Ppdf -G0 -o mypaper.ps
-ps2pdf mypaper.ps mypaper.pdf
-\end{verbatim}
+\textbf{[Phase A running; this section is written once the four-arm ladder completes. The
+subsections below name the questions, in the order they were registered.]}
 
-\subsection{Margins in LaTeX}
+\subsection{Does the certified estimator recover a known geometry?}
+Synthetic linear--Gaussian channels where $\Cobs$ is available in closed form via
+Proposition~\ref{prop:fisher}.
 
-Most of the margin problems come from figures positioned by hand using
-\verb+\special+ or other commands. We suggest using the command
-\verb+\includegraphics+
-from the graphicx package. Always specify the figure width as a multiple of
-the line width as in the example below using .eps graphics
-\begin{verbatim}
-   \usepackage[dvips]{graphicx} ...
-   \includegraphics[width=0.8\linewidth]{myfile.eps}
-\end{verbatim}
-or % Apr 2009 addition
-\begin{verbatim}
-   \usepackage[pdftex]{graphicx} ...
-   \includegraphics[width=0.8\linewidth]{myfile.pdf}
-\end{verbatim}
-for .pdf graphics.
-See section~4.4 in the graphics bundle documentation (\url{http://www.ctan.org/tex-archive/macros/latex/required/graphics/grfguide.ps})
+\subsection{Is the observability of a real diffusion channel anisotropic?}
+Stable Diffusion v1.5, DDIM, frozen; certified spectra and their architecture dependence.
 
-A number of width problems arise when LaTeX cannot properly hyphenate a
-line. Please give LaTeX hyphenation hints using the \verb+\-+ command.
+\subsection{Do certified directions predict held-out recoverability?}
+A direct test of \eqref{eq:hypothesis} against the Haar null.
 
-\subsubsection*{Author Contributions}
-If you'd like to, you may include  a section for author contributions as is done
-in many journals. This is optional and at the discretion of the authors.
+\subsection{Does the receiver's information set change what is observable?}
+The four-arm ladder: $f(Y)$, $f(Y,S_{\mathrm{null}})$, $f(Y,S_{\mathrm{shuffled}})$,
+$f(Y,S_{\mathrm{correct}})$, with the primary contrast isolating \emph{paired}
+conditioning from architecture and from the conditioning marginal.
 
-\subsubsection*{Acknowledgments}
-Use unnumbered third level headings for the acknowledgments. All
-acknowledgments, including those to funding agencies, go at the end of the paper.
+\section{Discussion}
 
+\textbf{[Pending Phase A.]}
 
-\bibliography{iclr2026_conference}
 \bibliographystyle{iclr2026_conference}
-
-\appendix
-\section{Appendix}
-You may include other additional sections here.
-
+\bibliography{iclr2026_conference}
 
 \end{document}

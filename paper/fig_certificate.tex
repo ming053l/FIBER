@@ -1,0 +1,31 @@
+% Fig. 3 -- why the certificate is NOT a smaller ellipsoid inside a bigger one.
+% One inference: C_cert is indefinite, so the object we can estimate has negative
+% directions that Cov(f) can never express.
+\begin{tikzpicture}[scale=1.0,every node/.style={font=\small}]
+  % left: C_obs, PSD, spectrum in [0,1]
+  \begin{scope}
+    \node[anchor=south,align=center] at (1.9,2.35)
+      {\textbf{(a)} $C_{\mathrm{obs}}\succeq 0$, \ $\lambda\in[0,1]$};
+    \draw[->,>=stealth,gray!70] (0,0) -- (3.9,0) node[right,font=\footnotesize] {$j$};
+    \draw[->,>=stealth,gray!70] (0,-0.15) -- (0,2.0) node[above,font=\footnotesize] {$\lambda_j$};
+    \foreach \x/\h in {0.35/1.65,0.85/1.30,1.35/0.95,1.85/0.62,2.35/0.34,2.85/0.15,3.35/0.05}
+      \draw[fill=gray!35,draw=gray!60] (\x-0.16,0) rectangle (\x+0.16,\h);
+  \end{scope}
+  % right: C_cert, indefinite
+  \begin{scope}[shift={(5.4,0)}]
+    \node[anchor=south,align=center] at (1.9,2.35)
+      {\textbf{(b)} $C_{\mathrm{cert}}(f)$ is \emph{indefinite}};
+    \draw[->,>=stealth,gray!70] (0,-1.25) -- (3.9,-1.25) node[right,font=\footnotesize] {$j$};
+    \draw[->,>=stealth,gray!70] (0,-1.45) -- (0,2.0) node[above,font=\footnotesize] {$\mu_j$};
+    \draw[gray!45,dashed] (0,0) -- (3.9,0);
+    \foreach \x/\h in {0.35/0.55,0.85/0.22,1.35/0.06}
+      \draw[fill=accent!30,draw=accent] (\x-0.16,0) rectangle (\x+0.16,\h);
+    \foreach \x/\h in {1.85/-0.30,2.35/-0.55,2.85/-0.85,3.35/-1.10}
+      \draw[fill=gray!25,draw=gray!60] (\x-0.16,0) rectangle (\x+0.16,\h);
+    \node[font=\footnotesize,accent] at (0.9,0.95) {$D_{\mathrm{cert}}=\sum_j\max(\mu_j,0)$};
+    \node[font=\footnotesize,gray!75] at (2.9,-1.5) {decoder misspecification};
+  \end{scope}
+  \node[font=\footnotesize,align=center] at (4.7,-2.15)
+    {$C_{\mathrm{cert}}(f)=C_{\mathrm{obs}}-\Cov(m-f)\preceq C_{\mathrm{obs}}$
+     \ \ is an ordering of \emph{quadratic forms}, not of volumes.};
+\end{tikzpicture}
