@@ -67,10 +67,25 @@ class TrainConfig:
 def make_loader(root, split: str, bank: ChannelBank, *, attacks=None, mode="sampled",
                 crossfit: str | None = None, crossfit_sub: str | None = None,
                 batch_size: int = 16, workers: int = 8, shuffle: bool = True,
-                epoch_salt: str = "", limit: int = 0) -> DataLoader:
+                epoch_salt: str = "", limit: int = 0,
+                subset_size: int = 0, subset_seed: int = 0) -> DataLoader:
     ds = FiberDataset(root, split, bank, attacks=attacks, mode=mode, crossfit=crossfit,
                       crossfit_sub=crossfit_sub, epoch_salt=epoch_salt)
-    if limit:
+    if subset_size:
+        # NESTED random subsets, for sample-size experiments. A seeded permutation
+        # taken as a prefix means N=100 is a subset of N=200 is a subset of the whole
+        # split, so a learning curve varies the SIZE and nothing else. `limit` below
+        # slices the records in their stored order instead, which is fine for a debug
+        # smoke test and wrong here: the order carries the sample index, and therefore
+        # the latent seed and the prompt draw, so a prefix confounds sample size with
+        # subset composition.
+        # The permutation depends only on subset_seed, never on epoch_salt, so the
+        # subset is identical across epochs while the attack draw still varies.
+        import numpy as _np
+        perm = _np.random.default_rng(derive_seed("subset", subset_seed)
+                                      % (2**31)).permutation(len(ds.records))
+        ds.records = [ds.records[i] for i in perm[:subset_size]]
+    elif limit:
         ds.records = ds.records[:limit]
     return DataLoader(ds, batch_size=batch_size, shuffle=shuffle, num_workers=workers,
                       pin_memory=True, drop_last=False, persistent_workers=workers > 0)
@@ -112,7 +127,7 @@ def head_losses(out: dict, w_true: torch.Tensor, cfg: TrainConfig):
 def train_extractor(frame, root, bank: ChannelBank, cfg: TrainConfig, *, split="train",
                     crossfit: str | None = "B", device="cuda:0", seed: int = 0,
                     learn_frame: bool = False, attacks=None, limit: int = 0,
-                    log_every: int = 50):
+                    subset_size: int = 0, subset_seed: int = 0, log_every: int = 50):
     """Returns (extractor, frame, history). `learn_frame=True` is the DISCOVERY
     stage of arm E only; evaluation always runs with the frame frozen."""
     device = torch.device(device)
@@ -147,7 +162,8 @@ def train_extractor(frame, root, bank: ChannelBank, cfg: TrainConfig, *, split="
     for epoch in range(cfg.epochs):
         loader = make_loader(root, split, bank, attacks=attacks, crossfit=crossfit,
                              batch_size=cfg.batch_size, workers=cfg.num_workers,
-                             epoch_salt=f"e{epoch}", limit=limit)
+                             epoch_salt=f"e{epoch}", limit=limit,
+                             subset_size=subset_size, subset_seed=subset_seed)
         total_steps = cfg.epochs * max(len(loader), 1)
         model.train()
         t0, run = time.time(), []

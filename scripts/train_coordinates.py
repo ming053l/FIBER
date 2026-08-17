@@ -20,7 +20,7 @@ import numpy as np
 import torch
 
 from fiber.channels import ChannelBank
-from fiber.training import TrainConfig, evaluate, train_extractor
+from fiber.training import TrainConfig, evaluate, make_loader, train_extractor
 from fiber.transforms import build_frame
 from fiber.transforms.rotation import RotatedFrame
 from fiber.transforms.spectral import SpectralFrame
@@ -42,7 +42,7 @@ BASIS_ONLY_TYPES = {"rotated_random", "rotated_learned"}
 
 
 def run_stem(arm: str, k: int, seed: int, extractor_arch: str, receiver_seed: int,
-             scope: str = "gate") -> str:
+             scope: str = "gate", subset_size: int = 0, subset_seed: int = 0) -> str:
     """A run's identity is (arm, k, structure seed, receiver architecture, receiver seed,
     analysis scope). Anything less and runs overwrite each other on disk.
 
@@ -55,7 +55,13 @@ def run_stem(arm: str, k: int, seed: int, extractor_arch: str, receiver_seed: in
         p0_7_basis, at which point the selector skips it and the Gate loses that seed
         entirely.
     """
-    return f"{arm}_k{k}_s{seed}_rx{extractor_arch}_r{receiver_seed}_sc{scope}"
+    stem = f"{arm}_k{k}_s{seed}_rx{extractor_arch}_r{receiver_seed}_sc{scope}"
+    # A sample-size sweep reruns the same (arm, k, seed, receiver) at several training
+    # set sizes. Without this in the stem every point of the curve overwrites the last
+    # one and the surviving file is whichever happened to run last.
+    if subset_size:
+        stem += f"_n{subset_size}_ss{subset_seed}"
+    return stem
 
 
 def build_arm_frame(cfg, arm: str, k: int, seed: int, tag: str, d: int):
@@ -113,12 +119,19 @@ def main() -> int:
                     help="restrict the evaluated attacks (triage uses one per family); "
                          "recorded in the run so the locked test evaluation matches")
     ap.add_argument("--scope", default=None,
-                    choices=["gate", "receiver_control", "p0_7_basis"],
+                    choices=["gate", "receiver_control", "p0_7_basis", "powercurve"],
                     help="which analysis this run belongs to; the Gate selector reads "
                          "ONLY gate-scope runs")
     ap.add_argument("--receiver-seed", type=int, default=None,
                     help="P0-7.1: separate the receiver's randomness from the BASIS "
                          "seed, so a D2 spread can be attributed to the basis")
+    ap.add_argument("--subset-size", type=int, default=0,
+                    help="EXPLORATORY: train on a nested random subset of this many "
+                         "samples from the training split. Evaluation splits are never "
+                         "subset. Requires a non-gate --scope.")
+    ap.add_argument("--subset-seed", type=int, default=0,
+                    help="which nested subset; N=100 is a subset of N=200 at the same "
+                         "seed, so the curve varies size and nothing else")
     ap.add_argument("--extractor-arch", default=None,
                     help="receiver architecture; `spatial` is the no-GAP control (P0-5)")
     args = ap.parse_args()
@@ -173,6 +186,12 @@ def main() -> int:
             scope = "p0_7_basis"
         else:
             scope = "gate"
+
+    if args.subset_size and scope == "gate":
+        raise SystemExit(
+            "--subset-size is an exploratory diagnostic and must not produce a run the "
+            "selector can see. Pass an explicit --scope (e.g. --scope powercurve); "
+            "select_method.py only reads analysis_scope == 'gate'.")
     frame, extra = build_arm_frame(cfg, args.arm, k, args.seed, args.tag, d)
     learnable = any(p.requires_grad for p in frame.parameters()) or \
         cfg["fiber"]["arms"][args.arm]["type"] == "householder"
@@ -198,7 +217,8 @@ def main() -> int:
             frame, root, bank, dcfg, split=args.train_split,
             crossfit=cfg["dataset"]["crossfit"]["discovery_split"] if args.crossfit is None else xfit_eval,
             device=args.device, seed=args.seed, learn_frame=True, attacks=bank.train,
-            limit=args.limit)   # discovery randomness follows the structure seed
+            limit=args.limit,
+        subset_size=args.subset_size, subset_seed=args.subset_seed)   # discovery randomness follows the structure seed
         meta["discovery"] = {"epochs": dcfg.epochs, "objective": "mse",
                              "history": dhist[-3:],
                              "orthonormality_error": frame.orthonormality_error()}
@@ -214,7 +234,8 @@ def main() -> int:
     model, frame, hist = train_extractor(
         frame, root, bank, tcfg, split=args.train_split, crossfit=xfit_eval,
         device=args.device, seed=receiver_seed, learn_frame=False, attacks=bank.train,
-        limit=args.limit)
+        limit=args.limit,
+        subset_size=args.subset_size, subset_seed=args.subset_seed)
 
     results, arrays = {}, {}
     for split in args.eval_splits:
@@ -229,9 +250,17 @@ def main() -> int:
             if "pearson_per_coord" in r:
                 arrays[f"{split}|{a}|pearson"] = r["pearson_per_coord"]
 
+    # What was actually trained on. Asked-for and delivered differ whenever
+    # subset_size exceeds the split, and a learning curve plotted against the request
+    # would show a phantom plateau at the top end.
+    n_train_samples = len(make_loader(
+        root, args.train_split, bank, crossfit=xfit_eval, workers=0,
+        subset_size=args.subset_size, subset_seed=args.subset_seed).dataset)
+
     out_dir = Path(cfg["paths"]["data_root"]) / "results" / args.tag
     out_dir.mkdir(parents=True, exist_ok=True)
-    stem = run_stem(args.arm, k, args.seed, tcfg.extractor_arch, receiver_seed, scope)
+    stem = run_stem(args.arm, k, args.seed, tcfg.extractor_arch, receiver_seed, scope,
+                    args.subset_size, args.subset_seed)
     np.savez_compressed(out_dir / f"{stem}.npz", **arrays)
     rows = frame.rows().detach().cpu().contiguous()
     rows_digest = hashlib.blake2s(rows.numpy().tobytes(), digest_size=16).hexdigest()
@@ -257,6 +286,9 @@ def main() -> int:
         # `analysis_scope` keeps control runs out of the Gate candidate pool
         "structure_seed": args.seed, "basis_seed": args.seed,
         "receiver_seed": receiver_seed, "analysis_scope": scope,
+        # 0 = the whole split. Non-zero marks an exploratory sample-size point.
+        "subset_size": args.subset_size, "subset_seed": args.subset_seed,
+        "n_train_samples": n_train_samples,
         "orthonormality_error": ortho, "rows_digest": rows_digest,
         "extractor_arch": tcfg.extractor_arch,
         **prov,

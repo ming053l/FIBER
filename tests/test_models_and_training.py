@@ -7,6 +7,13 @@ from fiber.models import Extractor, Teacher
 from fiber.training.loops import TrainConfig, _lr_at, head_losses
 from fiber.utils.config import load_config
 
+import sys
+from pathlib import Path
+
+from fiber.channels import ChannelBank
+
+sys.path.insert(0, "scripts")
+
 CFG = load_config("configs/linear_fiber.yaml")
 
 
@@ -222,3 +229,61 @@ def test_factories_accept_the_union_of_architecture_kwargs():
         m = build_teacher(arch, d=256, latent_shape=(4, 4, 4))
         out = m(torch.randn(2, 3, 64, 64))
         assert out.shape[0] == 2
+
+
+# --- nested random subsets for sample-size experiments -----------------------------
+
+def test_subsets_are_nested_so_the_curve_varies_only_size():
+    """N=100 must be a SUBSET of N=200 at the same subset seed. Otherwise each point of
+    a learning curve is a different draw and size is confounded with composition."""
+    from fiber.training.loops import make_loader
+    root = Path("/ssd2/ming/FIBER/cache/pilot")
+    if not (root / "index.jsonl").exists():
+        pytest.skip("no pilot cache")
+    bank = ChannelBank(load_config("configs/linear_fiber.yaml"))
+    ids = {}
+    for n in (100, 200, 400):
+        ds = make_loader(root, "train", bank, crossfit="B", workers=0,
+                         subset_size=n, subset_seed=3).dataset
+        ids[n] = [r["sample_id"] for r in ds.records]
+        assert len(ids[n]) == n
+    assert set(ids[100]) < set(ids[200]) < set(ids[400])
+
+
+def test_a_different_subset_seed_gives_a_different_subset():
+    from fiber.training.loops import make_loader
+    root = Path("/ssd2/ming/FIBER/cache/pilot")
+    if not (root / "index.jsonl").exists():
+        pytest.skip("no pilot cache")
+    bank = ChannelBank(load_config("configs/linear_fiber.yaml"))
+    a, b = (set(r["sample_id"] for r in make_loader(
+        root, "train", bank, crossfit="B", workers=0, subset_size=100,
+        subset_seed=s).dataset.records) for s in (0, 1))
+    assert a != b and 0 < len(a & b) < 100
+
+
+def test_a_prefix_subset_would_not_be_a_random_one():
+    """Why subset_size exists at all rather than reusing --limit: the records are stored
+    in sample-index order, and the index determines the latent seed and the prompt draw.
+    A prefix therefore selects a structured subset, not a random one."""
+    from fiber.training.loops import make_loader
+    root = Path("/ssd2/ming/FIBER/cache/pilot")
+    if not (root / "index.jsonl").exists():
+        pytest.skip("no pilot cache")
+    bank = ChannelBank(load_config("configs/linear_fiber.yaml"))
+    prefix = [r["index"] for r in make_loader(root, "train", bank, crossfit="B",
+                                              workers=0, limit=100).dataset.records]
+    random = [r["index"] for r in make_loader(root, "train", bank, crossfit="B",
+                                              workers=0, subset_size=100,
+                                              subset_seed=0).dataset.records]
+    assert max(prefix) < max(random), "the prefix is not concentrated at low indices"
+    assert prefix == sorted(prefix)
+
+
+def test_subset_runs_get_their_own_stem_and_cannot_be_gate_scoped():
+    from train_coordinates import run_stem
+    plain = run_stem("C2_haar", 64, 0, "resnet18", 0, "powercurve")
+    a = run_stem("C2_haar", 64, 0, "resnet18", 0, "powercurve", 100, 0)
+    b = run_stem("C2_haar", 64, 0, "resnet18", 0, "powercurve", 200, 0)
+    c = run_stem("C2_haar", 64, 0, "resnet18", 0, "powercurve", 100, 1)
+    assert len({plain, a, b, c}) == 4, "sample-size points would overwrite each other"

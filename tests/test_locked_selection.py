@@ -986,3 +986,22 @@ def test_write_once_leaves_no_temp_file_behind(tmp_path):
         write_once(d / "lock.json", '{"a": 2}')
     assert sorted(f.name for f in d.iterdir()) == ["lock.json"]
     assert json.loads((d / "lock.json").read_text()) == {"a": 1}
+
+
+def test_powercurve_runs_never_enter_gate_selection(tmp_path):
+    """A sample-size diagnostic trains the same arm on fewer samples many times over.
+    If any of those entered the candidate pool, the lock would be choosing among
+    training budgets -- and the smallest-N run happening to land low would be selected
+    as the method."""
+    d = tmp_path / "results"
+    d.mkdir()
+    _scoped_run(d, "C2_haar", "haar", 0, 0.50, 0.50)
+    _scoped_run(d, "D_spectral", "spectral_topk", 0, 0.45, 0.45)
+    _scoped_run(d, "D_spectral", "spectral_topk", 1, 0.02, 0.02, scope="powercurve")
+    sel = tmp_path / "selection.json"
+    assert _run("select_method.py", "--tag", "unit", "--results-dir", str(d),
+                "--out", str(sel), "--allow-incomplete").returncode == 0
+    blob = json.loads(sel.read_text())
+    assert blob["selected"]["arm"] == "D_spectral"
+    for c in blob["candidates"]:
+        assert c["val_sign_ber"] > 0.1, "a powercurve run entered the Gate pool"
