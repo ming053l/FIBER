@@ -65,7 +65,8 @@ def dimension_feasible(k: int, m: int, d: int) -> bool:
     return m * (d - 1) >= k * (d - k)
 
 
-def classify(a_best: float, feasible: bool = True, converged: bool = True) -> str:
+def classify(a_best: float, feasible: bool = True, converged: bool = True,
+             target: str = "generic") -> str:
     """Classify by the BEST alignment reached, and never call a plateau a capacity limit
     unless the dimension count already rules generic coverage out.
 
@@ -89,7 +90,12 @@ def classify(a_best: float, feasible: bool = True, converged: bool = True) -> st
     # The dimension count comes FIRST: it is an analytic statement about the family
     # and does not depend on whether an optimiser converged. A dimension-infeasible cell
     # that merely ran out of steps is still dimension-infeasible.
-    if not feasible:
+    #
+    # But it is a statement about GENERIC coverage only. A reachable target lies in the
+    # family by construction, so the label must not be applied to it -- measured,
+    # reachable (k=128, m=64) fits to 1.0000 while m(d-1) < k(d-k), and calling that
+    # "structurally insufficient" would contradict the fit sitting next to it.
+    if not feasible and target == "generic":
         return "structurally_insufficient_for_generic_coverage"
     if not converged:
         return "not_converged"
@@ -220,7 +226,7 @@ def fit(d: int, k: int, m: int, kind: str, seed: int, max_steps: int, lr: float,
             "orthonormality_error": ortho,
             "steps_used": step, "max_steps": max_steps,
             "converged": step < max_steps,
-            "capacity_class": classify(best, feasible, step < max_steps),
+            "capacity_class": classify(best, feasible, step < max_steps, kind),
             "necessary_m": round(necessary_m(k, d), 1),
             "m_meets_necessary_condition": m >= necessary_m(k, d),
             "seconds": round(time.time() - t0, 1)}
@@ -254,7 +260,7 @@ def main() -> int:
                 row["alignment_min"] = row["alignment_final"] - row.get("alignment_spread", 0) / 2
             row["capacity_class"] = classify(
                 row["alignment_min"], dimension_feasible(row["k"], row["m"], blob["d"]),
-                row.get("converged", True))
+                row.get("converged", True), row.get("target", "generic"))
         blob["recommended_m_by_k"] = recommend_m(rows)
         blob["decision_rule"] = {"sufficient": CAPACITY_SUFFICIENT,
                                  "marginal": CAPACITY_MARGINAL,
@@ -291,7 +297,7 @@ def main() -> int:
                        "converged": converged, "dimension_feasible": feasible,
                        "steps_used": [r["steps_used"] for r in res],
                        "alignment_min": worst,
-                       "capacity_class": classify(worst, feasible, converged),
+                       "capacity_class": classify(worst, feasible, converged, kind),
                        "alignment_spread": max(r["alignment_best"] for r in res) - worst}
                 rows.append(row)
                 log.info("%-9s k=%-4d m=%-4d  A_best %.4f (final %.4f)  steps %s  %s",

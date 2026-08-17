@@ -421,3 +421,18 @@ def test_provenance_fails_closed_outside_a_repository(tmp_path, monkeypatch):
     with pytest.raises(SystemExit, match="not a git repository"):
         require_clean("an artifact")
     require_clean("an artifact", allow_dirty=True)      # explicit opt-out still works
+
+
+def test_dimension_label_applies_only_to_generic_targets():
+    """The counting argument is about covering the Grassmannian. A reachable target is
+    in the family by construction, so the label must not be applied to it -- measured,
+    reachable (k=128, m=64) fits to 1.0000 while m(d-1) < k(d-k)."""
+    import sys
+    sys.path.insert(0, "scripts")
+    from audit_reflector_capacity import classify
+
+    assert (classify(0.30, feasible=False, target="generic")
+            == "structurally_insufficient_for_generic_coverage")
+    assert classify(1.0, feasible=False, target="reachable") == "empirically_sufficient"
+    assert (classify(0.30, feasible=False, target="reachable")
+            == "ambiguous_capacity_vs_optimization")
