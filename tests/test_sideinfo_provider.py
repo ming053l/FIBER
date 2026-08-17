@@ -126,3 +126,24 @@ def test_the_manifest_records_what_reconstructs_the_pairing():
     assert len(m["donor_digest"]) == 32
     n = _sc("null", _index()).manifest()
     assert len(n["s_null_digest"]) == 32 and n["s_null_shape"] == [77, 768]
+
+
+def test_the_phase_a_frame_is_fixed_and_not_tied_to_the_receiver_seed():
+    """Registered: one Haar frame, C2_haar seed 0, identical across all 24 runs. If the
+    frame moved with the receiver seed, the between-seed spread the equivalence margin is
+    built from would also contain 'which random subspace was drawn'."""
+    import hashlib
+
+    from fiber.transforms import build_frame
+    from fiber.utils.config import load_config
+
+    cfg = load_config("configs/linear_fiber.yaml")
+    spec = dict(cfg["fiber"]["arms"]["C2_haar"])
+    d, k = int(cfg["latent"]["dim"]), int(cfg["fiber"]["robust_dims"])
+
+    def digest(seed):
+        rows = build_frame(spec, d=d, k=k, seed=seed).rows().detach().cpu().contiguous()
+        return hashlib.blake2s(rows.numpy().tobytes(), digest_size=16).hexdigest()
+
+    assert digest(0) == digest(0)
+    assert digest(0) != digest(1), "the frame seed must actually select a frame"

@@ -110,6 +110,12 @@ def main() -> int:
 
     frame = build_frame(dict(cfg["fiber"]["arms"][args.arm]), d=d, k=k,
                         seed=args.frame_seed)
+    # The frame is fixed for the whole of Phase A and does NOT move with the receiver
+    # seed. Recording its rows makes "identical across all 24 runs" checkable from the
+    # artifacts rather than asserted in a driver script.
+    rows = frame.rows().detach().cpu().contiguous()
+    frame_digest = hashlib.blake2s(rows.numpy().tobytes(), digest_size=16).hexdigest()
+    orth = float((rows @ rows.T - torch.eye(k)).abs().max())
     model = build_receiver(args.side_mode, k, args.receiver_seed, args.device)
     init_sha = init_digest(model)
     params = (parameter_report(model) if args.side_mode != "blind"
@@ -144,6 +150,10 @@ def main() -> int:
         "analysis_scope": SCOPE, "side_mode": args.side_mode,
         "tag": args.tag, "cache_tag": args.cache_tag,
         "arm": args.arm, "frame_seed": args.frame_seed, "k": k,
+        "frame_rows_digest": frame_digest, "frame_orthonormality_error": orth,
+        "frame_rule": ("fixed Haar frame for all Phase A arms and seeds; independent of "
+                       "both blind and side-informed decoders, and never tied to the "
+                       "receiver seed"),
         "receiver_seed": args.receiver_seed,
         # invariant: same receiver seed -> identical initial weights across side arms
         "init_state_sha": init_sha,

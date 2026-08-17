@@ -398,6 +398,37 @@ seeds give the equivalence test enough precision to pass.* It does not guarantee
 
 4 arms x 6 seeds = 24 runs.
 
+## Phase A coordinate frame
+
+All four arms use the same fixed `k = 64` Haar-random frame, **`C2_haar` seed 0**, chosen
+before any Phase A outcome is observed. The Haar frame is independent of both the blind
+and the side-informed decoder, so it provides a neutral latent coordinate system for
+isolating the receiver-information intervention.
+
+    R = R_{C2_haar, seed 0},   k = 64,   identical across all 24 runs
+
+The frame seed never moves with the receiver seed. Every run records
+`frame_rows_digest`, so "the same frame throughout" is checkable from the artifacts.
+
+Decoder-derived frames such as `D_spectral` are **not** used in Phase A. That subspace
+was discovered by the *blind* decoder `f_b(Y)`, so using it would ask a different
+question — "on the directions the blind observer already selected, does S help?" — and it
+carries confounds in both directions at once: it favours the blind arm because the
+targets are its own choice, and it can hide exactly the directions side information
+would newly reveal, since there is no reason for `V_side` to coincide with `V_blind`.
+That conflicts directly with the method's own claim that receiver information may reshape
+the observability geometry.
+
+Running both frames is out of scope: per `reports/scope_v1.md` a second frame is an
+extension, not a necessary control, and a disagreement between the two would immediately
+reopen geometry dependence, statistical power, blind-selection bias and spectrum quality
+as new branches.
+
+The neutral frame also sets a stricter falsification standard, deliberately: if the
+effect is strong enough to be a paper's main phenomenon, it should be visible in neutral
+coordinates. An effect that requires a blind teacher to pre-select directions before it
+appears would be a much weaker result.
+
 ## Phase gate
 
 Phase B — the direct `C_gain(h)` certificate and the `E[h|Y] = 0` residualisation problem
