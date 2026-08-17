@@ -23,7 +23,8 @@
 \newcommand{\Ccert}{C_{\mathrm{cert}}}
 \newcommand{\Dcert}{D_{\mathrm{cert}}}
 
-\title{What Survives a Frozen Generative Channel,\\ and to Whom}
+\title{FIBER: Certified Observability and the Limits\\
+of Latent Recoverability in Frozen Generative Channels}
 
 \author{Anonymous}
 
@@ -36,23 +37,25 @@
 \maketitle
 
 \begin{abstract}
-\textbf{[Abstract written last: its final claim depends on the Phase A outcome.]}
-A frozen text-to-image diffusion model is a channel from its initial latent $Z$ to the
-image it produces. We ask what information about $Z$ remains recoverable from the image
-after transmission, and show that the right object is not a scalar capacity but a
-\emph{geometry}: the covariance of the Bayes posterior mean,
-$\Cobs=\Cov(\Exp[Z\mid Y])$, whose eigenvectors are latent directions ordered by how much
-of their prior uncertainty an observer can remove. Because the Bayes decoder is
-unavailable, we give an estimator that is a \emph{certificate} rather than a proxy: for
-any decoder $f$, $\Ccert(f)=\Cobs-\Cov(m-f)\preceq\Cobs$, so every direction it reports
-is one the channel really carries. We then observe that observability is not a property
-of the channel alone. Writing $\Cobs(\mathcal I_R)$ for a receiver with information set
-$\mathcal I_R$, the tower property gives
-$\Cobs(Y,S)\succeq\Cobs(Y)$ for any side information $S$: knowing what the generator was
-conditioned on can only enlarge the observable geometry, never shrink it. We instantiate
-this on Stable Diffusion v1.5 with a four-arm capacity- and distribution-matched ladder
-that isolates \emph{paired} conditioning from architecture and from the conditioning
-marginal.
+How much information about a latent variable survives a frozen generative model is
+usually measured through the performance of a particular encoder, inversion method or
+decoder. This conflates what the channel preserves with what a chosen receiver can
+recover. We introduce FIBER, a framework that characterises latent recoverability as a
+direction-resolved Bayesian observability geometry. For a latent $Z$ and an observation
+$Y$ we define $\Cobs=\Cov(\Exp[Z\mid Y])$, whose spectrum orders latent directions by how
+much posterior uncertainty the observation removes. Because the Bayes decoder is
+unavailable, we derive a decoder-certified operator $\Ccert(f)\preceq\Cobs$ together with
+a cross-fitted estimation procedure, so a learned observer supplies a lower certificate
+rather than an unconstrained proxy. In a linear--Gaussian channel with known ground truth,
+FIBER recovers the analytic observability spectrum and exposes a
+\emph{sensitivity--observability mismatch}: directions that perturb the output more can
+nevertheless be less recoverable. On a frozen text-to-image diffusion channel, however,
+the certified estimator establishes no positive observable direction at the tested scale,
+and a preregistered receiver-side-information intervention finds no detectable recovery
+benefit from sample-specific conditioning, while both the architecture and
+conditioning-marginal placebo gates pass. These results separate what can be certified
+about a generative channel from what a trained receiver merely appears to recover, and
+expose practical limits of latent observability in modern generative systems.
 \end{abstract}
 
 \section{Introduction}
@@ -356,7 +359,7 @@ The reported quantity is a subspace property: clipping the \emph{diagonal} of
 $V\Ccert V^\top$ instead is basis-dependent and can report zero where the subspace contains
 a certified direction one rotation away.
 
-\subsection{Receiver-conditional observability}
+\subsection{Observability is relative to the receiver's information set}
 \label{sec:receiver}
 
 \emph{How does observability depend on what the receiver knows?}
@@ -673,7 +676,65 @@ not rest on the sign metric alone.}
 
 \section{Discussion}
 
-\textbf{[Pending Phase A.]}
+\paragraph{Absence of certification is not certification of absence.}
+The real-channel results do not show that the population observability operator is zero.
+They show something narrower: at the tested data scale, observer family and neutral
+frame, the estimator does not certify positive directional observability, and a trained
+receiver does not convert sample-specific conditioning into detectable held-out recovery.
+A certified positive inertia of $0$ out of $64$ means no direction was certified, not that
+all $64$ are unobservable. The certificate is one-sided by construction --- that is what
+makes it a certificate --- so it can only ever fail to find, never establish absence.
+
+\paragraph{Why the null is still informative.}
+The obvious deflationary reading is that the framework cannot detect anisotropic
+observability at all. The synthetic experiment rules that out: on a channel where the
+answer is known, the estimator tracks the analytic spectrum to a mean absolute error of
+$0.012$, its lower bound stays below the truth in $16$ of $16$ directions, and it
+correctly identifies observable directions in a channel deliberately built so that
+forward sensitivity runs \emph{opposite} to observability. What fails to appear is the
+corresponding certified phenomenon on the real channel. This does not license the stronger
+claim that the pipeline has power on a diffusion channel specifically --- the two settings
+differ in dimension, decoder class and sample size --- but it does remove the explanation
+that the machinery is blind by construction.
+
+\paragraph{Information available is not information exploited.}
+Theorem~\ref{thm:mono} guarantees that additional receiver information cannot reduce
+Bayes observability, and Phase A found no operational benefit from exactly such
+information. These are not in conflict, and the gap between them is the more interesting
+object. A finite learned receiver, trained on finite data with a fixed architecture and
+budget, need not realise a gain that exists in the population. Our result therefore
+separates \emph{information available in principle} from \emph{information operationally
+exploitable by the tested observer}, and the placebo chain is what makes that separation
+credible: the architecture step and the conditioning-marginal step were each shown
+practically negligible before the pairing step was read.
+
+\paragraph{What this means for latent communication.}
+Existing latent-space methods identify reliable regions, robust patterns and
+high-capacity subspaces, and they do so successfully. The distinction this paper draws is
+that reliability established through a particular embedding and extraction pipeline is not
+the same as a certified observability property of the channel. We do not claim FIBER tells
+a designer where to encode --- on a real channel it has not yet certified anywhere. We
+claim it supplies a test that should succeed before such a statement is justified, and a
+vocabulary in which ``reliable'' and ``observable'' are different words.
+
+\paragraph{Limitations.}
+The certified spectra come from decoders that fail the teacher-validity gate, so the real
+channel results characterise this decoder class as much as the channel; a stronger decoder
+could certify more, and the certificate is written so that it can only move upward.
+Phase A was run at pilot scale with a single generator, one guidance setting, one frame
+and one side-information encoder, all fixed in advance; the negative is a statement about
+that configuration. Two hypotheses were falsified under controlled diagnostics before it
+--- sample count at fixed optimisation compute, and target dimensionality --- but a
+larger joint intervention remains untested, and we report that as untested rather than
+unnecessary. Finally, the operational contrast bounds the Bayes gain in neither direction,
+since the decoders' approximation errors need not cancel; that is why the three levels are
+kept separate throughout.
+
+\paragraph{}
+The central lesson is not that latent information fails to survive generative channels,
+but that claims about \emph{where} it survives require separating the channel, the
+observer, and the information available to that observer. FIBER is one way to make those
+distinctions explicit --- and, when the evidence is insufficient, to say so.
 
 \bibliographystyle{iclr2026_conference}
 \bibliography{refs}
