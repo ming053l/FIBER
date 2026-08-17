@@ -1,0 +1,1052 @@
+{
+  "d": 16384,
+  "steps": 6000,
+  "lr": 0.05,
+  "rows": [
+    {
+      "k": 16,
+      "m": 64,
+      "d": 16384,
+      "target": "generic",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.000983389443717897,
+      "alignment_best": 1.0,
+      "best_step": 370,
+      "alignment_final": 1.0,
+      "dimension_feasible": true,
+      "projector_error": 0.0,
+      "orthonormality_error": 2.384185791015625e-07,
+      "steps_used": [
+        700,
+        1000
+      ],
+      "max_steps": 6000,
+      "converged": true,
+      "capacity_class": "empirically_sufficient",
+      "necessary_m": 16.0,
+      "m_meets_necessary_condition": true,
+      "seconds": 19.1,
+      "alignment_min": 1.0,
+      "alignment_spread": 0.0
+    },
+    {
+      "k": 16,
+      "m": 128,
+      "d": 16384,
+      "target": "generic",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.000983389443717897,
+      "alignment_best": 1.0,
+      "best_step": 247,
+      "alignment_final": 1.0,
+      "dimension_feasible": true,
+      "projector_error": 0.0,
+      "orthonormality_error": 1.1920928955078125e-07,
+      "steps_used": [
+        600,
+        700
+      ],
+      "max_steps": 6000,
+      "converged": true,
+      "capacity_class": "empirically_sufficient",
+      "necessary_m": 16.0,
+      "m_meets_necessary_condition": true,
+      "seconds": 27.8,
+      "alignment_min": 1.0,
+      "alignment_spread": 0.0
+    },
+    {
+      "k": 16,
+      "m": 256,
+      "d": 16384,
+      "target": "generic",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.0009833893273025751,
+      "alignment_best": 1.0,
+      "best_step": 179,
+      "alignment_final": 1.0,
+      "dimension_feasible": true,
+      "projector_error": 0.0,
+      "orthonormality_error": 1.1920928955078125e-07,
+      "steps_used": [
+        600,
+        600
+      ],
+      "max_steps": 6000,
+      "converged": true,
+      "capacity_class": "empirically_sufficient",
+      "necessary_m": 16.0,
+      "m_meets_necessary_condition": true,
+      "seconds": 53.9,
+      "alignment_min": 1.0,
+      "alignment_spread": 0.0
+    },
+    {
+      "k": 16,
+      "m": 512,
+      "d": 16384,
+      "target": "generic",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.0009833895601332188,
+      "alignment_best": 1.0,
+      "best_step": 153,
+      "alignment_final": 0.9999472796916962,
+      "dimension_feasible": true,
+      "projector_error": 0.0,
+      "orthonormality_error": 1.1920928955078125e-07,
+      "steps_used": [
+        500,
+        500
+      ],
+      "max_steps": 6000,
+      "converged": true,
+      "capacity_class": "empirically_sufficient",
+      "necessary_m": 16.0,
+      "m_meets_necessary_condition": true,
+      "seconds": 103.9,
+      "alignment_min": 1.0,
+      "alignment_spread": 0.0
+    },
+    {
+      "k": 64,
+      "m": 64,
+      "d": 16384,
+      "target": "generic",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.003934213891625404,
+      "alignment_best": 0.9765704572200775,
+      "best_step": 1600,
+      "alignment_final": 0.9765704274177551,
+      "dimension_feasible": true,
+      "projector_error": 0.249938718914428,
+      "orthonormality_error": 1.7881393432617188e-07,
+      "steps_used": [
+        1600,
+        1900
+      ],
+      "max_steps": 6000,
+      "converged": true,
+      "capacity_class": "marginal_fit",
+      "necessary_m": 63.8,
+      "m_meets_necessary_condition": true,
+      "seconds": 43.6,
+      "alignment_min": 0.9687653183937073,
+      "alignment_spread": 0.015610277652740479
+    },
+    {
+      "k": 64,
+      "m": 128,
+      "d": 16384,
+      "target": "generic",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.003934214357286692,
+      "alignment_best": 1.0,
+      "best_step": 819,
+      "alignment_final": 1.0,
+      "dimension_feasible": true,
+      "projector_error": 0.0,
+      "orthonormality_error": 2.384185791015625e-07,
+      "steps_used": [
+        1200,
+        1000
+      ],
+      "max_steps": 6000,
+      "converged": true,
+      "capacity_class": "empirically_sufficient",
+      "necessary_m": 63.8,
+      "m_meets_necessary_condition": true,
+      "seconds": 58.1,
+      "alignment_min": 1.0,
+      "alignment_spread": 0.0
+    },
+    {
+      "k": 64,
+      "m": 256,
+      "d": 16384,
+      "target": "generic",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.003934213891625404,
+      "alignment_best": 1.0,
+      "best_step": 307,
+      "alignment_final": 1.0,
+      "dimension_feasible": true,
+      "projector_error": 0.0,
+      "orthonormality_error": 2.384185791015625e-07,
+      "steps_used": [
+        700,
+        700
+      ],
+      "max_steps": 6000,
+      "converged": true,
+      "capacity_class": "empirically_sufficient",
+      "necessary_m": 63.8,
+      "m_meets_necessary_condition": true,
+      "seconds": 61.1,
+      "alignment_min": 1.0,
+      "alignment_spread": 0.0
+    },
+    {
+      "k": 64,
+      "m": 512,
+      "d": 16384,
+      "target": "generic",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.003934214357286692,
+      "alignment_best": 1.0,
+      "best_step": 190,
+      "alignment_final": 1.0,
+      "dimension_feasible": true,
+      "projector_error": 0.0,
+      "orthonormality_error": 1.1920928955078125e-07,
+      "steps_used": [
+        600,
+        600
+      ],
+      "max_steps": 6000,
+      "converged": true,
+      "capacity_class": "empirically_sufficient",
+      "necessary_m": 63.8,
+      "m_meets_necessary_condition": true,
+      "seconds": 139.6,
+      "alignment_min": 1.0,
+      "alignment_spread": 0.0
+    },
+    {
+      "k": 128,
+      "m": 64,
+      "d": 16384,
+      "target": "generic",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.007950173690915108,
+      "alignment_best": 0.5065936148166656,
+      "best_step": 3100,
+      "alignment_final": 0.5065936148166656,
+      "dimension_feasible": false,
+      "projector_error": 0.9934123131270195,
+      "orthonormality_error": 2.384185791015625e-07,
+      "steps_used": [
+        3100,
+        3700
+      ],
+      "max_steps": 6000,
+      "converged": true,
+      "capacity_class": "structurally_insufficient_for_generic_coverage",
+      "necessary_m": 127.0,
+      "m_meets_necessary_condition": false,
+      "seconds": 86.4,
+      "alignment_min": 0.5065659880638123,
+      "alignment_spread": 5.525350570678711e-05
+    },
+    {
+      "k": 128,
+      "m": 128,
+      "d": 16384,
+      "target": "generic",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.007950173690915108,
+      "alignment_best": 0.9882820546627045,
+      "best_step": 1454,
+      "alignment_final": 0.9882820546627045,
+      "dimension_feasible": true,
+      "projector_error": 0.1767679285347647,
+      "orthonormality_error": 2.980232238769531e-07,
+      "steps_used": [
+        1800,
+        1800
+      ],
+      "max_steps": 6000,
+      "converged": true,
+      "capacity_class": "marginal_fit",
+      "necessary_m": 127.0,
+      "m_meets_necessary_condition": true,
+      "seconds": 91.3,
+      "alignment_min": 0.9843765497207642,
+      "alignment_spread": 0.007811009883880615
+    },
+    {
+      "k": 128,
+      "m": 256,
+      "d": 16384,
+      "target": "generic",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.007950173690915108,
+      "alignment_best": 1.0,
+      "best_step": 516,
+      "alignment_final": 1.0,
+      "dimension_feasible": true,
+      "projector_error": 0.0,
+      "orthonormality_error": 2.384185791015625e-07,
+      "steps_used": [
+        900,
+        900
+      ],
+      "max_steps": 6000,
+      "converged": true,
+      "capacity_class": "empirically_sufficient",
+      "necessary_m": 127.0,
+      "m_meets_necessary_condition": true,
+      "seconds": 107.6,
+      "alignment_min": 1.0,
+      "alignment_spread": 0.0
+    },
+    {
+      "k": 128,
+      "m": 512,
+      "d": 16384,
+      "target": "generic",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.007950173690915108,
+      "alignment_best": 1.0,
+      "best_step": 245,
+      "alignment_final": 1.0,
+      "dimension_feasible": true,
+      "projector_error": 0.0,
+      "orthonormality_error": 2.384185791015625e-07,
+      "steps_used": [
+        600,
+        600
+      ],
+      "max_steps": 6000,
+      "converged": true,
+      "capacity_class": "empirically_sufficient",
+      "necessary_m": 127.0,
+      "m_meets_necessary_condition": true,
+      "seconds": 170.5,
+      "alignment_min": 1.0,
+      "alignment_spread": 0.0
+    },
+    {
+      "k": 256,
+      "m": 64,
+      "d": 16384,
+      "target": "generic",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.015601865947246552,
+      "alignment_best": 0.26502521336078644,
+      "best_step": 2600,
+      "alignment_final": 0.26502521336078644,
+      "dimension_feasible": false,
+      "projector_error": 1.2124533732779363,
+      "orthonormality_error": 3.5762786865234375e-07,
+      "steps_used": [
+        2600,
+        2900
+      ],
+      "max_steps": 6000,
+      "converged": true,
+      "capacity_class": "structurally_insufficient_for_generic_coverage",
+      "necessary_m": 252.0,
+      "m_meets_necessary_condition": false,
+      "seconds": 102.7,
+      "alignment_min": 0.26497840881347656,
+      "alignment_spread": 9.360909461975098e-05
+    },
+    {
+      "k": 256,
+      "m": 128,
+      "d": 16384,
+      "target": "generic",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.015601865015923977,
+      "alignment_best": 0.5136258602142334,
+      "best_step": 3500,
+      "alignment_final": 0.5136258602142334,
+      "dimension_feasible": false,
+      "projector_error": 0.9863421448570427,
+      "orthonormality_error": 3.5762786865234375e-07,
+      "steps_used": [
+        3500,
+        3900
+      ],
+      "max_steps": 6000,
+      "converged": true,
+      "capacity_class": "structurally_insufficient_for_generic_coverage",
+      "necessary_m": 252.0,
+      "m_meets_necessary_condition": false,
+      "seconds": 290.2,
+      "alignment_min": 0.5135645866394043,
+      "alignment_spread": 0.00012254714965820312
+    },
+    {
+      "k": 256,
+      "m": 256,
+      "d": 16384,
+      "target": "generic",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.015601865015923977,
+      "alignment_best": 0.9941417872905731,
+      "best_step": 1900,
+      "alignment_final": 0.9941417872905731,
+      "dimension_feasible": true,
+      "projector_error": 0.12499713894430822,
+      "orthonormality_error": 3.5762786865234375e-07,
+      "steps_used": [
+        1900,
+        1500
+      ],
+      "max_steps": 6000,
+      "converged": true,
+      "capacity_class": "empirically_sufficient",
+      "necessary_m": 252.0,
+      "m_meets_necessary_condition": true,
+      "seconds": 340.1,
+      "alignment_min": 0.9921878576278687,
+      "alignment_spread": 0.0039078593254089355
+    },
+    {
+      "k": 256,
+      "m": 512,
+      "d": 16384,
+      "target": "generic",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.015601865947246552,
+      "alignment_best": 1.0,
+      "best_step": 448,
+      "alignment_final": 1.0,
+      "dimension_feasible": true,
+      "projector_error": 0.0,
+      "orthonormality_error": 3.5762786865234375e-07,
+      "steps_used": [
+        800,
+        900
+      ],
+      "max_steps": 6000,
+      "converged": true,
+      "capacity_class": "empirically_sufficient",
+      "necessary_m": 252.0,
+      "m_meets_necessary_condition": true,
+      "seconds": 329.2,
+      "alignment_min": 1.0,
+      "alignment_spread": 0.0
+    },
+    {
+      "k": 16,
+      "m": 64,
+      "d": 16384,
+      "target": "reachable",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.9844127893447876,
+      "alignment_best": 1.0000001788139343,
+      "best_step": 159,
+      "alignment_final": 0.9999882876873016,
+      "dimension_feasible": true,
+      "projector_error": 0.0,
+      "orthonormality_error": 2.384185791015625e-07,
+      "steps_used": [
+        500,
+        500
+      ],
+      "max_steps": 6000,
+      "converged": true,
+      "capacity_class": "empirically_sufficient",
+      "necessary_m": 16.0,
+      "m_meets_necessary_condition": true,
+      "seconds": 14.0,
+      "alignment_min": 1.0000001192092896,
+      "alignment_spread": 1.1920928955078125e-07
+    },
+    {
+      "k": 16,
+      "m": 128,
+      "d": 16384,
+      "target": "reachable",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.9689368605613708,
+      "alignment_best": 1.0000001192092896,
+      "best_step": 162,
+      "alignment_final": 0.9999626874923706,
+      "dimension_feasible": true,
+      "projector_error": 0.0,
+      "orthonormality_error": 2.384185791015625e-07,
+      "steps_used": [
+        500,
+        500
+      ],
+      "max_steps": 6000,
+      "converged": true,
+      "capacity_class": "empirically_sufficient",
+      "necessary_m": 16.0,
+      "m_meets_necessary_condition": true,
+      "seconds": 21.6,
+      "alignment_min": 1.0000001192092896,
+      "alignment_spread": 0.0
+    },
+    {
+      "k": 16,
+      "m": 256,
+      "d": 16384,
+      "target": "reachable",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.9397574663162231,
+      "alignment_best": 1.0000001192092896,
+      "best_step": 141,
+      "alignment_final": 0.9999014735221863,
+      "dimension_feasible": true,
+      "projector_error": 0.0,
+      "orthonormality_error": 1.1920928955078125e-07,
+      "steps_used": [
+        500,
+        500
+      ],
+      "max_steps": 6000,
+      "converged": true,
+      "capacity_class": "empirically_sufficient",
+      "necessary_m": 16.0,
+      "m_meets_necessary_condition": true,
+      "seconds": 54.3,
+      "alignment_min": 1.0000001192092896,
+      "alignment_spread": 0.0
+    },
+    {
+      "k": 16,
+      "m": 512,
+      "d": 16384,
+      "target": "reachable",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.8832675218582153,
+      "alignment_best": 1.0,
+      "best_step": 126,
+      "alignment_final": 0.9997979700565338,
+      "dimension_feasible": true,
+      "projector_error": 0.0,
+      "orthonormality_error": 1.1920928955078125e-07,
+      "steps_used": [
+        500,
+        500
+      ],
+      "max_steps": 6000,
+      "converged": true,
+      "capacity_class": "empirically_sufficient",
+      "necessary_m": 16.0,
+      "m_meets_necessary_condition": true,
+      "seconds": 110.3,
+      "alignment_min": 1.0,
+      "alignment_spread": 0.0
+    },
+    {
+      "k": 64,
+      "m": 64,
+      "d": 16384,
+      "target": "reachable",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.9837906956672668,
+      "alignment_best": 0.9999114871025085,
+      "best_step": 1800,
+      "alignment_final": 0.9999114871025085,
+      "dimension_feasible": true,
+      "projector_error": 0.013845162967536939,
+      "orthonormality_error": 2.384185791015625e-07,
+      "steps_used": [
+        1800,
+        1700
+      ],
+      "max_steps": 6000,
+      "converged": true,
+      "capacity_class": "empirically_sufficient",
+      "necessary_m": 63.8,
+      "m_meets_necessary_condition": true,
+      "seconds": 47.4,
+      "alignment_min": 0.9999041557312012,
+      "alignment_spread": 1.4662742614746094e-05
+    },
+    {
+      "k": 64,
+      "m": 128,
+      "d": 16384,
+      "target": "reachable",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.9686055183410645,
+      "alignment_best": 1.0000000596046448,
+      "best_step": 143,
+      "alignment_final": 1.0,
+      "dimension_feasible": true,
+      "projector_error": 0.0,
+      "orthonormality_error": 2.384185791015625e-07,
+      "steps_used": [
+        500,
+        500
+      ],
+      "max_steps": 6000,
+      "converged": true,
+      "capacity_class": "empirically_sufficient",
+      "necessary_m": 63.8,
+      "m_meets_necessary_condition": true,
+      "seconds": 25.7,
+      "alignment_min": 1.0,
+      "alignment_spread": 1.1920928955078125e-07
+    },
+    {
+      "k": 64,
+      "m": 256,
+      "d": 16384,
+      "target": "reachable",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.9391958117485046,
+      "alignment_best": 1.0,
+      "best_step": 124,
+      "alignment_final": 1.0,
+      "dimension_feasible": true,
+      "projector_error": 0.0,
+      "orthonormality_error": 2.384185791015625e-07,
+      "steps_used": [
+        500,
+        500
+      ],
+      "max_steps": 6000,
+      "converged": true,
+      "capacity_class": "empirically_sufficient",
+      "necessary_m": 63.8,
+      "m_meets_necessary_condition": true,
+      "seconds": 44.1,
+      "alignment_min": 1.0,
+      "alignment_spread": 0.0
+    },
+    {
+      "k": 64,
+      "m": 512,
+      "d": 16384,
+      "target": "reachable",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.8826888799667358,
+      "alignment_best": 1.0,
+      "best_step": 131,
+      "alignment_final": 1.0,
+      "dimension_feasible": true,
+      "projector_error": 0.0,
+      "orthonormality_error": 2.384185791015625e-07,
+      "steps_used": [
+        500,
+        500
+      ],
+      "max_steps": 6000,
+      "converged": true,
+      "capacity_class": "empirically_sufficient",
+      "necessary_m": 63.8,
+      "m_meets_necessary_condition": true,
+      "seconds": 116.8,
+      "alignment_min": 1.0,
+      "alignment_spread": 0.0
+    },
+    {
+      "k": 128,
+      "m": 64,
+      "d": 16384,
+      "target": "reachable",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.9845653176307678,
+      "alignment_best": 0.9999814033508301,
+      "best_step": 1499,
+      "alignment_final": 0.9999813735485077,
+      "dimension_feasible": false,
+      "projector_error": 0.008192364128692635,
+      "orthonormality_error": 2.980232238769531e-07,
+      "steps_used": [
+        1500,
+        1500
+      ],
+      "max_steps": 6000,
+      "converged": true,
+      "capacity_class": "empirically_sufficient",
+      "necessary_m": 127.0,
+      "m_meets_necessary_condition": false,
+      "seconds": 40.2,
+      "alignment_min": 0.9999664425849915,
+      "alignment_spread": 2.9921531677246094e-05
+    },
+    {
+      "k": 128,
+      "m": 128,
+      "d": 16384,
+      "target": "reachable",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.9693096876144409,
+      "alignment_best": 0.999902069568634,
+      "best_step": 1700,
+      "alignment_final": 0.999902069568634,
+      "dimension_feasible": true,
+      "projector_error": 0.014509431599710573,
+      "orthonormality_error": 2.384185791015625e-07,
+      "steps_used": [
+        1700,
+        1800
+      ],
+      "max_steps": 6000,
+      "converged": true,
+      "capacity_class": "empirically_sufficient",
+      "necessary_m": 127.0,
+      "m_meets_necessary_condition": true,
+      "seconds": 86.3,
+      "alignment_min": 0.9998947381973267,
+      "alignment_spread": 1.4662742614746094e-05
+    },
+    {
+      "k": 128,
+      "m": 256,
+      "d": 16384,
+      "target": "reachable",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.9396311044692993,
+      "alignment_best": 1.0,
+      "best_step": 147,
+      "alignment_final": 1.0,
+      "dimension_feasible": true,
+      "projector_error": 0.0,
+      "orthonormality_error": 2.384185791015625e-07,
+      "steps_used": [
+        500,
+        500
+      ],
+      "max_steps": 6000,
+      "converged": true,
+      "capacity_class": "empirically_sufficient",
+      "necessary_m": 127.0,
+      "m_meets_necessary_condition": true,
+      "seconds": 57.4,
+      "alignment_min": 1.0,
+      "alignment_spread": 0.0
+    },
+    {
+      "k": 128,
+      "m": 512,
+      "d": 16384,
+      "target": "reachable",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.8829229474067688,
+      "alignment_best": 1.0,
+      "best_step": 132,
+      "alignment_final": 1.0,
+      "dimension_feasible": true,
+      "projector_error": 0.0,
+      "orthonormality_error": 2.384185791015625e-07,
+      "steps_used": [
+        500,
+        500
+      ],
+      "max_steps": 6000,
+      "converged": true,
+      "capacity_class": "empirically_sufficient",
+      "necessary_m": 127.0,
+      "m_meets_necessary_condition": true,
+      "seconds": 147.0,
+      "alignment_min": 1.0,
+      "alignment_spread": 0.0
+    },
+    {
+      "k": 256,
+      "m": 64,
+      "d": 16384,
+      "target": "reachable",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.9847338795661926,
+      "alignment_best": 1.0,
+      "best_step": 883,
+      "alignment_final": 0.9999999701976776,
+      "dimension_feasible": false,
+      "projector_error": 0.0,
+      "orthonormality_error": 3.5762786865234375e-07,
+      "steps_used": [
+        1100,
+        1000
+      ],
+      "max_steps": 6000,
+      "converged": true,
+      "capacity_class": "empirically_sufficient",
+      "necessary_m": 252.0,
+      "m_meets_necessary_condition": false,
+      "seconds": 43.5,
+      "alignment_min": 1.0,
+      "alignment_spread": 0.0
+    },
+    {
+      "k": 256,
+      "m": 128,
+      "d": 16384,
+      "target": "reachable",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.9696344137191772,
+      "alignment_best": 0.9999787211418152,
+      "best_step": 1400,
+      "alignment_final": 0.9999787211418152,
+      "dimension_feasible": false,
+      "projector_error": 0.006922581483768469,
+      "orthonormality_error": 3.5762786865234375e-07,
+      "steps_used": [
+        1400,
+        1700
+      ],
+      "max_steps": 6000,
+      "converged": true,
+      "capacity_class": "empirically_sufficient",
+      "necessary_m": 252.0,
+      "m_meets_necessary_condition": false,
+      "seconds": 115.9,
+      "alignment_min": 0.9999760389328003,
+      "alignment_spread": 5.364418029785156e-06
+    },
+    {
+      "k": 256,
+      "m": 256,
+      "d": 16384,
+      "target": "reachable",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.939984142780304,
+      "alignment_best": 0.9998700022697449,
+      "best_step": 1700,
+      "alignment_final": 0.9998700022697449,
+      "dimension_feasible": true,
+      "projector_error": 0.016209172531931475,
+      "orthonormality_error": 3.5762786865234375e-07,
+      "steps_used": [
+        1700,
+        1700
+      ],
+      "max_steps": 6000,
+      "converged": true,
+      "capacity_class": "empirically_sufficient",
+      "necessary_m": 252.0,
+      "m_meets_necessary_condition": true,
+      "seconds": 303.3,
+      "alignment_min": 0.999868631362915,
+      "alignment_spread": 2.7418136596679688e-06
+    },
+    {
+      "k": 256,
+      "m": 512,
+      "d": 16384,
+      "target": "reachable",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.8834865093231201,
+      "alignment_best": 1.0,
+      "best_step": 144,
+      "alignment_final": 1.0,
+      "dimension_feasible": true,
+      "projector_error": 0.0,
+      "orthonormality_error": 3.5762786865234375e-07,
+      "steps_used": [
+        500,
+        500
+      ],
+      "max_steps": 6000,
+      "converged": true,
+      "capacity_class": "empirically_sufficient",
+      "necessary_m": 252.0,
+      "m_meets_necessary_condition": true,
+      "seconds": 205.6,
+      "alignment_min": 1.0,
+      "alignment_spread": 0.0
+    }
+  ],
+  "git_commit": "bdd02babbc635a36b324df397c2c4e2790328562",
+  "git_commit_short": "bdd02ba",
+  "git_dirty": false,
+  "git_dirty_files": [],
+  "decision_rule": {
+    "sufficient": 0.99,
+    "marginal": 0.95,
+    "statistic": "minimum generic alignment over seeds"
+  },
+  "recommended_m_by_k": {
+    "16": {
+      "k": 16,
+      "recommended_m": 64,
+      "by_m": {
+        "64": {
+          "alignment_min_over_seeds": 1.0,
+          "class": "empirically_sufficient",
+          "converged": true
+        },
+        "128": {
+          "alignment_min_over_seeds": 1.0,
+          "class": "empirically_sufficient",
+          "converged": true
+        },
+        "256": {
+          "alignment_min_over_seeds": 1.0,
+          "class": "empirically_sufficient",
+          "converged": true
+        },
+        "512": {
+          "alignment_min_over_seeds": 1.0,
+          "class": "empirically_sufficient",
+          "converged": true
+        }
+      }
+    },
+    "64": {
+      "k": 64,
+      "recommended_m": 128,
+      "by_m": {
+        "64": {
+          "alignment_min_over_seeds": 0.9687653183937073,
+          "class": "marginal_fit",
+          "converged": true
+        },
+        "128": {
+          "alignment_min_over_seeds": 1.0,
+          "class": "empirically_sufficient",
+          "converged": true
+        },
+        "256": {
+          "alignment_min_over_seeds": 1.0,
+          "class": "empirically_sufficient",
+          "converged": true
+        },
+        "512": {
+          "alignment_min_over_seeds": 1.0,
+          "class": "empirically_sufficient",
+          "converged": true
+        }
+      }
+    },
+    "128": {
+      "k": 128,
+      "recommended_m": 256,
+      "by_m": {
+        "64": {
+          "alignment_min_over_seeds": 0.5065659880638123,
+          "class": "structurally_insufficient_for_generic_coverage",
+          "converged": true
+        },
+        "128": {
+          "alignment_min_over_seeds": 0.9843765497207642,
+          "class": "marginal_fit",
+          "converged": true
+        },
+        "256": {
+          "alignment_min_over_seeds": 1.0,
+          "class": "empirically_sufficient",
+          "converged": true
+        },
+        "512": {
+          "alignment_min_over_seeds": 1.0,
+          "class": "empirically_sufficient",
+          "converged": true
+        }
+      }
+    },
+    "256": {
+      "k": 256,
+      "recommended_m": 256,
+      "by_m": {
+        "64": {
+          "alignment_min_over_seeds": 0.26497840881347656,
+          "class": "structurally_insufficient_for_generic_coverage",
+          "converged": true
+        },
+        "128": {
+          "alignment_min_over_seeds": 0.5135645866394043,
+          "class": "structurally_insufficient_for_generic_coverage",
+          "converged": true
+        },
+        "256": {
+          "alignment_min_over_seeds": 0.9921878576278687,
+          "class": "empirically_sufficient",
+          "converged": true
+        },
+        "512": {
+          "alignment_min_over_seeds": 1.0,
+          "class": "empirically_sufficient",
+          "converged": true
+        }
+      }
+    }
+  },
+  "metric_note": "E_sub = ||R'R - T'T||_F / ||T'T||_F = sqrt(2(1 - A_sub)); the projector error and the mean squared principal cosine are the same quantity, and only R T' (k x k) is ever formed",
+  "necessary_condition": "m >= k(d-k)/(d-1), necessary not sufficient"
+}

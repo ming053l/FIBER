@@ -73,6 +73,10 @@ fiber:
     # random-reflector Householder product actually begins (P0-4).
     E_learned:    {type: householder, num_reflectors: 128, base: haar,
                    paired_init: true, seeds: [0,1,2]}
+    # Reflector count per k, chosen by the B3 rule (smallest m reaching A_best >= 0.99
+    # at every seed) rather than after seeing the table. The main k=64 keeps m=128; only
+    # the sweep needs more. reports/b3_capacity.md.
+    reflectors_by_k: {16: 128, 64: 128, 128: 256, 256: 256}
 
     # ---- P0-7: same SUBSPACE, different BASIS. D_cert is identical for all three by
     # construction (span(AV) = span(V)); only sign coding can differ, so any BER gap

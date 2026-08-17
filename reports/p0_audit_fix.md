@@ -197,12 +197,14 @@ against rotations of one while claiming the subspace was fixed.
 
 ## 9. Remaining risks and open items
 
-1. **B3 execution incomplete.** The protocol is frozen and the final clean sweep is
-   running from `bdd02ba`. The main setting is already settled: the pre-taxonomy
-   convergence sweep gave `(k=64, m=128) → A_final = 1.0000`, and the new metric
-   satisfies `A_best ≥ A_final`, so **arm E is not capacity-limited at the main k**. An
-   earlier "insufficient" verdict there was an artefact of a 250-step budget and is
-   withdrawn. Outstanding: the final `m(k)` for the `k` sweep.
+1. **B3 is complete** (`reports/b3_capacity.md`, swept from `bdd02ba` on a clean tree,
+   no cell hitting the step limit). The pre-registered rule selected
+   `m(k) = {16: 64, 64: 128, 128: 256, 256: 256}`; the config keeps its floor of 128 and
+   records `reflectors_by_k`. **The main setting `k = 64, m = 128` is sufficient and
+   unchanged.** Every reachable cell is `≥ 0.9999`, so the generic shortfalls are
+   coverage rather than optimisation. The generic Haar target is a stress test, so a
+   below-threshold cell does not predict that arm E cannot find the *channel-optimal*
+   subspace — it is a necessity argument about capacity.
 2. **The pilot cache predates the lock.** `evaluate_locked.py` detects this and
    downgrades the recorded claim from *no test sample existed* to *no test sample was
    accessed*. The full run, cached under `--post-lock`, supports the stronger form.
@@ -247,18 +249,21 @@ protocol is worth starting.
 
 ## Verdict
 
-**NOT_READY_FOR_PHASE2_3**
+**READY_FOR_PHASE2_3**
 
-Every identified confound is closed and pinned by a test, and the two protocol blockers
-that were open at the last review — physical test isolation and seed completeness — are
-implemented and adversarially tested. One item remains: **B3's execution**. The `m(k)`
-mapping for the `k` sweep is not yet determined, and running a sweep whose learned arm
-may be parameterisation-limited at some `k` would produce a Gate-3B comparison that does
-not mean what it says.
+Every identified confound is closed and pinned by a named test that the audit script
+verifies still exists. The protocol blockers open at the last two reviews — physical
+test isolation, seed completeness, and the three defects this process found after the
+fixes were first declared complete — are implemented and adversarially tested. B3 is
+complete and `m(k)` was set by the rule registered before the table was seen, leaving
+the main setting unchanged.
 
-This blocks the `k` sweep, not the main setting. `(k = 64, m = 128)` is already
-established as sufficient, so the **triage run may proceed** once the sweep confirms the
-main cell under the final taxonomy. The verdict flips to `READY_FOR_PHASE2_3` when
-`reports/b3_capacity.md` records the completed sweep and `configs/linear_fiber.yaml`
-either keeps `m = 128` or scales it, with the choice made by the pre-registered rule
-rather than after seeing the table.
+This authorises the **triage run only**: `k = 64`, the five representative channel
+groups, 3 Haar draws, 1 Hadamard, 1 frozen Householder, 2 certified-spectrum seeds, 2
+learned-Q seeds, both teacher architectures. Triage has no `PASS`/`KILL` authority. The
+full ~31 GPU-hour protocol starts only if triage shows a reproducible
+derived-versus-Haar signal and no catastrophic teacher-architecture contradiction.
+
+What READY does **not** mean: nothing has been measured about the channel. Every number
+in this report is a protocol calibration or a synthetic check, and the pilot's own
+results will be `PROVISIONAL_*` by construction.
