@@ -77,12 +77,19 @@ scores exactly 1.0, so the extractor is adding variance rather than information.
 **Verdict: does not support caching 10k.** 18 runs, 2026-08-17, tag `triage1`,
 scope `powercurve`, commit `24b56f2`.
 
-> **The raw artifacts behind the table below were deleted by operator error** — an
+> The raw artifacts behind this table were deleted by operator error — an
 > `rm '*scpowercurve*'` meant to clear an aborted k-diagnostic also matched these runs,
-> whose stems are `..._scpowercurve_n<N>_ss<seed>`. The numbers are as recorded at the
-> time; the sweep is being re-run on the current committed tree so the table has backing
-> artifacts again, and the re-run doubles as a reproducibility check. Section marked
-> **AWAITING RE-RUN** until then.
+> whose stems are `..._scpowercurve_n<N>_ss<seed>`. **Re-run and restored** on commit
+> `5896363`: all 18 cells reproduced to the precision of the recorded table
+> (max |ΔBER| = 5e-5, which is the rounding bound of a 4-decimal table; mean rho matched
+> to all 5 recorded decimals), and every preregistered monotonicity count is unchanged.
+>
+> This is **deterministic reproducibility**, not a second stochastic replication: same
+> receiver seeds, same subset seeds, same data, seeded training. It confirms the
+> artifacts can be regenerated from the experimental identity; it provides no estimate of
+> `Var(training | same receiver seed)`, because that stream is locked. The
+> between-receiver-seed spread remains the variability quantity the reading rule uses,
+> since the receiver seed is the stochastic axis the design varies on purpose.
 
 Trajectories are reported per subset seed and are never averaged before being read —
 the rule is about consistency across seeds, and a mean would hide exactly that.
@@ -231,4 +238,54 @@ k=8 point that merely looks different is not evidence; it has to clear its own s
 
 ## Result
 
-*(to be filled in after the run)*
+**Verdict: dimensionality is not the limiter.** 18 runs, commit `5896363`, scope
+`powercurve`, 0 failures. Read in the registered order: D_spectral at k=8, three receiver
+seeds separately, before anything else.
+
+### First priority — D_spectral, k=8, per receiver seed
+
+| receiver seed | sign BER | mean rho | R2_lin | R2/null | train loss |
+|---|---|---|---|---|---|
+| 0 | 0.4931 | +0.01220 | 0.00218 | 0.556 | 0.1655 |
+| 1 | 0.5014 | +0.02514 | 0.00353 | 0.899 | 0.1582 |
+| 2 | 0.4882 | +0.02310 | 0.00399 | 1.018 | 0.1451 |
+| **mean** | | | **0.00323** | **0.825** | |
+
+`R2_lin = (1/k) sum_j rho_j^2`; null `1/(n-1) = 0.00392` at n=256. Between-seed
+sd = 0.00094, and the mean sits 0.00069 **below** the null — 0.73 spreads on the wrong
+side. Seeds above null: 1 of 3.
+
+The registered criterion needed k=8 to exceed its own null by more than its own
+between-seed spread in at least 2 of 3 seeds. It does not.
+
+### All three k
+
+| arm | k | R2_lin mean | R2/null | between-seed sd | above null |
+|---|---|---|---|---|---|
+| D_spectral | 8 | 0.00323 | 0.825 | 0.00094 | 1/3 |
+| D_spectral | 16 | 0.00488 | 1.244 | 0.00134 | 2/3 |
+| D_spectral | 64 | 0.00406 | 1.034 | 0.00120 | 2/3 |
+| C2_haar | 8 | 0.00556 | 1.419 | 0.00315 | 2/3 |
+| C2_haar | 16 | 0.00348 | 0.886 | 0.00111 | 1/3 |
+| C2_haar | 64 | 0.00408 | 1.041 | 0.00051 | 2/3 |
+
+The second registered condition — a monotone shrink `k=8 > k=16 > k=64` — fails for both
+arms (D_spectral 0.825, 1.244, 1.034; C2_haar 1.419, 0.886, 1.041). Sign BER stays inside
+0.4856–0.5040 at every k and seed.
+
+The one cell that departs from null noticeably is **C2_haar** at k=8, seed 2
+(R2/null = 2.32, mean rho +0.054) — the *random reference*, and its sign BER is 0.5040,
+worse than chance. A single run over 80 rho values fluctuating, in the null arm, pointing
+the wrong way for the FIBER claim.
+
+### Consequence
+
+"64 simultaneous targets is too hard" has no support. The diagnostic gave that hypothesis
+the most favourable case available — the 8 top-ranked directions of the same spectral
+fit, nested subspaces, constant optimisation budget — and the readouts stayed at the
+noise value.
+
+Combined with the learning curve, two hypotheses are now out at this scale: sample count
+at fixed compute, and task dimensionality. Neither 10k nor a smaller k is the indicated
+next step. The registered follow-up is the receiver's information set — see
+`reports/blind_vs_sideinfo.md`.

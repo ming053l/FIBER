@@ -306,7 +306,7 @@ def test_a_dirty_spectrum_cannot_become_a_gate_treatment(tmp_path):
     p.write_bytes(b"x")
     prov = {"git_commit": "a" * 40}
     with pytest.raises(SystemExit) as e:
-        _bind_spectrum(p, _spectrum_blob(git_dirty=True), "pilot", 0, "gate", prov)
+        _bind_spectrum(p, _spectrum_blob(git_dirty=True), "pilot", 0, "pilot", "gate", prov)
     assert "git_dirty=True" in str(e.value)
 
 
@@ -315,7 +315,7 @@ def test_a_spectrum_from_another_commit_cannot_become_a_gate_treatment(tmp_path)
     p = tmp_path / "s.pt"
     p.write_bytes(b"x")
     with pytest.raises(SystemExit) as e:
-        _bind_spectrum(p, _spectrum_blob(git_commit="b" * 40), "pilot", 0, "gate",
+        _bind_spectrum(p, _spectrum_blob(git_commit="b" * 40), "pilot", 0, "pilot", "gate",
                        {"git_commit": "a" * 40})
     assert "this run is at" in str(e.value)
 
@@ -326,7 +326,7 @@ def test_a_spectrum_from_another_tag_or_seed_is_refused(tmp_path, over, needle):
     p = tmp_path / "s.pt"
     p.write_bytes(b"x")
     with pytest.raises(SystemExit) as e:
-        _bind_spectrum(p, _spectrum_blob(**over), "pilot", 0, "gate",
+        _bind_spectrum(p, _spectrum_blob(**over), "pilot", 0, "pilot", "gate",
                        {"git_commit": "a" * 40})
     assert needle in str(e.value)
 
@@ -337,7 +337,8 @@ def test_a_clean_matching_spectrum_is_accepted_and_recorded(tmp_path):
     from train_coordinates import _bind_spectrum
     p = tmp_path / "s.pt"
     p.write_bytes(b"x")
-    facts = _bind_spectrum(p, _spectrum_blob(), "pilot", 0, "gate", {"git_commit": "a" * 40})
+    facts = _bind_spectrum(p, _spectrum_blob(), "pilot", 0, "pilot", "gate",
+                           {"git_commit": "a" * 40})
     assert facts["spectrum_git_dirty"] is False
     assert facts["spectrum_git_commit"] == "a" * 40
     assert facts["spectrum_cache_tag"] == "pilot"
@@ -352,6 +353,50 @@ def test_exploratory_scopes_may_reuse_a_stale_spectrum_but_it_is_recorded(tmp_pa
     p = tmp_path / "s.pt"
     p.write_bytes(b"x")
     facts = _bind_spectrum(p, _spectrum_blob(git_dirty=True, git_commit="b" * 40),
-                           "pilot", 0, "powercurve", {"git_commit": "a" * 40})
+                           "pilot", 0, "pilot", "powercurve", {"git_commit": "a" * 40})
     assert facts["spectrum_provenance_enforced"] is False
     assert facts["spectrum_git_dirty"] is True
+
+
+@pytest.mark.parametrize("blob_cache,run_cache,scope,should_fail", [
+    ("pilot", "full",  "gate",       True),   # the hole: frame learned on other images
+    ("full",  "full",  "gate",       False),  # symmetric positive control
+    ("pilot", "full",  "powercurve", False),  # exploratory reuse stays legal
+    ("pilot", "pilot", "gate",       False),  # the ordinary production path must not regress
+])
+def test_the_spectrum_must_come_from_the_same_source_cache(tmp_path, blob_cache, run_cache,
+                                                           scope, should_fail):
+    """git_dirty, git_commit, tag and seed can all match while the frame was discovered on
+    a DIFFERENT image cache:
+
+        fit   --tag full --cache-tag pilot   (clean, commit X)
+        train --tag full --cache-tag full --scope gate   -> accepted
+
+    which puts V_spectral on pilot images and the Gate receiver on full ones.
+
+    The FAIL case alone would be satisfied by a guard that refuses everything, so the
+    three passing rows are part of the contract, not padding.
+    """
+    from train_coordinates import _bind_spectrum
+    p = tmp_path / "s.pt"
+    p.write_bytes(b"x")
+    args = (p, _spectrum_blob(cache_tag=blob_cache), "pilot", 0, run_cache, scope,
+            {"git_commit": "a" * 40})
+    if should_fail:
+        with pytest.raises(SystemExit) as e:
+            _bind_spectrum(*args)
+        assert f"cache_tag {blob_cache!r} != {run_cache!r}" in str(e.value)
+    else:
+        facts = _bind_spectrum(*args)
+        assert facts["spectrum_cache_tag"] == blob_cache
+
+
+def test_the_resolved_cache_tag_is_what_gets_compared():
+    """--cache-tag is optional and defaults to the tag. Threading the RAW args.cache_tag
+    would compare None against the blob on the default path, so the check would look
+    present and never fire. This pins the resolution rule the call site must use."""
+    import argparse
+    ns = argparse.Namespace(cache_tag=None, tag="pilot")
+    assert (ns.cache_tag or ns.tag) == "pilot"
+    ns = argparse.Namespace(cache_tag="full", tag="pilot")
+    assert (ns.cache_tag or ns.tag) == "full"

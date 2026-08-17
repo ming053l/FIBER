@@ -67,7 +67,8 @@ def run_stem(arm: str, k: int, seed: int, extractor_arch: str, receiver_seed: in
 GATE_SCOPE = "gate"
 
 
-def _bind_spectrum(path: Path, blob: dict, tag: str, seed: int, scope: str, prov: dict):
+def _bind_spectrum(path: Path, blob: dict, tag: str, seed: int, cache_tag: str,
+                   scope: str, prov: dict):
     """What the Gate requires of a frozen spectral frame before it becomes a treatment.
 
     The producer stamps provenance; without this nothing consumed it. That left a legal
@@ -100,6 +101,13 @@ def _bind_spectrum(path: Path, blob: dict, tag: str, seed: int, scope: str, prov
         problems.append(f"tag {blob.get('tag')!r} != {tag!r}")
     if blob.get("seed") != seed:
         problems.append(f"seed {blob.get('seed')!r} != {seed!r}")
+    # The SOURCE CACHE, which the other four checks do not imply. Without it this passes:
+    #   fit --tag full --cache-tag pilot   (clean, commit X)  ->  frame learned on pilot
+    #   train --tag full --cache-tag full --scope gate        ->  accepted
+    # i.e. V_spectral discovered on pilot images while the Gate receiver runs on full
+    # ones, with commit, tag, seed and dirty all matching.
+    if blob.get("cache_tag") != cache_tag:
+        problems.append(f"cache_tag {blob.get('cache_tag')!r} != {cache_tag!r}")
     if problems:
         raise SystemExit(
             f"refusing a Gate run on {path}:\n  - " + "\n  - ".join(problems)
@@ -110,7 +118,8 @@ def _bind_spectrum(path: Path, blob: dict, tag: str, seed: int, scope: str, prov
 
 
 def build_arm_frame(cfg, arm: str, k: int, seed: int, tag: str, d: int,
-                    scope: str = GATE_SCOPE, prov: dict | None = None):
+                    cache_tag: str | None = None, scope: str = GATE_SCOPE,
+                    prov: dict | None = None):
     spec = dict(cfg["fiber"]["arms"][arm])
     if spec["type"] in ("rotated_random", "rotated_learned"):
         # P0-7: the ambient subspace comes from the certified spectral fit and is
@@ -123,7 +132,8 @@ def build_arm_frame(cfg, arm: str, k: int, seed: int, tag: str, d: int,
         # comparing two things at once.
         base_arm = spec.get("base_arm", "D_spectral")
         base_seed = int(spec.get("base_seed", 0))
-        base, extra = build_arm_frame(cfg, base_arm, k, base_seed, tag, d, scope, prov)
+        base, extra = build_arm_frame(cfg, base_arm, k, base_seed, tag, d,
+                                     cache_tag, scope, prov)
         mode = "random" if spec["type"] == "rotated_random" else "learned"
         return RotatedFrame(base, k=k, mode=mode, seed=seed), {
             **extra, "rotation_mode": mode, "base_arm": base_arm, "base_seed": base_seed}
@@ -135,6 +145,7 @@ def build_arm_frame(cfg, arm: str, k: int, seed: int, tag: str, d: int,
                 f"--seed {seed} first (arm D is the spectrum, not a baseline)")
         blob = torch.load(path, map_location="cpu", weights_only=False)
         facts = _bind_spectrum(path, blob if isinstance(blob, dict) else {}, tag, seed,
+                               cache_tag if cache_tag is not None else tag,
                                scope, prov or {})
         return SpectralFrame(d=d, k=k, path=path), facts
     return build_frame(spec, d=d, k=k, seed=seed), {}
@@ -241,7 +252,8 @@ def main() -> int:
             "--subset-size is an exploratory diagnostic and must not produce a run the "
             "selector can see. Pass an explicit --scope (e.g. --scope powercurve); "
             "select_method.py only reads analysis_scope == 'gate'.")
-    frame, extra = build_arm_frame(cfg, args.arm, k, args.seed, args.tag, d, scope, prov)
+    frame, extra = build_arm_frame(cfg, args.arm, k, args.seed, args.tag, d,
+                                  cache_tag, scope, prov)
     learnable = any(p.requires_grad for p in frame.parameters()) or \
         cfg["fiber"]["arms"][args.arm]["type"] == "householder"
     t0 = time.time()
