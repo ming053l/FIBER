@@ -196,9 +196,24 @@ Per-coordinate `diag(V C_cert^held Vᵀ)` is still reported as **coordinate_skil
 sign coding genuinely is basis dependent — but never as the observability mass.
 
 Positive rank is reported against the request (`requested_k = 64`,
-`certified_positive_rank = 20` is an honest result, not a number to round up), with an
+`numerical_positive_rank = 20` is an honest result, not a number to round up), with an
 explicit numerical-zero tolerance `τ = max(1e-9, k·ε·max|μ|)` so that `1e-16` eigenvalues
-cannot become certified mass. `k` is never chosen from the test split — that is a `val`
+cannot become certified mass.
+
+**`τ` is not significance.** It excludes floating-point noise and nothing else, so the
+word *certified* rests instead on a **one-sided bootstrap lower bound**: the per-sample
+terms `2a_ij b_ij − b_ij²` average to `v_jᵀC_cert v_j`, so the certificate is a sample
+mean and can be bounded like any other. `statistically_certified_rank` counts directions
+whose bound clears zero (Bonferroni over `k`, since `k` are inspected at once) and
+`D_cert^LCB` bounds the total mass (a single statistic, uncorrected). Calibrated: a
+decoder with zero true skill gives `D = 0.0000`, `D^LCB = 0.0000`, rank 0; the exact
+conditional mean gives `D = 15.48`, `D^LCB = 15.23`, rank 16 of 16.
+
+The inner cross-fit is **symmetric**: both halves take a turn as the measurement half
+and the two estimates are averaged, so every held-out sample is used and the score stops
+depending on which half the split seed happened to pick. Rotation invariance survives
+the bootstrap, which it must, or the P0-7 decomposition would break at the statistical
+layer. `k` is never chosen from the test split — that is a `val`
 decision (P0-3).
 
 `D_cert` is *not* Shannon capacity and *not* `I(Z;Y)`; it is the variance the chosen

@@ -157,8 +157,30 @@ def project_operator(Z, F, V, center: bool = True, ddof: int = 1) -> np.ndarray:
     return (C + C.T) / 2
 
 
+def _per_sample_contributions(Z, F, V, center: bool = True) -> np.ndarray:
+    """[N, k] terms whose column means are v_j' C_cert v_j.
+
+    Having the per-sample terms is what makes a confidence bound possible: the
+    certificate is a sample mean, so it can be bootstrapped like any other statistic.
+    """
+    A, B = Z @ V.T, F @ V.T
+    if center:
+        A, B = A - A.mean(0), B - B.mean(0)
+    return 2 * A * B - B * B
+
+
+def _fold(Z, F, V, h_fit, h_eval, center: bool):
+    """Rotation chosen on h_fit, measured on h_eval. Returns (mu, per-sample terms)."""
+    C1 = project_operator(Z[h_fit], F[h_fit], V, center=center)
+    W = np.ascontiguousarray(np.linalg.eigh(C1)[1][:, ::-1].T)
+    terms = _per_sample_contributions(Z[h_eval], F[h_eval], W @ V, center=center)
+    return terms.mean(0), terms
+
+
 def subspace_certificate(Z, F, V, center: bool = True, tol: float | None = None,
-                         crossfit: bool = True, seed: int = 0) -> dict:
+                         crossfit: bool = True, seed: int = 0,
+                         symmetric: bool = True, bootstrap: int = 0,
+                         alpha: float = 0.05) -> dict:
     """Cross-fitted, BASIS-INVARIANT score of a frozen discovered subspace.
 
         D_cert_subspace(V) = sum_j max(mu_j, 0),   mu = eig(V C_cert^held V^T)
@@ -189,28 +211,61 @@ def subspace_certificate(Z, F, V, center: bool = True, tol: float | None = None,
     # ascontiguousarray: the [::-1] view has a negative stride, which torch refuses
     mu_in = np.ascontiguousarray(np.linalg.eigvalsh(C_V)[::-1])
 
-    mu, rotation_split = mu_in, None
+    mu, rotation_split, folds = mu_in, None, []
     if crossfit and np.shape(Z)[0] >= 8:
         rng = np.random.default_rng(seed)
         perm = rng.permutation(np.shape(Z)[0])
         h1, h2 = perm[: len(perm) // 2], perm[len(perm) // 2:]
-        C1 = project_operator(Z[h1], F[h1], V, center=center)
-        W = np.ascontiguousarray(np.linalg.eigh(C1)[1][:, ::-1].T)   # rotation from half 1
-        C2 = project_operator(Z[h2], F[h2], V, center=center)
-        mu = np.ascontiguousarray(np.diag(W @ C2 @ W.T))             # measured on half 2
+        # Symmetric two-fold: every held-out sample is measured in one direction or the
+        # other, so all of them are used and the number stops depending on which half
+        # the split seed happened to make the measurement half.
+        pairs = [(h1, h2), (h2, h1)] if symmetric else [(h1, h2)]
+        folds = [_fold(Z, F, V, a, b, center) for a, b in pairs]
+        mu = np.ascontiguousarray(folds[0][0])
         rotation_split = [int(h1.size), int(h2.size)]
 
     tau = zero_tolerance(mu) if tol is None else float(tol)
     positive = mu[mu > tau]
+
+    # ---- statistical certification --------------------------------------
+    # tau only excludes floating-point noise. "Certified" in a paper sense needs a
+    # one-sided lower bound above zero, so the per-sample terms are bootstrapped with
+    # the rotation held FIXED from the other half. Per-direction bounds carry a
+    # Bonferroni correction because k of them are inspected at once; the total-mass
+    # bound is a single statistic and does not.
+    stats: dict = {}
+    if bootstrap and folds:
+        brng = np.random.default_rng(seed + 1)
+        lcbs, masses = [], []
+        for mu_f, terms in folds:
+            n = terms.shape[0]
+            idx = brng.integers(0, n, size=(int(bootstrap), n))
+            boot = terms[idx].mean(axis=1)
+            lcbs.append(np.quantile(boot, alpha / max(len(mu_f), 1), axis=0))
+            masses.append(float(np.quantile(np.clip(boot, 0, None).sum(axis=1), alpha)))
+        lcb = np.mean(lcbs, axis=0)
+        stats = {"lcb_per_direction": lcb,
+                 "statistically_certified_rank": int((lcb > 0).sum()),
+                 "D_cert_LCB": float(np.mean(masses)),
+                 "bootstrap_resamples": int(bootstrap), "alpha": alpha,
+                 "per_direction_correction": "bonferroni over k"}
+
+    fold_mass = [float(np.clip(m, 0, None).sum()) for m, _ in folds]
     return {
         # ---- subspace (basis-invariant) --------------------------------
         "mu": mu,
+        "folds": len(folds), "fold_masses": fold_mass or None,
+        **stats,
         "crossfit": bool(rotation_split is not None),
         "rotation_split": rotation_split,
         # same score without the inner cross-fit: optimistic, kept for contrast
         "D_cert_subspace_insample": float(np.clip(mu_in, 0, None).sum()),
         "mu_insample": mu_in,
-        "D_cert_subspace": float(positive.sum()),
+        # Symmetric folds average to one scalar: each fold is a valid estimate on its
+        # own measurement half, so their mean uses every sample without double-counting.
+        "D_cert_subspace": (float(np.mean(fold_mass)) if fold_mass
+                            else float(positive.sum())),
+        "D_cert_subspace_fold0": float(positive.sum()),
         # Unbiased companion: sum(mu) = tr(C_V), basis-invariant and NOT clipped, so
         # it estimates the TRUE restricted trace instead of being rectified upward.
         # Clipping is what leaves the headline with a residual positive bias at small
@@ -218,9 +273,9 @@ def subspace_certificate(Z, F, V, center: bool = True, tol: float | None = None,
         # N=256). Report both: the mass answers "how much is certified", the trace
         # answers "is this decoder net-positive at all" and can be negative.
         "trace_C_V": float(mu.sum()),
-        # NOT a significance statement: tau only rules out floating-point noise. A
-        # statistically certified rank needs a one-sided LCB > 0 on the measurement
-        # half (recorded as pre-Gate-3 work in reports/p0_fix_plan.md).
+        # NOT a significance statement: tau only rules out floating-point noise.
+        # `statistically_certified_rank` above is the one that counts directions whose
+        # one-sided lower bound clears zero.
         "numerical_positive_rank": int(positive.size),
         "certified_positive_rank": int(positive.size),   # deprecated alias
         "requested_k": int(V.shape[0]),
@@ -369,7 +424,8 @@ def fit_certified(Z, F, k: int, oversampling: int = 32, seed: int = 0, center: b
     raise ValueError(f"unknown method {method!r}; use 'range_eigh' or 'eigsh'")
 
 
-def teacher_validity(Z_held, F_held, V, center: bool = True) -> dict:
+def teacher_validity(Z_held, F_held, V, center: bool = True, bootstrap: int = 0,
+                     alpha: float = 0.05) -> dict:
     """Cross-fit validity report for the recovered directions.
 
     lambda_var  = Var(v^T f(Y))                       (what Cov(f) would have reported)
@@ -393,7 +449,8 @@ def teacher_validity(Z_held, F_held, V, center: bool = True) -> dict:
         "max_abs_gap": float(gap.max()) if gap.size else 0.0,
         "n_negative_directions": int((lam_skill < 0).sum()),
         # subspace: basis invariant, THE headline
-        "subspace": subspace_certificate(Z_held, F_held, V, center=center),
+        "subspace": subspace_certificate(Z_held, F_held, V, center=center,
+                                         bootstrap=bootstrap, alpha=alpha),
         # a teacher with a non-zero output mean injects a rank-1 direction into any
         # UNcentered estimate; report it so centering cannot be quietly dropped
         "teacher_output_mean_norm": float(np.linalg.norm(F.mean(0))),

@@ -379,7 +379,10 @@ def test_subspace_score_comes_from_eigenvalues_not_from_the_diagonal():
     Z, F, V = _counterexample_data()
     cert = subspace_certificate(Z, F, V)
     assert cert["D_cert_subspace"] != cert["D_coordinate_clipped"]
-    assert abs(cert["D_cert_subspace"] - np.clip(cert["mu"], 0, None).sum()) < 1e-12
+    # `mu` is fold 0's; the headline averages the symmetric folds, so the identity is
+    # checked against the fold it belongs to
+    assert abs(cert["D_cert_subspace_fold0"] - np.clip(cert["mu"], 0, None).sum()) < 1e-12
+    assert abs(cert["D_cert_subspace"] - float(np.mean(cert["fold_masses"]))) < 1e-12
 
 
 def test_projected_operator_matches_the_analytic_restriction():
@@ -548,3 +551,56 @@ def test_principal_cosines_expose_structure_a_mean_would_hide():
     assert a[0] > 0.99 and a[-1] < 0.01
     assert abs(subspace_alignment(torch.from_numpy(A),
                                   torch.from_numpy(shared_one)) - float(a.mean())) < 1e-9
+
+
+# --------------------------------------------------------------------------
+# Statistical certification: tau excludes floating-point noise, a one-sided
+# lower bound above zero is what makes "certified" a claim.
+# --------------------------------------------------------------------------
+def test_null_certifies_nothing_statistically():
+    Z, F, V = _null_case(2000, 16)
+    c = subspace_certificate(Z, F, V, bootstrap=400)
+    assert c["statistically_certified_rank"] == 0
+    assert c["D_cert_LCB"] == 0.0
+
+
+def test_real_signal_survives_the_lower_bound():
+    c = subspace_certificate(T["Z"], T["m"], T["V"][:8], bootstrap=400)
+    assert c["statistically_certified_rank"] == 8
+    assert 0 < c["D_cert_LCB"] <= c["D_cert_subspace"] + 1e-9
+
+
+def test_the_bound_is_never_above_the_point_estimate():
+    for case in (_null_case(600, 8), (T["Z"], T["m"], T["V"][:8])):
+        c = subspace_certificate(*case, bootstrap=300)
+        assert c["D_cert_LCB"] <= c["D_cert_subspace"] + 1e-9
+
+
+def test_symmetric_folds_use_every_sample_and_agree():
+    """Both halves take a turn as the measurement half, so the score stops depending on
+    which one the split seed happened to pick."""
+    c = subspace_certificate(T["Z"], T["m"], T["V"][:8])
+    assert c["folds"] == 2 and len(c["fold_masses"]) == 2
+    assert abs(c["D_cert_subspace"] - float(np.mean(c["fold_masses"]))) < 1e-12
+    assert abs(c["fold_masses"][0] - c["fold_masses"][1]) < 0.5
+
+
+def test_symmetric_score_is_less_split_dependent_than_one_fold():
+    spreads = {}
+    for name, sym in (("one_fold", False), ("symmetric", True)):
+        vals = [subspace_certificate(T["Z"], T["m"], T["V"][:8], symmetric=sym, seed=s
+                                     )["D_cert_subspace"] for s in range(6)]
+        spreads[name] = float(np.std(vals))
+    assert spreads["symmetric"] <= spreads["one_fold"] + 1e-9
+
+
+def test_certification_stays_rotation_invariant():
+    a = subspace_certificate(T["Z"], T["m"], T["V"][:8], bootstrap=300)
+    b = subspace_certificate(T["Z"], T["m"], _rotation(8, 4) @ T["V"][:8], bootstrap=300)
+    assert abs(a["D_cert_subspace"] - b["D_cert_subspace"]) < 1e-9
+    assert a["statistically_certified_rank"] == b["statistically_certified_rank"]
+
+
+def test_per_direction_bound_is_multiplicity_corrected():
+    c = subspace_certificate(T["Z"], T["m"], T["V"][:8], bootstrap=300)
+    assert c["per_direction_correction"] == "bonferroni over k"

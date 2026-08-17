@@ -104,7 +104,8 @@ def main() -> int:
     F_rep, Z_rep = teacher_outputs(teacher, root, bank, report_split, attacks=bank.train,
                                    device=args.device, limit=args.limit,
                                    epoch_salt="spectrum-report")
-    valid = teacher_validity(Z_rep, F_rep, V)
+    valid = teacher_validity(Z_rep, F_rep, V,
+                             bootstrap=int(scfg.get("certification_bootstrap", 2000)))
     lam = valid["lambda_skill"]           # per-coordinate: basis dependent, diagnostic
     sub = valid["subspace"]               # basis invariant: THE headline (P0-1.1)
     tol = float(scfg.get("validity_tol", 0.10))
@@ -126,6 +127,11 @@ def main() -> int:
         # the discovered subspace: C_V = [[-1,2],[2,-1]] clips to 0 while its
         # eigenvalues are (1,-3), i.e. one rotation from a certified direction.
         "D_cert_subspace": sub["D_cert_subspace"],
+        # The bound is what the word "certified" has to rest on: tau only excludes
+        # floating-point noise, a one-sided LCB above zero is a claim.
+        "D_cert_LCB": sub.get("D_cert_LCB"),
+        "statistically_certified_rank": sub.get("statistically_certified_rank"),
+        "fold_masses": sub.get("fold_masses"),
         "D_cert_subspace_insample": sub["D_cert_subspace_insample"],
         "trace_C_V": sub["trace_C_V"],
         "inner_crossfit": sub["crossfit"], "rotation_split": sub["rotation_split"],
@@ -212,11 +218,13 @@ def main() -> int:
     rep.parent.mkdir(parents=True, exist_ok=True)
     rep.write_text(json.dumps(summary, indent=2, default=float))
 
-    log.info("SUBSPACE  D_cert = %.3f over %d/%d certified directions "
-             "(mu in [%.3f, %.3f], tr(C_V) = %.3f)",
-             summary["D_cert_subspace"], summary["certified_positive_rank"],
-             summary["requested_k"], summary["mu_min"], summary["mu_max"],
-             summary["trace_C_V"])
+    log.info("SUBSPACE  D_cert = %.3f (LCB %s) over %d numerically / %s statistically "
+             "certified of %d  (tr(C_V) = %.3f)",
+             summary["D_cert_subspace"],
+             f"{summary['D_cert_LCB']:.3f}" if summary.get("D_cert_LCB") is not None else "n/a",
+             summary["numerical_positive_rank"],
+             summary.get("statistically_certified_rank", "n/a"),
+             summary["requested_k"], summary["trace_C_V"])
     log.info("          without the inner cross-fit it would read %.3f -- the gap is "
              "selection bias, not observability", summary["D_cert_subspace_insample"])
     log.info("COORDS    diagonal-clipped %.3f, top-1 %.3f  (basis dependent; not the headline)",

@@ -135,6 +135,11 @@ spectrum:
   #   tau = max(1e-9, k * eps * max|mu|)
   # so 1e-16 eigenvalues cannot become certified mass. k is never chosen on test.
   positive_rank_floor: 1.0e-9
+  # One-sided bootstrap on the measurement half with the rotation held fixed from the
+  # other, so "certified" rests on a lower bound above zero rather than on tau, which
+  # only excludes floating-point noise. Per-direction bounds are Bonferroni-corrected
+  # over k; the total-mass bound is a single statistic and is not.
+  certification_bootstrap: 2000
   # EVERY reported eigenvalue is cross-fitted on a held-out split: in-sample spectra
   # are inflated far past the theoretical bound of 1 (measured lambda_max = 7.2 with an
   # EXACT teacher at N=200, d=4096) and are used only to choose directions.

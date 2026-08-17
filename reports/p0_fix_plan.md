@@ -313,7 +313,7 @@ No GPU sweep until that report says READY.
 Raised in review after P0-1.1 was accepted; neither changes a conclusion, both change
 what may be *claimed*.
 
-1. **Numerical positive rank is not statistical certification.** `tau = max(1e-9,
+1. **DONE — numerical positive rank is not statistical certification.** `tau = max(1e-9,
    k·eps·max|mu|)` only excludes floating-point noise. Even after the inner cross-fit,
    a decoder with zero true skill still shows `D = 0.44` at `N=64, k=32` purely from
    clipping. Before Gate 3, split the reported rank into `numerical_positive_rank`
@@ -328,7 +328,7 @@ what may be *claimed*.
    `project_operator`, `quadratic_form`, `variance_form` and the `range_eigh` path now
    take `ddof=1`. The change is a factor `N/(N-1)` and moves no conclusion.
 
-3. **Symmetric two-fold inner cross-fit (optional).** The inner cross-fit currently
+3. **DONE — symmetric two-fold inner cross-fit.** The inner cross-fit currently
    measures on one half only. Averaging `D_{1->2}` and `D_{2->1}` would use every
    report sample for measurement and reduce dependence on the split seed. Polish after
    P0-7.
