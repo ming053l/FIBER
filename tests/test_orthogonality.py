@@ -403,7 +403,7 @@ def test_artifacts_refuse_to_come_from_a_dirty_tree():
 
     p = provenance()
     assert set(p) == {"git_commit", "git_commit_short", "git_available", "git_dirty",
-                      "git_dirty_files"}
+                      "git_dirty_files", "git_dirty_artifacts"}
     assert require_clean("x", allow_dirty=True) == p        # opt-out still works
     if p["git_dirty"]:
         with pytest.raises(SystemExit, match="dirty working tree"):
@@ -436,3 +436,76 @@ def test_dimension_label_applies_only_to_generic_targets():
     assert classify(1.0, feasible=False, target="reachable") == "empirically_sufficient"
     assert (classify(0.30, feasible=False, target="reachable")
             == "ambiguous_capacity_vs_optimization")
+
+
+def test_provenance_ignores_the_pipeline_s_own_artifacts(tmp_path, monkeypatch):
+    """A pipeline writes its artifacts into the repository, so counting those as dirty
+    makes every step after the first refuse to run. Observed for real: the first
+    spectrum wrote reports/spectrum_triage1_seed0.json and the entire triage then
+    aborted on its own provenance check, before reaching selection.
+
+    What must be committed is the CODE that produced the artifact, not the artifact."""
+    import subprocess
+
+    from fiber.utils.provenance import provenance, require_clean
+
+    repo = tmp_path / "repo"
+    (repo / "reports").mkdir(parents=True)
+    (repo / "src").mkdir()
+    run = lambda *a: subprocess.run(a, cwd=repo, capture_output=True)
+    run("git", "init", "-q")
+    run("git", "config", "user.email", "t@t")
+    run("git", "config", "user.name", "t")
+    (repo / "src" / "m.py").write_text("x = 1\n")
+    # reports/ must already be tracked, or git reports the whole untracked directory as
+    # a single "reports/" entry instead of the files inside it
+    (repo / "reports" / "kept.md").write_text("# committed report\n")
+    run("git", "add", "-A")
+    run("git", "commit", "-qm", "init")
+    monkeypatch.chdir(repo)
+    assert provenance()["git_dirty"] is False
+
+    (repo / "reports" / "result.json").write_text("{}")
+    p = provenance()
+    assert p["git_dirty"] is False, "an output blocked the next step"
+    assert p["git_dirty_artifacts"] == ["reports/result.json"], "and it is still reported"
+    require_clean("an artifact")            # must not raise
+
+    (repo / "src" / "m.py").write_text("x = 2\n")
+    p = provenance()
+    assert p["git_dirty"] is True and "src/m.py" in p["git_dirty_files"]
+    with pytest.raises(SystemExit, match="dirty working tree"):
+        require_clean("an artifact")
+
+
+def test_porcelain_paths_survive_the_leading_status_space(tmp_path, monkeypatch):
+    """`git status --porcelain` emits `XY<space>PATH`, and an unstaged modification
+    starts with a space. Stripping the whole output ate the first line's leading space
+    and shifted that path by one character -- cosmetic while the list was only printed,
+    not cosmetic once entries are matched against an artifact prefix."""
+    import subprocess
+
+    from fiber.utils.provenance import provenance
+
+    repo = tmp_path / "r"
+    (repo / "reports").mkdir(parents=True)
+    (repo / "src").mkdir()
+    run = lambda *a: subprocess.run(a, cwd=repo, capture_output=True)
+    run("git", "init", "-q")
+    run("git", "config", "user.email", "t@t")
+    run("git", "config", "user.name", "t")
+    (repo / "src" / "m.py").write_text("x = 1\n")
+    (repo / "reports" / "kept.md").write_text("#\n")
+    run("git", "add", "-A")
+    run("git", "commit", "-qm", "i")
+    monkeypatch.chdir(repo)
+
+    (repo / "src" / "m.py").write_text("x = 2\n")          # unstaged: line starts " M"
+    assert provenance()["git_dirty_files"] == ["src/m.py"]
+
+    # and the same shift must not let an artifact escape the prefix filter
+    (repo / "src" / "m.py").write_text("x = 1\n")
+    (repo / "reports" / "a.json").write_text("{}")
+    run("git", "add", "reports/a.json")                     # staged: line starts "A "
+    p = provenance()
+    assert p["git_dirty_artifacts"] == ["reports/a.json"] and p["git_dirty"] is False
