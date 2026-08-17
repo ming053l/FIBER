@@ -302,14 +302,21 @@ def subspace_certificate(Z, F, V, center: bool = True, tol: float | None = None,
             # correction already buys at 1 - alpha/n_folds, monotonicity of max(.,0)
             # gives sum_j max(L_fj, 0) <= sum_j max(mu_fj, 0). Costs no extra alpha.
             masses.append(float(np.clip(L, 0, None).sum()))
-        lcb = np.mean(lcbs, axis=0)
-        stats = {**stats, "lcb_per_direction": lcb,
+        stats = {**stats,
                  "lcb_per_direction_per_fold": [np.asarray(L) for L in lcbs],
                  # NOT a rank: these are quadratic forms along k chosen directions, and
                  # positive quadratic forms do not count positive eigenvalues.
                  # C = [[1,2],[2,1]] has diagonal (1,1) but eigenvalues (3,-1), so its
                  # positive inertia is 1 while this count would say 2.
-                 "certified_positive_direction_count": int((lcb > 0).sum()),
+                 #
+                 # Per fold, and NOT aggregated. Fold f measures in its own frame
+                 # U_f = W_f V, so L_1[j] and L_2[j] are bounds on DIFFERENT directions
+                 # and averaging them index by index has no invariant meaning. There is
+                 # nothing to rescue here either: the rank-like headline is
+                 # `certified_positive_inertia`, which counts eigenvalues and is
+                 # rotation-invariant by construction.
+                 "certified_positive_direction_count_per_fold":
+                     [int((L > 0).sum()) for L in lcbs],
                  # max, not mean: each fold's bound is valid for the SAME target. For any
                  # orthonormal frame U within V, sum_j max(u_j^T C u_j, 0) <= sum_j
                  # max(lambda_j, 0) -- the diagonal is majorised by the spectrum and

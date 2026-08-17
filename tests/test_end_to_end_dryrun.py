@@ -224,3 +224,18 @@ def test_attack_lock_edited_after_the_locked_evaluation(chain):
         assert "different selection artifact" in p.stdout + p.stderr
     finally:
         lock.write_bytes(saved)
+
+
+def test_attack_spectrum_fit_from_a_dirty_tree(chain):
+    """The .pt this writes IS the frozen V_spectral, hence D_spectral, hence the Gate's
+    treatment arm. It has to meet the same bar as training and selection."""
+    repo, _, _ = chain
+    victim = repo / "scripts" / "train_coordinates.py"
+    victim.write_text(victim.read_text() + "\n# edit\n")
+    try:
+        p = _run(chain, "fit_observability_spectrum.py", "--tag", "dirty",
+                 "--cache-tag", "pilot", "--seed", "0", "--device", "cpu", "--k", "8")
+        assert p.returncode != 0
+        assert "observability spectrum from a dirty working tree" in p.stdout + p.stderr
+    finally:
+        _sh("git", "checkout", "--", "scripts/train_coordinates.py", cwd=repo)

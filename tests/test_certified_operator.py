@@ -562,13 +562,13 @@ def test_principal_cosines_expose_structure_a_mean_would_hide():
 def test_null_certifies_nothing_statistically():
     Z, F, V = _null_case(2000, 16)
     c = subspace_certificate(Z, F, V, bootstrap=400)
-    assert c["certified_positive_direction_count"] == 0
+    assert c["certified_positive_direction_count_per_fold"] == [0, 0]
     assert c["D_cert_LCB"] == 0.0
 
 
 def test_real_signal_survives_the_lower_bound():
     c = subspace_certificate(T["Z"], T["m"], T["V"][:8], bootstrap=400)
-    assert c["certified_positive_direction_count"] == 8
+    assert c["certified_positive_direction_count_per_fold"] == [8, 8]
     assert 0 < c["D_cert_LCB"] <= c["D_cert_subspace"] + 1e-9
 
 
@@ -600,7 +600,11 @@ def test_certification_stays_rotation_invariant():
     a = subspace_certificate(T["Z"], T["m"], T["V"][:8], bootstrap=300)
     b = subspace_certificate(T["Z"], T["m"], _rotation(8, 4) @ T["V"][:8], bootstrap=300)
     assert abs(a["D_cert_subspace"] - b["D_cert_subspace"]) < 1e-9
-    assert a["certified_positive_direction_count"] == b["certified_positive_direction_count"]
+    # per fold, because index j means "fold f's own j-th fitted direction" -- but
+    # still rotation invariant: rotating V by A rotates each fold's operator by A and
+    # that fold's chosen rotation absorbs it
+    assert (a["certified_positive_direction_count_per_fold"]
+            == b["certified_positive_direction_count_per_fold"])
     assert a["certified_positive_inertia"] == b["certified_positive_inertia"]
 
 

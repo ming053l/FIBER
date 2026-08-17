@@ -126,13 +126,14 @@ being covered.
 
 ## Noted, not changed
 
-* `fit_observability_spectrum.py` does **not** call `require_clean()`, unlike training,
-  selection, the locked evaluation and the teacher comparison. It produces the frozen
-  `D_spectral` subspace, which is scientific evidence. It records the commit but does not
-  refuse a dirty tree. Out of scope for these four blockers; flagged for a decision.
-* `lcb_per_direction` averages the two folds' bounds index by index, but direction `j`
-  means "the j-th direction of that fold's own fitted rotation". These agree only to the
-  extent that both halves estimate the same population eigenvectors. The headline mass no
-  longer depends on this (it takes the max over per-fold masses), but
-  `certified_positive_direction_count` still does.
-* The spectrum checkpoint dict has a duplicate `"k"` key. Cosmetic.
+* ~~`fit_observability_spectrum.py` does not call `require_clean()`~~ — **fixed**: it
+  now refuses a dirty tree like every other evidence-producing script, takes one
+  provenance record instead of a second independent `git rev-parse`, and stamps
+  `git_commit`/`git_dirty` into the frame checkpoint itself, which outlives the report
+  and is loaded by every arm-D run.
+* ~~`lcb_per_direction` averages the two folds' bounds index by index~~ — **fixed**:
+  the aggregate is gone and both the bounds and the count are reported per fold. Fold `f`
+  measures in `U_f = W_f V`, so `L_1[j]` and `L_2[j]` bound different directions and an
+  index-wise mean has no invariant meaning. Nothing is lost: the rotation-invariant
+  rank-like headline is `certified_positive_inertia`.
+* ~~The spectrum checkpoint dict has a duplicate `"k"` key.~~ — fixed.

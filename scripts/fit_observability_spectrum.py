@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import subprocess
 import time
 from pathlib import Path
 
@@ -35,6 +34,7 @@ from fiber.spectrum import fit_certified, subspace_alignment, teacher_validity
 from fiber.training import TrainConfig, teacher_outputs, train_teacher
 from fiber.utils.config import load_config
 from fiber.utils.logging import get_logger
+from fiber.utils.provenance import require_clean
 from fiber.utils.seeding import set_determinism
 
 log = get_logger("spectrum")
@@ -59,8 +59,15 @@ def main() -> int:
                     help="fixed-decoder operational spectrum per attack (NOT Cov(E[Z|Y,T=t]))")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--device", default="cuda:0")
+    ap.add_argument("--allow-dirty", action="store_true",
+                    help="throwaway fit; the resulting frame must not enter a Gate")
     args = ap.parse_args()
 
+    # This script is not a report generator: the .pt it writes IS the frozen
+    # V_spectral, and therefore D_spectral, and therefore the Gate treatment arm. It has
+    # to meet the same bar as training, selection and the locked evaluation, all of
+    # which already refuse a dirty tree.
+    prov = require_clean("an observability spectrum", allow_dirty=args.allow_dirty)
     cfg = load_config(args.config)
     set_determinism(cfg)
     bank = ChannelBank(cfg)
@@ -136,7 +143,11 @@ def main() -> int:
         "D_cert_LCB": sub.get("D_cert_LCB"),
         "D_cert_LCB_per_fold": sub.get("D_cert_LCB_per_fold"),
         # a count of positive quadratic forms, NOT a rank -- see the inertia field
-        "certified_positive_direction_count": sub.get("certified_positive_direction_count"),
+        # per fold: fold f measures in frame U_f = W_f V, so index j is not the same
+        # direction in the two folds and an aggregate would have no invariant meaning.
+        # The rotation-invariant rank-like statistic is certified_positive_inertia.
+        "certified_positive_direction_count_per_fold":
+            sub.get("certified_positive_direction_count_per_fold"),
         "certified_positive_inertia": sub.get("certified_positive_inertia"),
         "weyl_radius": sub.get("weyl_radius"),
         "fold_masses": sub.get("fold_masses"),
@@ -172,8 +183,10 @@ def main() -> int:
         "insample_negative_mass": spec.negative_mass(),
         "insample_spectrum_complete": spec.spectrum_is_complete,
 
-        "commit": subprocess.run(["git", "rev-parse", "--short", "HEAD"],
-                                 capture_output=True, text=True).stdout.strip() or "uncommitted",
+        # one provenance record, taken once, rather than a second independent
+        # rev-parse that could disagree with the check that gated the run
+        **prov,
+        "commit": prov["git_commit_short"],
         "seconds": round(time.time() - t0, 1),
     }
 
@@ -215,8 +228,12 @@ def main() -> int:
         "lambda_var_heldout": torch.from_numpy(np.asarray(valid["lambda_var"])).float(),
         "eigenvalues_insample": torch.from_numpy(spec.eigenvalues[:k]).float(),
         "validity_pass": summary["validity_pass"], "k": k, "d": d,
-        "teacher_loss": "mse", "teacher_arch": arch, "seed": args.seed, "k": k,
+        "teacher_loss": "mse", "teacher_arch": arch, "seed": args.seed,
         "tag": args.tag, "cache_tag": args.cache_tag or args.tag,
+        # The frame carries its own provenance: it outlives this report, gets loaded by
+        # every arm-D run, and "which code produced this subspace" must be answerable
+        # from the checkpoint alone.
+        "git_commit": prov["git_commit"], "git_dirty": prov["git_dirty"],
         "commit": summary["commit"],
     }, out_dir / f"{stem}.pt")
 
