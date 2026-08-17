@@ -282,6 +282,10 @@ def main() -> int:
                 converged = all(r["converged"] for r in res)
                 feasible = res[0]["dimension_feasible"]
                 row = {**res[0], "seed": args.seeds,
+                       # per-seed, because the aggregate carries a MEAN alignment and a
+                       # WORST-seed minimum; a single best_step from res[0] would look
+                       # like it belonged to those
+                       "best_step": [r["best_step"] for r in res],
                        "alignment_best": float(sum(r["alignment_best"] for r in res) / len(res)),
                        "alignment_final": a, "projector_error": projector_error(worst),
                        "converged": converged, "dimension_feasible": feasible,

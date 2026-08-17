@@ -402,8 +402,22 @@ def test_artifacts_refuse_to_come_from_a_dirty_tree():
     from fiber.utils.provenance import provenance, require_clean
 
     p = provenance()
-    assert set(p) == {"git_commit", "git_commit_short", "git_dirty", "git_dirty_files"}
+    assert set(p) == {"git_commit", "git_commit_short", "git_available", "git_dirty",
+                      "git_dirty_files"}
     assert require_clean("x", allow_dirty=True) == p        # opt-out still works
     if p["git_dirty"]:
         with pytest.raises(SystemExit, match="dirty working tree"):
             require_clean("x")
+
+
+def test_provenance_fails_closed_outside_a_repository(tmp_path, monkeypatch):
+    """Outside a repo `git rev-parse` exits non-zero. Treating that as 'unknown but
+    fine' would make the guarantee fail OPEN -- the one direction it must not."""
+    from fiber.utils.provenance import provenance, require_clean
+
+    monkeypatch.chdir(tmp_path)
+    p = provenance()
+    assert p["git_available"] is False and p["git_commit"] is None
+    with pytest.raises(SystemExit, match="not a git repository"):
+        require_clean("an artifact")
+    require_clean("an artifact", allow_dirty=True)      # explicit opt-out still works
