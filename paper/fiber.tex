@@ -6,6 +6,7 @@
 \usepackage{url}
 \usepackage{amsmath,amssymb,amsthm}
 \usepackage{booktabs}
+\usepackage{graphicx}
 \usepackage{tikz}
 \usetikzlibrary{arrows.meta,positioning,calc}
 
@@ -56,80 +57,170 @@ marginal.
 
 \section{Introduction}
 
-A generative model that is used the same way twice is a channel. Fix the weights, fix the
-sampler, and the map from an initial latent $Z$ to the produced image $X=G(Z,S)$ is a
-deterministic function; put the image through compression, resizing or noise and the
-observation $Y$ is a channel output. This view is implicit whenever anyone hides
-information in generated content, edits an image by moving its latent, or asks whether a
-sample can be traced back to its seed. It is rarely made explicit, and when it is, it is
-usually reduced to a single number: how many bits survive.
+A frozen generative model induces a channel from its latent input to its observable
+output. Once the weights, the sampler and the conditioning protocol are fixed, an initial
+latent $Z$ is transformed into an image $X$, which may be further altered by compression,
+resizing, noise or other transmission effects before a receiver observes $Y$. Recovering
+information about $Z$ from $Y$ underlies diffusion inversion, latent-space watermarking,
+provenance, and other applications that transmit information through generated content.
+Existing methods have accordingly developed increasingly sophisticated latent patterns,
+embedding regions, coding schemes, inversion procedures and learned decoders, and they
+answer an important engineering question: \emph{how should information be encoded so that
+it can later be recovered?}
 
-\paragraph{The dominant view, stated fairly.}
-Work on latent-space watermarking and inversion asks \emph{which} encoding to use --- which
-subspace, which pattern, which decoder --- and reports one aggregate: bit error rate under
-a set of attacks. That is a reasonable engineering target, and for a deployed watermark it
-is the target. It also quietly assumes that the channel treats the latent isotropically,
-so that the encoding is a design choice made against a featureless background.
+\paragraph{Where does ``reliable'' come from?}
+Recent diffusion-native watermarking already provides strong evidence that latent
+transmission is highly nonuniform. Tree-Ring builds robust patterns in selected Fourier
+coefficients of the initial noise \citep{wen2023treering}; T2SMark concentrates bits in
+empirically reliable tail regions of the latent distribution \citep{t2smark2025}; MaxMark
+places enhanced messages in reliable latent regions \citep{chang2026maxmark}. Their
+successes are evidence \emph{for} the premise of this paper, not against it: latent
+coordinates are plainly not equally useful for transmission. What remains missing is that
+``reliable'' is defined through a particular embedding and extraction pipeline. When one
+latent pattern is recovered better than another, it is not clear whether the improvement
+reflects a more observable direction of the channel or a better match between that
+direction and the chosen encoding. \textbf{Can reliability be defined before an encoding
+is chosen?}
 
-\paragraph{What that framing hides.}
-However, this perspective obscures a prior question: \emph{is the background featureless?}
-A frozen generative channel does not attenuate every latent direction equally. Some
-directions of $Z$ leave a strong, recoverable imprint on the image; others are consumed by
-the sampler and the decoder and leave essentially nothing. An aggregate bit rate averages
-over that structure and therefore cannot distinguish ``this encoding is bad'' from ``this
-direction was never observable.'' Worse, it cannot distinguish either from a third
-possibility that turns out to matter: ``this direction is not observable \emph{to this
-receiver}.''
+\paragraph{Was the information lost, or did the receiver fail?}
+Inversion-based methods recover their payload by first reconstructing the initial noise
+from the generated image \citep{wen2023treering,yang2024gaussianshading}, so measured
+robustness depends on the receiver as much as on the channel. This dependence is not
+negligible: improving the inversion algorithm alone reduces initial-noise reconstruction
+error and, by itself, improves invisible-watermark discrimination
+\citep{hong2024exactinversion}. An aggregate recovery score therefore cannot distinguish
+information the channel destroyed from information the receiver merely failed to decode,
+and cannot say whether recoverability is concentrated in a few latent directions or spread
+thin. \textbf{Operational recovery is not channel observability.}
 
-\paragraph{The object we propose.}
-We replace the scalar with a geometry. For a receiver that sees $Y$, define
+\paragraph{Each advance repairs a different layer.}
+The literature has addressed distinct failure modes at distinct layers of the transmission
+stack: Gaussian Shading removes training-induced quality costs
+\citep{yang2024gaussianshading}, T2SMark trades robustness against latent diversity
+\citep{t2smark2025}, MaxMark addresses limited payload capacity
+\citep{chang2026maxmark}, Gaussian Shannon adds coding for bit-exact transmission
+\citep{zhang2026gaussianshannon}, and GROW removes the computational cost of
+inversion-based extraction \citep{luo2026grow}. These are real improvements to
+watermarking systems. They also make a measured recovery rate a joint function of the
+latent embedding, the channel, the inversion procedure, the coding scheme and the
+receiver. \emph{Our inference, and not a claim made by those works}, is that a layer of
+abstraction is missing beneath them: before optimising the communication system, one
+should be able to characterise the information-carrying geometry of the frozen channel
+itself.
+
+We formalise this through the \emph{Bayesian observability geometry}
 \[
-  \Cobs \;=\; \Cov\bigl(\Exp[Z\mid Y]\bigr),
+  \Cobs \;=\; \Cov\bigl(\Exp[Z\mid Y]\bigr).
 \]
-the covariance of the Bayes posterior mean. Its quadratic form has a direct reading:
-$v^\top\Cobs v=\Var(\Exp[v^\top Z\mid Y])$, and when $Z\sim\mathcal N(0,I)$ this equals
-$1-\Exp[\Var(v^\top Z\mid Y)]$ --- the fraction of direction $v$'s prior uncertainty an
-observer can remove. Its eigendecomposition $\Cobs=V\Lambda V^\top$ orders latent
-directions by observability, and the leading eigenspace is the most observable latent
-subspace. A scalar capacity is a trace; the geometry is the object the trace summarises.
+For an isotropic Gaussian latent and a unit direction $v$,
+$v^\top\Cobs v=1-\Exp[\Var(v^\top Z\mid Y)]$, so each quadratic form measures how much
+uncertainty about that latent direction the observation removes. The eigenspectrum
+separates highly observable directions from directions whose latent variation is largely
+lost: its trace summarises \emph{total explained latent variance}, while the full operator
+retains \emph{where} that observability lies. This posterior-mean covariance has classical
+connections to inverse regression, and in the linear--Gaussian setting it is a bounded
+global Bayesian counterpart of the local Fisher geometry.
 
-\paragraph{Making it estimable without the Bayes decoder.}
-$\Exp[Z\mid Y]$ is not available. The tempting substitute, $\Cov(f(Y))$ for a trained
-decoder $f$, is not a bound in either direction: a badly scaled decoder can report more
-apparent observability than the channel contains. We instead use
+The Bayes posterior mean is unavailable in a realistic generative channel, which makes the
+geometry impossible to compute directly, and replacing it by the output of a learned
+decoder is unsafe: $\Cov(f(Y))$ can reflect the decoder's own scaling and estimation error
+rather than information the channel carries. We instead derive a \emph{decoder-certified
+observability operator}
 \[
-  \Ccert(f)\;=\;\Exp\bigl[z_c f_c^\top + f_c z_c^\top - f_c f_c^\top\bigr]
-  \;=\;\Cobs-\Cov(m-f)\;\preceq\;\Cobs ,
+  \Ccert(f)\;=\;\Cobs-\Cov(m-f)\;\preceq\;\Cobs,\qquad m(Y)=\Exp[Z\mid Y],
 \]
-which is a \emph{certificate}: whatever it reports, the channel carries at least that much.
-The price is that $\Ccert$ is indefinite, and that is not a technicality --- it is what
-distinguishes a certificate from a proxy, and it changes how the object must be estimated
-and drawn.
+so a decoder cannot certify observability beyond the Bayes quantity. This converts a
+learned observer from an optimistic proxy into a lower certificate, and motivates
+estimating it with disjoint fitting and evaluation data so that decoder fitting noise is
+not read back as channel structure.
 
-\paragraph{Observable to whom.}
-The final step is that $\Cobs$ is not a property of the channel alone. Write
-$\Cobs(\mathcal I_R)=\Cov(\Exp[Z\mid\mathcal I_R])$ for a receiver with information set
-$\mathcal I_R$. A blind receiver has $\mathcal I_b=Y$; a receiver that also knows the
-conditioning the generator used has $\mathcal I_s=(Y,S)$. Since
-$\Exp[\Exp[Z\mid Y,S]\mid Y]=\Exp[Z\mid Y]$, the law of total covariance gives
-$\Cobs(Y,S)-\Cobs(Y)=\Exp[\Cov(\Exp[Z\mid Y,S]\mid Y)]\succeq0$. Side information cannot
-reduce observability, and may enlarge it \emph{directionally}. Whether it does so
-materially for a real diffusion channel is an empirical question, and it is the one our
-main experiment is designed to answer.
+Finally, observability is not a property of the channel alone. A receiver that observes
+$Y$ and one that additionally knows side information $S$ solve different inference
+problems. Writing $\Cobs(\mathcal I_R)=\Cov(\Exp[Z\mid\mathcal I_R])$ for a receiver with
+information set $\mathcal I_R$, the tower property implies
+\[
+  \Cobs(Y)\;\preceq\;\Cobs(Y,S),
+\]
+so additional receiver information can only enlarge the observable latent geometry, and
+may do so directionally. \textbf{Observability is thus a property of a channel--receiver
+pair.} We test this prediction in a frozen text-to-image diffusion channel with a
+preregistered four-arm intervention that separates the correct sample-specific
+conditioning from architectural capacity and from the conditioning marginal.
+
+Taken together, the three questions above are the same question asked of three different
+confounds, and they fix what this paper is for:
+\textbf{we separate channel observability from the choice of encoding, from the quality of
+the decoder, and from the knowledge of the receiver.} This is not another watermarking
+method; it is an attempt to decompose a quantity --- ``recoverability'' --- that is
+currently measured with all three folded in.
 
 \paragraph{Contributions.}
 \begin{itemize}
-  \item \textbf{Framework.} Latent observability through a frozen generative channel as a
-  geometry $\Cobs$ rather than a scalar rate, with a linear--Gaussian bridge showing it is
-  the global Bayesian counterpart of the local Fisher geometry.
-  \item \textbf{Estimator.} A decoder-certified operator $\Ccert(f)\preceq\Cobs$ with a
-  cross-fitted, held-out, bootstrap-bounded estimator, and the reasons $\Cov(f)$ and
-  diagonal clipping fail.
-  \item \textbf{Receiver conditioning.} Monotonicity of observability in the receiver's
-  information set, together with an explicit statement of why the difference of two
-  certificates does \emph{not} inherit it.
-  \item \textbf{Experiments.} \textbf{[Phase A pending.]}
+  \item \textbf{A receiver-conditional Bayesian geometry of latent observability.} We
+  formulate which latent directions survive a frozen generative channel through
+  $\Cobs(\mathcal I_R)$, connecting posterior uncertainty, directional recoverability, and
+  classical inverse-regression and Fisher perspectives.
+  \item \textbf{A decoder-certified observability operator.} We derive
+  $\Ccert(f)\preceq\Cobs$, which lets a learned observer provide a lower certificate
+  rather than an unconstrained proxy, together with a cross-fitted finite-sample
+  estimation protocol.
+  \item \textbf{A monotonicity principle for receiver information.} We show that enriching
+  the receiver's information set can only increase population observability, and prove why
+  differences of learned decoder certificates do \emph{not} automatically inherit that
+  guarantee.
+  \item \textbf{Evidence.} \textbf{[Phase A pending.]}
 \end{itemize}
+
+\section{Related work}
+
+\paragraph{Posterior-mean geometry has classical roots in inverse regression and Bayesian
+dimension reduction.}
+Sliced inverse regression \citep{li1991sir} takes the leading eigenvectors of
+$\Cov(\Exp[x\mid y])$ as directions of the central subspace, and likelihood-informed
+subspaces \citep{cui2014lis} identify the parameter directions along which data update a
+prior in nonlinear inverse problems. \textbf{The covariance form is not new here, and we
+do not claim it.} What differs is the object it is asked about and the regime it must be
+estimated in. Two features of ours invert the classical situation: the condition SIR
+requires of the predictor, that its conditional means be linear, holds \emph{exactly and
+by construction} because the sampler draws $Z\sim\mathcal N(0,I)$ --- an assumption there,
+a fact here --- while SIR estimates $\Exp[x\mid y]$ by slicing on a low-dimensional
+response, and our conditioning variable is an entire image, so slicing is unavailable. The
+inverse-regression curve must therefore be approximated by a trained decoder, which is
+precisely why that approximation has to be a \emph{certificate} rather than a proxy
+(\S\ref{sec:certificate}).
+
+\paragraph{Information theory characterises informativeness, but typically not its latent
+directional structure under a specified receiver.}
+Mutual information and MMSE are tightly linked in Gaussian channels
+\citep{guo2005immse}; Fisher information measures local distinguishability; and
+Blackwell's comparison of experiments \citep{blackwell1953} formalises when one
+observation structure is more informative than another. Each answers a question we need
+and none answers ours: mutual information returns a scalar, Fisher geometry is local, and
+Blackwell's ordering tells us that $(Y,S)$ is at least as informative as $Y$ without
+saying \emph{which latent directions} the extra information acts on. We keep the
+direction structure and make the receiver explicit, writing
+$\Cobs(\mathcal I_R)=\Cov(\Exp[Z\mid\mathcal I_R])$, so that ``how much survives'' and
+``which directions are observable, and to whom'' are separate questions with separate
+answers. Fisher information appears here only as a bridge
+(Proposition~\ref{prop:fisher}) locating a global Bayesian quantity against a familiar
+local one, and we claim no novelty for the principle that more receiver information cannot
+hurt Bayes estimation.
+
+\paragraph{Diffusion inversion and watermarking optimise recovery and embedding; we first
+ask which latent directions are observable at all.}
+Latent-space methods design payloads, robust patterns, reliable regions or inversion
+procedures to improve recovery from generated images: Tree-Ring places a pattern in a
+Fourier region of the initial noise \citep{wen2023treering}, Gaussian Shading preserves
+the latent's Gaussian law \citep{yang2024gaussianshading}, Stable Signature roots a
+decodable signature in the decoder \citep{fernandez2023stablesignature}, and recent work
+treats generation explicitly as a noisy channel and applies coding
+\citep{zhang2026gaussianshannon,chang2026maxmark}. Work on inverting DDIM sampling
+reports that accurate image reconstruction does not imply accurate recovery of the initial
+latent \citep{zeng2026inverting}, a separation our object is built to express. These
+methods primarily optimise \emph{how} information should be embedded or recovered; they do
+not define and certify a receiver-dependent observability operator of the underlying frozen
+channel. We therefore ask a prior question: \emph{before choosing an encoding, which latent
+directions does the frozen generative channel make recoverable, and to which receiver?}
 
 \section{Method}
 
@@ -167,9 +258,9 @@ definition and nothing else.
 \caption{Observability is anisotropic even when the prior is not. (a) Every unit direction
 starts with the same prior variance. (b) Observing $Y$ narrows the posterior by different
 amounts in different directions; dashed grey is the prior, solid colour the posterior.
-(c) Collecting those numbers gives $\Cobs$, an ellipsoid inside the prior ball whose axes
-are the observable directions and whose lengths are $\lambda_j=1-\Exp[\Var(v_j^\top Z\mid
-Y)]$. A scalar bit rate is the trace of this object.}
+(c) Collecting those numbers gives $\Cobs$, whose principal directions are $v_j$, with directional observability strengths
+$\lambda_j=1-\Exp[\Var(v_j^\top Z\mid Y)]$. The trace summarises how much latent
+variance is observable; the spectrum reveals where that observability lies.}
 \label{fig:geometry}
 \end{figure}
 
@@ -196,8 +287,7 @@ $\Cobs=\Cov(Z)-\Exp[\Cov(Z\mid Y)]=I-(I+J_F)^{-1}=J_F(I+J_F)^{-1}$.
 Fisher information asks whether two nearby latent states are locally distinguishable;
 $\Cobs$ asks how much of a direction is globally inferable under the prior. The map
 $\mu\mapsto\mu/(1+\mu)$ compresses an unbounded local quantity into $[0,1)$, which is
-exactly the range that \eqref{eq:quadform} predicts and that our implementation
-enforces as an invariant on every estimated spectrum.
+exactly the population range implied by \eqref{eq:quadform}.
 
 \subsection{Decoder-certified observability}
 \label{sec:certificate}
@@ -216,17 +306,21 @@ quality. We use instead, with $z_c,f_c$ the centred latent and decoder output,
 \begin{theorem}[Certificate]
 \label{thm:cert}
 For any square-integrable $f$, $\ \Ccert(f)=\Cobs-\Cov(m-f)\preceq\Cobs$, with equality
-iff $f=m$ almost surely.
+iff $m-f$ is almost surely constant.
 \end{theorem}
 
 \noindent\textbf{Consequence.} Every direction $\Ccert$ reports is one the channel really
-carries: a better decoder can only raise the certificate, never inflate it past the truth.
-This is what makes the estimate falsifiable rather than merely optimistic.
+carries. Reducing the decoder-error covariance in the Loewner order raises the
+certificate, and no decoder can certify beyond $\Cobs$; a smaller mean squared error alone
+constrains the trace and does not order the operators. $\Ccert$ is also invariant to a
+constant shift of $f$, which is why equality is stated on $m-f$ up to a constant rather
+than on $f=m$.
 
 \paragraph{$\Ccert$ is indefinite, and that is the point.}
 $\Cov(f)$ is positive semidefinite by construction --- which is precisely why it cannot be
-a bound. $\Ccert$ can have negative eigenvalues, and their magnitude measures decoder
-misspecification in that direction. Two consequences follow and both are easy to get
+a bound. $\Ccert$ can have negative eigenvalues: since
+$v^\top\Ccert v=v^\top\Cobs v-\Var(v^\top(m-f))$, a negative direction is one where the
+decoder's error exceeds the true observable variation. Two consequences follow and both are easy to get
 wrong. First, any solver that ranks by $|\lambda|$ --- every SVD-based routine --- returns
 the directions the decoder is \emph{worst} on as the leading ones; the eigensolver must be
 algebraically largest. Second, $\Ccert\preceq\Cobs$ orders quadratic forms, not volumes:
@@ -239,8 +333,8 @@ spectrum instead.
 \input{fig_certificate.tex}
 \caption{The certificate is not a smaller ellipsoid. (a) $\Cobs$ is positive semidefinite
 with eigenvalues in $[0,1]$, so it has an ellipsoid. (b) $\Ccert(f)$ is indefinite: its
-positive part is the certified observability mass $\Dcert$, and its negative part measures
-where the decoder is misspecified. $\Ccert\preceq\Cobs$ is an ordering of quadratic forms,
+positive part is the certified observability mass $\Dcert$, and a negative direction is one
+where decoder error exceeds the observable variation. $\Ccert\preceq\Cobs$ is an ordering of quadratic forms,
 so nesting the two as volumes would misstate the object being estimated.}
 \label{fig:certificate}
 \end{figure}
@@ -291,6 +385,18 @@ $\Cov(m_s)=\Cov(\Exp[m_s\mid Y])+\Exp[\Cov(m_s\mid Y)]=\Cov(m_b)+\Exp[\Cov(m_s\m
 information can only enlarge the observable geometry, and the gain
 $\Delta C_{\mathrm{side}}=\Exp[\Cov(m_s\mid Y)]$ has a direct reading: how much the
 posterior mean still moves once $Y$ is known.
+
+\begin{figure}[t]
+\centering
+\input{fig_receiver.tex}
+\caption{Observability is indexed by the receiver. (a) Adding side information can only
+enlarge the observable geometry, never narrow it in any direction --- the blind ellipsoid
+(dotted) is contained in the side-informed one. (b) A side receiver differs from a blind
+one in more than what it knows, so three further arms separate the architecture, the
+conditioning \emph{marginal}, and the \emph{pairing}; only the last is the quantity of
+interest.}
+\label{fig:receiver}
+\end{figure}
 
 \paragraph{The estimator does not inherit the ordering.}
 Theorem~\ref{thm:mono} is about Bayes quantities. With two \emph{approximate} decoders,
@@ -346,29 +452,230 @@ than a structured one.
 
 \section{Experiments}
 
-\textbf{[Phase A running; this section is written once the four-arm ladder completes. The
-subsections below name the questions, in the order they were registered.]}
+\subsection{Experimental setup}
+\label{sec:setup}
 
-\subsection{Does the certified estimator recover a known geometry?}
-Synthetic linear--Gaussian channels where $\Cobs$ is available in closed form via
-Proposition~\ref{prop:fisher}.
+\paragraph{The channel.}
+The generator is Stable Diffusion v1.5 with all modules frozen; nothing is fine-tuned at
+any point. Sampling uses DDIM with $\eta=0$ and $25$ steps at guidance scale $3.0$ with an
+empty negative prompt, chosen because it is deterministic and because
+$\sigma_{\mathrm{init}}=1$ lets a supplied latent pass through unscaled, so the latent the
+UNet consumes is exactly the target the receiver is asked to recover. The latent is
+$Z\in\mathbb R^{4\times64\times64}$, i.e.\ $d=16{,}384$, drawn as $\mathcal N(0,I)$ on the
+CPU and rounded to the generator's dtype \emph{before} being stored, so the persisted $Z$
+is bit-exactly what the UNet saw. Images are $512\times512$. The guidance scale is a pilot
+value and is not tuned against any outcome: whether high guidance suppresses latent
+information is a hypothesis this framework can state, not a premise it assumes.
+
+\paragraph{Transmission channel.}
+$T$ is drawn from a fixed set of ten perturbations: identity, JPEG at quality
+$\{90,70,50\}$, bilinear down-and-up resizing at scale $\{0.75,0.50\}$, additive Gaussian
+noise at $\sigma\in\{0.05,0.10\}$, and Gaussian blur at $\sigma\in\{1.0,2.0\}$. A further
+four --- WebP-75, JPEG-30, blur-$3.0$, resize-$0.35$ --- are held out of training entirely
+and used only as an unseen-channel falsification test. Perturbations are \emph{not}
+cached: each is applied in the dataloader from a seed derived as
+$\mathrm{blake2s}(\text{sample id}\,|\,\text{attack}\,|\,\text{severity}\,|\,\text{split
+salt})$, so the realisation is reproducible without freezing the attack set or storing
+tens of gigabytes of redundant pixels. Cropping is deliberately absent: it introduces an
+alignment problem the receiver would have to solve simultaneously, confounding the
+coordinate result.
+
+\paragraph{Data and the one-sample-one-role rule.}
+Prompts are COCO captions, one per sample and drawn without replacement, with a
+held-out-prompt test split drawn from \texttt{val2017} while every other split draws from
+\texttt{train2017}; latent seeds are derived from (salt, split, index) so splits are
+disjoint in latent \emph{and} in prompt by construction. Each sample plays exactly one
+scientific role:
+
+\begin{center}
+\begin{tabular}{llr}
+\toprule
+role & used for & $n$ \\
+\midrule
+$A_{\mathrm{teacher}}$ & fitting the decoder $f$ & 535 \\
+$A_{\mathrm{operator}}$ & estimating $\Ccert$ and freezing $V_k$ & 537 \\
+$B$ & training a fresh receiver, every arm & 928 \\
+val & all model and hyperparameter selection & 256 \\
+test & locked evaluation only & 256 \\
+test (held-out prompts) & locked evaluation, unseen prompt domain & 256 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The teacher/operator split is what stops the operator reading the decoder's own fitting
+noise back as observability; the $A/B$ split is what stops the receiver inheriting the
+geometry's discovery data. All model selection happens on val, and the test splits are
+evaluated once, after the method is locked.
+
+\paragraph{Receiver.}
+The receiver is a ResNet-18 trained from scratch --- never ImageNet-initialised, which
+would be a semantic shortcut letting it read content rather than coordinates --- with two
+linear heads on the pooled feature: a regression head trained with MSE and a sign head
+trained with BCE. Sign bit error rate is the primary operational metric; the regression
+head supplies the continuous diagnostics. Training is AdamW, batch $16$, learning rate
+$2\times10^{-4}$, weight decay $10^{-4}$, cosine schedule with $500$ warmup steps,
+gradient clipping at $1.0$, for $40$ epochs, identical across every arm. We use $k=64$
+coordinates throughout.
+
+\paragraph{Side information.}
+$S$ is the sample-specific positive-CFG conditioning embedding, $77\times768$. It is not
+re-encoded from the prompt: the text encoder is not batch-composition invariant in fp16,
+and re-encoding a prompt outside its original chunk moves the embedding by up to
+$0.024$. $S$ is therefore obtained by \emph{replaying} the generation loop --- same index,
+same shard order, same chunking, same batch --- and the claim that this recovers what the
+generator consumed is verified rather than asserted: feeding the stored $S$ back through
+the UNet reproduces the cached pixels bit-identically across leading, partial-tail and
+later-shard chunks. The unconditional branch is excluded as part of the channel protocol
+rather than receiver knowledge; measured, it is constant within a batch but differs by
+$0.0156$ between batch sizes, so its text being fixed does not make its value fixed.
+
+\paragraph{Reporting.}
+Per-attack results are kept per sample so that arms can be differenced on the same
+$(z_i,\text{prompt}_i,\text{attack}_i)$ with a paired bootstrap ($10{,}000$ resamples).
+The linear explained variance $R^2_{\mathrm{lin}}=\frac1k\sum_j\rho_j^2$ is reported
+against an \emph{empirical} null obtained by permuting the pairing between predictions and
+targets, with one permutation per replicate shared across attacks --- a sample's latent is
+one object seen through ten perturbations, and permuting within each attack independently
+would destroy a dependence the observed statistic still has, narrowing the null and
+shrinking every $p$-value. $p$-values use $(1+\#\{T_\pi\ge T_{\mathrm{obs}}\})/(B+1)$.
+
+\subsection{Sensitivity--observability mismatch, and what the certificate recovers}
+\label{sec:synthetic}
+
+We fix the protocol in a channel whose answer is known before applying it to one whose
+answer is not. Take $Y=AZ+\varepsilon$ with $A$ and $\Sigma$ diagonal, so
+Proposition~\ref{prop:fisher} gives direction $j$ in closed form:
+\[
+  \lambda_j=\frac{a_j^2}{a_j^2+\sigma_j^2}\quad\text{(observability)},
+  \qquad
+  s_j=|a_j|\quad\text{(forward sensitivity)} .
+\]
+The two are set independently, so we set them to disagree. A quiet, clean direction
+($a=1$, $\sigma=0.2$) has $\lambda=0.962$; a loud, noisy one ($a=5$, $\sigma=20$) has
+$\lambda=0.059$ while moving the observation five times as far per unit latent step.
+Across the $16$ directions the two quantities correlate at $r=-0.97$. We call this the
+\textbf{sensitivity--observability mismatch}, and it is the reason a direction may not be
+called more observable because perturbing it changes the output more.
+
+Figure~\ref{fig:synthetic} asks three separate questions of this channel.
+\emph{Does the estimator recover a known geometry?} Fitting a decoder on one split and
+estimating $\Ccert$ on a disjoint one with the shipped estimator gives a mean absolute
+error of $0.012$ against the analytic spectrum, and the one-sided bound lies below the
+truth in $16$ of $16$ directions at a Bonferroni-corrected $5\%$.
+\emph{Does the geometry predict recovery?} A fresh decoder recovers an injected step
+along the observable direction almost exactly and not at all along the unobservable one,
+with the spread rather than the mean carrying the difference.
+\emph{Why can observability disagree with sensitivity?} Because discriminability is
+$\Delta/\sigma$, not $\Delta$: at an identical observation-space displacement
+$\Delta=2$, the two directions give $\Delta/\sigma=10.0$ and $\Delta/\sigma=0.1$, so one
+pair of conditionals is essentially disjoint and the other is essentially the same
+distribution.
+
+\paragraph{Registered protocol.}
+Two rules follow, fixed here rather than after seeing a real channel. First, any claim
+that one direction is more observable than another must hold the observation-space
+displacement fixed and read the recovery, never compare the size of the output change.
+Second, a direction is called observable only when a one-sided bound on
+$v^\top\Ccert v$ clears zero --- a point estimate, or a rank in an in-sample spectrum, is
+not sufficient.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/synthetic_observability.pdf}
+\caption{A channel where forward sensitivity and observability are made to disagree.
+(a) The certificate tracks the analytic spectrum (mean absolute error $0.012$) and its
+lower bound stays below the truth in all $16$ directions. (b) A fresh decoder recovers an
+injected step along the observable direction ($\lambda=0.96$) and returns nothing along
+the unobservable one ($\lambda=0.06$); the shaded bands are one standard deviation.
+(c) The same observation-space displacement $\Delta=2$ is ten noise units for the first
+direction and one tenth of one for the second, which is why equal output change does not
+imply equal recoverability. (d) Across all directions, the one that moves the output most
+is the one whose latent step is least recoverable ($r=-0.97$).}
+\label{fig:synthetic}
+\end{figure}
 
 \subsection{Is the observability of a real diffusion channel anisotropic?}
-Stable Diffusion v1.5, DDIM, frozen; certified spectra and their architecture dependence.
+Certified spectra of the frozen SD-v1.5 channel and their dependence on the decoder class.
+\textbf{[Pending.]}
 
 \subsection{Do certified directions predict held-out recoverability?}
-A direct test of \eqref{eq:hypothesis} against the Haar null.
+A direct test of \eqref{eq:hypothesis} against the Haar null. \textbf{[Pending.]}
 
-\subsection{Does the receiver's information set change what is observable?}
-The four-arm ladder: $f(Y)$, $f(Y,S_{\mathrm{null}})$, $f(Y,S_{\mathrm{shuffled}})$,
-$f(Y,S_{\mathrm{correct}})$, with the primary contrast isolating \emph{paired}
-conditioning from architecture and from the conditioning marginal.
+\subsection{The receiver's information set did not change what was recovered}
+\label{sec:phasea}
+
+Four arms, six receiver seeds, one frozen Haar frame, preregistered before any run. All
+$24$ runs come from a single commit with an identical frame digest; at each receiver seed
+the three side arms have bit-identical initial weights, and the shuffled arm's donor map
+is fixed across seeds and confined to cross-fit roles.
+
+\paragraph{Both placebo gates pass.}
+The architecture step $f(Y)\to f(Y,S_{\mathrm{null}})$ gives $\Delta\mathrm{BER}=+0.0030$
+with a $90\%$ interval $[+0.0006,+0.0053]$, and the conditioning-marginal step
+$f(Y,S_{\mathrm{null}})\to f(Y,S_{\mathrm{shuffled}})$ gives $-0.0006$ with
+$[-0.0036,+0.0025]$. Both lie inside the preregistered $\pm0.007$ band
+(Figure~\ref{fig:phasea}B), so the extra capacity and the empirical $S$ marginal each
+contribute a practically negligible amount and the primary comparison is left isolating
+the pairing, as intended.
+
+\paragraph{The primary contrast does not move.}
+Correct conditioning gives $\Delta\mathrm{BER}=-0.00216\pm0.00298$ against the shuffled
+placebo, a $95\%$ interval of $[-0.0053,+0.0010]$ and $p=0.135$ across six receiver seeds
+(Figure~\ref{fig:phasea}A). The secondary readout points the other way,
+$\Delta R^2_{\mathrm{lin}}=-0.00047$, and all four arms sit at the noise value: $0.0034$,
+$0.0037$, $0.0043$, $0.0038$ against $1/(n-1)=0.0039$ (Figure~\ref{fig:phasea}C). That
+second readout matters, because ``BER happened to lack power'' would have to explain two
+independent measurements at once.
+
+\paragraph{What this does and does not establish.}
+The statement supported is narrow and we keep it narrow:
+
+\begin{quote}
+At the tested observer, data scale and neutral frame, sample-specific conditioning
+provides no detectable operational recovery benefit relative to a capacity- and
+marginal-matched placebo.
+\end{quote}
+
+It is \emph{not} evidence that $\Cobs(Y,S)=\Cobs(Y)$, and it does not touch
+Theorem~\ref{thm:mono}, which concerns Bayes quantities and not a trained receiver. Nor do
+we claim the two arms are equivalent: the $\pm0.007$ margin was registered for the placebo
+chain, and although the primary interval happens to fall inside it, promoting a
+non-significant difference to an equivalence claim after the fact is exactly the move the
+preregistration exists to prevent.
+
+The aggregation across the ten channel perturbations was \emph{not} fixed in advance --- the
+registered primary says only ``paired across receiver seeds'' --- so we keep it as
+computed and report the breakdown rather than choose after the fact. It shows no
+heterogeneity: the per-attack means span $[-0.0031,-0.0014]$ with a standard deviation of
+$0.00054$, and no attack survives a Bonferroni correction (smallest $p=0.020$ against a
+threshold of $0.005$). All ten point the same way, but the ten perturbations are ten views
+of the same $256$ images decoded by the same receivers, so that agreement is not
+independent evidence; the receiver seed remains the unit, giving $4/6$ and $p=0.135$.
+
+\paragraph{An observation we do not over-read.}
+Training loss falls across the three side arms --- $0.552$, $0.508$, $0.508$ for null,
+shuffled and correct --- while held-out recovery does not move. Access to varying
+conditioning embeddings changes the training fit; correct sample-wise pairing brings no
+corresponding held-out advantage. We record this and draw no mechanism from it.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/phase_a.pdf}
+\caption{The controls are clean and the intervention does not move. (A) The preregistered
+primary contrast across six receiver seeds; the interval covers zero. (B) Both placebo
+steps fall inside the $\pm0.007$ band registered for them --- the side architecture and
+the conditioning marginal each buy practically nothing, which is what leaves the pairing
+isolated. The band is drawn only here: it was never registered for the primary. (C) Every
+arm's linear explained variance sits at the noise value $1/(n-1)$, so the null result does
+not rest on the sign metric alone.}
+\label{fig:phasea}
+\end{figure}
 
 \section{Discussion}
 
 \textbf{[Pending Phase A.]}
 
 \bibliographystyle{iclr2026_conference}
-\bibliography{iclr2026_conference}
+\bibliography{refs}
 
 \end{document}

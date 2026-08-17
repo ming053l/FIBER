@@ -1,0 +1,41 @@
+% Fig. 4 -- receiver-conditional observability, and how the four arms isolate the
+% paired part of it. Reuses the ellipsoid vocabulary established in Fig. 1.
+\begin{tikzpicture}[scale=0.92,every node/.style={font=\footnotesize},
+  arw/.style={->,>=stealth,semithick,gray!70}]
+
+% ---- (a) two receivers, two ellipsoids ----
+\begin{scope}
+  \node[anchor=south,font=\small] at (2.1,2.25) {\textbf{(a)} $\Cobs(\mathcal I_R)$};
+  \node (Y) at (0,0.9) {$Y$};
+  \draw[arw] (Y) -- (0.95,1.55) node[right,pos=0.95] {$\mathcal I_b=Y$};
+  \draw[arw] (Y) -- (0.95,0.25) node[right,pos=0.95] {$\mathcal I_s=(Y,S)$};
+  % blind ellipsoid
+  \begin{scope}[shift={(3.15,1.62)}]
+    \draw[gray!45,dashed] (0,0) circle (0.62);
+    \draw[draw=gray!70,fill=gray!12,rotate=20] (0,0) ellipse (0.60 and 0.16);
+  \end{scope}
+  % side ellipsoid: contains the blind one, never narrower anywhere
+  \begin{scope}[shift={(3.15,0.30)}]
+    \draw[gray!45,dashed] (0,0) circle (0.62);
+    \draw[draw=accent,fill=accent!12,rotate=20] (0,0) ellipse (0.61 and 0.40);
+    \draw[draw=gray!70,dotted,rotate=20] (0,0) ellipse (0.60 and 0.16);
+  \end{scope}
+  \node[anchor=west] at (3.85,1.62) {$\Cobs(Y)$};
+  \node[anchor=west,accent] at (3.85,0.30) {$\Cobs(Y,S)$};
+  \node[anchor=north,font=\footnotesize] at (2.5,-0.45)
+    {$\Cobs(Y,S)-\Cobs(Y)=\Exp[\Cov(m_s\mid Y)]\succeq0$};
+\end{scope}
+
+% ---- (b) the four-arm ladder ----
+\begin{scope}[shift={(6.9,0)}]
+  \node[anchor=south,font=\small] at (1.5,2.25) {\textbf{(b)} isolating the pairing};
+  \node (a1) at (0,1.85) {$f(Y)$};
+  \node (a2) at (0,1.15) {$f(Y,S_{\mathrm{null}})$};
+  \node (a3) at (0,0.45) {$f(Y,S_{\mathrm{shuffled}})$};
+  \node (a4) at (0,-0.25) {$f(Y,S_{\mathrm{correct}})$};
+  \draw[arw] (a1) -- (a2) node[midway,right=2pt] {architecture};
+  \draw[arw] (a2) -- (a3) node[midway,right=2pt] {$S$ marginal};
+  \draw[->,>=stealth,very thick,accent] (a3) -- (a4)
+    node[midway,right=2pt,accent] {\textbf{pairing}};
+\end{scope}
+\end{tikzpicture}

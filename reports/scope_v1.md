@@ -60,6 +60,11 @@ Recent examples, for calibration: the conditioning stale-marker binding was a *b
 Frozen Generative Channels*, and the remaining effort goes into making that one phenomenon
 solid.
 
+**OUTCOME, 2026-08-18: the second branch.** `reports/phase_a.md`. Primary contrast
+ΔBER = −0.00216 ± 0.00298, CI95 [−0.0053, +0.0010], p = 0.135; both placebo gates inside
+±0.007; all four arms at the `R2_lin` noise value. Phase B and Phase A-2 are therefore
+**not opened**, per the gate written here before the run.
+
 **If `S_correct ≈ S_shuffled`:** stop looking for a sixth explanation. The paper becomes
 *Certified Observability and the Limits of Latent Recoverability in Frozen Generative
 Channels* — observability is definable, decoder-certifiable, shows anisotropy and
