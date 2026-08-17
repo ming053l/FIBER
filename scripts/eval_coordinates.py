@@ -53,25 +53,34 @@ REFERENCE_TYPES = {"ddim_inversion_reference"}
 assert not (RANDOM_TYPES | DERIVED_TYPES) & REFERENCE_TYPES
 
 
-def load_locked_runs(out_dir: Path, manifest: list[dict], role: str) -> list[dict]:
+def load_locked_runs(out_dir: Path, manifest: list[dict], role: str,
+                     hashes: dict | None = None) -> list[dict]:
     """Load EXACTLY the runs the lock names, verifying their content hashes.
 
     Globbing the directory instead would mean a run added after the lock silently
     joins the average -- the same post-hoc mutation the lock exists to prevent, just
     arriving through the filesystem rather than through an argmin.
+
+    Under B1 the files read here are the LOCKED TEST evaluations written by
+    scripts/evaluate_locked.py, so the hashes come from that run's manifest; the
+    selection artifact still decides WHICH stems are read.
     """
     runs = []
     for entry in manifest:
-        jf = out_dir / f"{entry['stem']}.json"
+        stem = entry["stem"]
+        jf = out_dir / f"{stem}.json"
         npz = jf.with_suffix(".npz")
         if not jf.exists() or not npz.exists():
-            raise SystemExit(f"locked {role} run {entry['stem']} is missing from {out_dir}")
+            raise SystemExit(
+                f"locked {role} run {stem} has no test evaluation in {out_dir}. Test "
+                "metrics are produced only by scripts/evaluate_locked.py, after the "
+                "val lock (B1).")
+        expect = (hashes or {}).get(stem, entry)
         for path, key in ((jf, "json_sha"), (npz, "npz_sha")):
-            if entry.get(key) and file_digest(path) != entry[key]:
+            if expect.get(key) and file_digest(path) != expect[key]:
                 raise SystemExit(
-                    f"{path.name} changed since the lock ({key} mismatch). The selection "
-                    "artifact refers to specific run CONTENT; re-select if the runs were "
-                    "regenerated.")
+                    f"{path.name} changed since it was produced ({key} mismatch); "
+                    "re-run scripts/evaluate_locked.py.")
         meta = json.loads(jf.read_text())
         meta["_npz"] = npz
         runs.append(meta)
@@ -122,6 +131,7 @@ def main() -> int:
     ap.add_argument("--split", default="test")
     ap.add_argument("--selection", default=None)
     ap.add_argument("--results-dir", default=None)
+    ap.add_argument("--test-manifest", default=None)
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
 
@@ -150,16 +160,37 @@ def main() -> int:
             f"{now_fp}). Re-run scripts/select_method.py on val; the lock does not carry "
             "across a protocol change.")
 
-    out_dir = Path(args.results_dir or (Path(cfg["paths"]["data_root"]) / "results" / args.tag))
+    base_dir = Path(args.results_dir or (Path(cfg["paths"]["data_root"]) / "results" / args.tag))
+    out_dir = base_dir if base_dir.name == "locked_test" else base_dir / "locked_test"
     if "selected_runs" not in sel or "reference_runs" not in sel:
         raise SystemExit("selection artifact predates the exact-run lock (P0-3.1): "
                          "re-run scripts/select_method.py")
-    locked_runs = load_locked_runs(out_dir, sel["selected_runs"], "selected")
-    ref_runs = load_locked_runs(out_dir, sel["reference_runs"], "reference")
+
+    # The test artifacts are produced after the lock, so their hashes live in the
+    # locked-evaluation manifest; the selection still decides which stems exist at all.
+    tman_path = Path(args.test_manifest or (Path(cfg["paths"]["reports_dir"]) /
+                                            f"test_eval_{args.tag}.json"))
+    hashes = None
+    if tman_path.exists():
+        tman = json.loads(tman_path.read_text())
+        if tman.get("selection_sha") and tman["selection_sha"] != file_digest(sel_path):
+            raise SystemExit(
+                f"{tman_path.name} was produced against a different selection artifact; "
+                "re-run scripts/evaluate_locked.py against the current lock.")
+        hashes = {r["stem"]: r for r in tman["runs"]}
+        report_provenance = {"test_eval_manifest": str(tman_path),
+                             "test_eval_commit": tman.get("git_commit")}
+    else:
+        raise SystemExit(
+            f"{tman_path} not found: test metrics come from scripts/evaluate_locked.py, "
+            "which runs after the val lock (B1). There is nothing to aggregate yet.")
+
+    locked_runs = load_locked_runs(out_dir, sel["selected_runs"], "selected", hashes)
+    ref_runs = load_locked_runs(out_dir, sel["reference_runs"], "reference", hashes)
     # Controls and sanity arms are locked too. Discovering them by glob would let a run
     # added after the lock change the report -- the gate number would survive, but the
     # control table and the "a control beat the locked arm" flag would not.
-    context_runs = load_locked_runs(out_dir, sel.get("context_runs", []), "context")
+    context_runs = load_locked_runs(out_dir, sel.get("context_runs", []), "context", hashes)
 
     mats, groups = group_matrix(locked_runs + ref_runs + context_runs, args.split,
                                 bank.eval, bank)
@@ -184,6 +215,7 @@ def main() -> int:
                             "commit": sel.get("commit"),
                             "config_fingerprint": sel.get("config_fingerprint"),
                             "config_fingerprint_now": now_fp,
+                            **report_provenance,
                             "locked_runs": [e["stem"] for e in sel["selected_runs"]],
                             "locked_reference_runs": [e["stem"] for e in sel["reference_runs"]]},
               "n_locked_seeds": len(locked_stems), "n_haar_draws": len(haar_stems)}

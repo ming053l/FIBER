@@ -26,6 +26,7 @@ import numpy as np
 from fiber.channels import ChannelBank
 from fiber.utils.config import load_config
 from fiber.utils.logging import get_logger
+from fiber.utils.provenance import require_clean
 
 log = get_logger("select")
 
@@ -80,11 +81,18 @@ def run_manifest(runs: list[dict]) -> list[dict]:
     out = []
     for r in sorted(runs, key=lambda r: (r["arm"], r["k"], r["seed"])):
         jf = Path(r["_npz"]).with_suffix(".json")
-        out.append({
+        entry = {
             "stem": run_stem(r), "arm": r["arm"], "k": r["k"], "seed": r["seed"],
             "hyperparameters_fingerprint": r.get("hyperparameters_fingerprint", "legacy"),
             "json_sha": file_digest(jf), "npz_sha": file_digest(r["_npz"]),
-        })
+        }
+        # The CHECKPOINTS are what test evaluation will load, so they are what has to be
+        # locked. Hashing only the result files would let the frame or the receiver be
+        # swapped after selection while evaluate_locked still accepted them (B1).
+        for kind in ("frame", "extractor"):
+            ck = jf.with_name(f"{jf.stem}_{kind}.pt")
+            entry[f"{kind}_sha"] = file_digest(ck) if ck.exists() else None
+        out.append(entry)
     return out
 
 
@@ -156,9 +164,11 @@ def main() -> int:
     ap.add_argument("--tag", default="pilot")
     ap.add_argument("--results-dir", default=None)
     ap.add_argument("--out", default=None)
+    ap.add_argument("--allow-dirty", action="store_true")
     args = ap.parse_args()
 
     cfg = load_config(args.config)
+    prov = require_clean("a selection lock", allow_dirty=args.allow_dirty)
     bank = ChannelBank(cfg)
     out_dir = Path(args.results_dir or (Path(cfg["paths"]["data_root"]) / "results" / args.tag))
     runs = load_val_runs(out_dir)
@@ -202,8 +212,10 @@ def main() -> int:
             "val_sign_ber": float(np.mean([val_mean_ber(r, bank.eval) for r in ref_runs])),
         },
         "candidates": chosen["candidates"],
-        "commit": subprocess.run(["git", "rev-parse", "--short", "HEAD"],
-                                 capture_output=True, text=True).stdout.strip() or "uncommitted",
+        # FULL sha: the locked evaluator refuses to run unless HEAD matches, so an
+        # abbreviation is not enough to pin the code the lock was taken under.
+        **prov,
+        "commit": prov["git_commit_short"],
         "config_fingerprint": config_fingerprint(cfg),
         "written_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "locked": True,

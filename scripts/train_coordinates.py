@@ -26,7 +26,14 @@ from fiber.transforms.rotation import RotatedFrame
 from fiber.transforms.spectral import SpectralFrame
 from fiber.utils.config import load_config
 from fiber.utils.logging import get_logger
+from fiber.utils.provenance import require_clean
 from fiber.utils.seeding import set_determinism
+
+# B1 physical test isolation: nothing produced before the val lock may touch the test
+# splits. "The selection script does not read test" is weaker than "no test prediction,
+# no test corruption and no test metric existed yet" -- only the second is checkable by
+# someone auditing the artifacts.
+FORBIDDEN_PRE_LOCK = ("test",)
 
 log = get_logger("arm")
 
@@ -88,10 +95,11 @@ def main() -> int:
     ap.add_argument("--epochs", type=int, default=None)
     ap.add_argument("--discovery-epochs", type=int, default=None)
     ap.add_argument("--batch-size", type=int, default=None)
-    # val is evaluated too, because ALL model selection happens there (P0-3) and the
-    # test evaluation is not allowed to choose anything.
-    ap.add_argument("--eval-splits", nargs="*",
-                    default=["val", "test", "test_heldout_prompts"])
+    # val ONLY. Test is computed for the first time by scripts/evaluate_locked.py,
+    # after selection is frozen (B1).
+    ap.add_argument("--eval-splits", nargs="*", default=["val"])
+    ap.add_argument("--allow-dirty", action="store_true",
+                    help="throwaway run from an uncommitted tree; not for the record")
     # Overrides for smoke-testing the pipeline before the full cache exists.
     # Leave them alone for real runs: the cross-fit protocol is the experiment.
     ap.add_argument("--train-split", default="train")
@@ -109,7 +117,16 @@ def main() -> int:
                     help="receiver architecture; `spatial` is the no-GAP control (P0-5)")
     args = ap.parse_args()
 
+    bad = [s for s in args.eval_splits if s.startswith(FORBIDDEN_PRE_LOCK)]
+    if bad:
+        raise SystemExit(
+            f"--eval-splits {bad} is a protocol violation (B1): training runs are "
+            "pre-lock artifacts and may not produce test predictions, corruptions or "
+            "metrics. scripts/evaluate_locked.py computes the test splits after the "
+            "val selection is frozen.")
+
     cfg = load_config(args.config)
+    prov = require_clean("a training run", allow_dirty=args.allow_dirty)
     set_determinism(cfg)
     bank = ChannelBank(cfg)
     root = Path(cfg["paths"]["cache_dir"]) / args.tag
@@ -208,6 +225,13 @@ def main() -> int:
     rows_digest = hashlib.blake2s(rows.numpy().tobytes(), digest_size=16).hexdigest()
     torch.save({"rows_digest": rows_digest, "rows": rows,
                 "state_dict": frame.state_dict()}, out_dir / f"{stem}_frame.pt")
+    # The receiver is frozen HERE, before the lock. evaluate_locked.py loads this exact
+    # checkpoint rather than retraining, so the test evaluation cannot benefit from a
+    # receiver that was trained after anyone had seen a selection outcome.
+    torch.save({"state_dict": {kk: v.cpu() for kk, v in model.state_dict().items()},
+                "arch": tcfg.extractor_arch, "k": k,
+                "receiver_seed": receiver_seed, "epochs": tcfg.epochs},
+               out_dir / f"{stem}_extractor.pt")
     # The arm's own hyperparameters travel WITH the run, so selection can tell two
     # runs of the same arm and k apart, and the lock can name exactly one of them.
     arm_spec = {kk: vv for kk, vv in cfg["fiber"]["arms"][args.arm].items() if kk != "seeds"}
@@ -223,6 +247,11 @@ def main() -> int:
         "receiver_seed": receiver_seed, "analysis_scope": scope,
         "orthonormality_error": ortho, "rows_digest": rows_digest,
         "extractor_arch": tcfg.extractor_arch,
+        **prov,
+        "train_config": {kk: vv for kk, vv in tcfg.__dict__.items()},
+        "eval_splits": list(args.eval_splits),
+        "crossfit_eval_split": xfit_eval, "train_split": args.train_split,
+        "limit": args.limit,
         "epochs": tcfg.epochs, "final_train_loss": hist[-1]["loss"],
         "train_split": args.train_split, "crossfit": xfit_eval,
         "seconds": round(time.time() - t0, 1),

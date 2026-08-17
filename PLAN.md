@@ -536,6 +536,18 @@ learn it before spending Phase 3.
 
 ### Gate 3A — Existence of observable coordinates *(the scientific gate)*
 
+**Test is not computed until selection is locked (B1).** `train_coordinates.py`
+evaluates `val` only and **hard-fails** if a test split is passed, so before the lock
+there is no test prediction, no test corruption and no test metric anywhere on disk —
+which is checkable by an auditor, where "the selection script does not read test" is
+only a claim about control flow. Each pre-lock run freezes its frame *and its receiver*
+to `<stem>_frame.pt` / `<stem>_extractor.pt`; the lock hashes both, since those are what
+test evaluation loads. `scripts/evaluate_locked.py` then verifies every hash, requires a
+clean tree at exactly the commit the lock was taken under — editing the evaluator after
+the lock is a protocol revision, not a rerun — loads the frozen checkpoints and computes
+the test splits for the first time, hashing its own outputs into
+`reports/test_eval_<tag>.json`. The gate reads only those.
+
 **Selection is locked before test is touched (P0-3).** Everything choosable — the
 data-derived family, `k`, hyperparameters, which seeds count as replications — is
 decided on `val` by `scripts/select_method.py`, which writes

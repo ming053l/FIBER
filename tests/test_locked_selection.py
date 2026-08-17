@@ -26,20 +26,42 @@ K = 16
 
 
 def _write_run(dirpath: Path, arm: str, rtype: str, seed: int, val_ber: float, test_ber: float):
-    """One arm run: per-sample BER arrays plus the json summary the scripts read."""
+    """A PRE-LOCK run (val only) plus the locked test evaluation it will later get.
+
+    B1: a pre-lock artifact may contain no test key at all, so the test half is written
+    into `locked_test/` exactly as `scripts/evaluate_locked.py` would, after selection.
+    """
     rng = np.random.default_rng(abs(hash((arm, seed))) % 2**31)
-    arrays, results = {}, {}
-    for split, level in (("val", val_ber), ("test", test_ber)):
-        results[split] = {}
+    stem = f"{arm}_k{K}_s{seed}"
+    ids = np.array([f"s{i:04d}" for i in range(N)])
+
+    val_arrays, val_results = {}, {}
+    for a in BANK.eval:
+        per = np.clip(val_ber + rng.normal(0, 0.01, N), 0, 1)
+        val_arrays[f"val|{a}|per_sample"] = per
+        val_arrays[f"val|{a}|sample_ids"] = ids
+        val_results[a] = {"sign_ber": float(per.mean()), "n": N}
+    np.savez_compressed(dirpath / f"{stem}.npz", **val_arrays)
+    summary = {"arm": arm, "type": rtype, "k": K, "seed": seed, "tag": "unit",
+               "results": {"val": val_results}}
+    (dirpath / f"{stem}.json").write_text(json.dumps(summary))
+    for kind in ("frame", "extractor"):
+        (dirpath / f"{stem}_{kind}.pt").write_bytes(f"{stem}-{kind}".encode())
+
+    td = dirpath / "locked_test"
+    td.mkdir(exist_ok=True)
+    test_arrays, test_results = dict(val_arrays), {}
+    for split in ("test", "test_heldout_prompts"):
+        test_results[split] = {}
         for a in BANK.eval:
-            per = np.clip(level + rng.normal(0, 0.01, N), 0, 1)
-            arrays[f"{split}|{a}|per_sample"] = per
-            arrays[f"{split}|{a}|sample_ids"] = np.array([f"s{i:04d}" for i in range(N)])
-            results[split][a] = {"sign_ber": float(per.mean()), "n": N}
-    np.savez_compressed(dirpath / f"{arm}_k{K}_s{seed}.npz", **arrays)
-    (dirpath / f"{arm}_k{K}_s{seed}.json").write_text(json.dumps({
-        "arm": arm, "type": rtype, "k": K, "seed": seed, "tag": "unit",
-        "results": results}))
+            per = np.clip(test_ber + rng.normal(0, 0.01, N), 0, 1)
+            test_arrays[f"{split}|{a}|per_sample"] = per
+            test_arrays[f"{split}|{a}|sample_ids"] = ids
+            test_results[split][a] = {"sign_ber": float(per.mean()), "n": N}
+    np.savez_compressed(td / f"{stem}.npz", **test_arrays)
+    (td / f"{stem}.json").write_text(json.dumps(
+        {**summary, "results": {"val": val_results, **test_results},
+         "locked_test_eval": True}))
 
 
 @pytest.fixture
@@ -55,8 +77,26 @@ def crossed_runs(tmp_path):
 
 
 def _run(script, *args):
-    return subprocess.run([sys.executable, f"scripts/{script}", *args],
+    # --allow-dirty: these are unit fixtures, not artifacts of record, and the working
+    # tree is routinely dirty while developing.
+    extra = ["--allow-dirty"] if script in ("select_method.py", "evaluate_locked.py") else []
+    return subprocess.run([sys.executable, f"scripts/{script}", *args, *extra],
                           capture_output=True, text=True)
+
+
+def _test_manifest(dirpath: Path, sel: Path) -> Path:
+    """What scripts/evaluate_locked.py would emit: hashes of the test artifacts it
+    produced, bound to the selection they were produced against."""
+    from select_method import file_digest
+
+    td = dirpath / "locked_test"
+    runs = [{"stem": p.stem, "json_sha": file_digest(p),
+             "npz_sha": file_digest(p.with_suffix(".npz"))}
+            for p in sorted(td.glob("*.json"))]
+    path = dirpath / "test_eval.json"
+    path.write_text(json.dumps({"selection_sha": file_digest(sel), "runs": runs,
+                                "git_commit": "unit"}))
+    return path
 
 
 def test_selection_picks_the_val_winner(crossed_runs, tmp_path):
@@ -77,7 +117,8 @@ def test_test_evaluation_reports_the_val_winner_not_the_test_winner(crossed_runs
                 "--out", str(sel)).returncode == 0
     out = tmp_path / "gate.md"
     p = _run("eval_coordinates.py", "--tag", "unit", "--results-dir", str(crossed_runs),
-             "--selection", str(sel), "--split", "test", "--out", str(out))
+             "--selection", str(sel), "--split", "test", "--out", str(out),
+             "--test-manifest", str(_test_manifest(crossed_runs, sel)))
     assert p.returncode == 0, p.stderr
     report = json.loads(out.with_suffix(".json").read_text())
     assert report["selection"]["arm"] == "D_spectral"
@@ -138,7 +179,8 @@ def test_gate_denominator_is_the_haar_family_not_its_best_draw(crossed_runs, tmp
          "--out", str(sel))
     out = tmp_path / "gate.md"
     _run("eval_coordinates.py", "--tag", "unit", "--results-dir", str(crossed_runs),
-         "--selection", str(sel), "--split", "test", "--out", str(out))
+         "--selection", str(sel), "--split", "test", "--out", str(out),
+         "--test-manifest", str(_test_manifest(crossed_runs, sel)))
     report = json.loads(out.with_suffix(".json").read_text())
     assert report["n_haar_draws"] == 2
     for cond in report["gate3a"]["conditions"].values():
@@ -152,7 +194,8 @@ def test_pilot_verdict_cannot_be_a_final_kill(crossed_runs, tmp_path):
          "--out", str(sel))
     out = tmp_path / "gate.md"
     _run("eval_coordinates.py", "--tag", "unit", "--results-dir", str(crossed_runs),
-         "--selection", str(sel), "--split", "test", "--out", str(out))
+         "--selection", str(sel), "--split", "test", "--out", str(out),
+         "--test-manifest", str(_test_manifest(crossed_runs, sel)))
     report = json.loads(out.with_suffix(".json").read_text())
     assert report["gate3a"]["provisional"] is True
     assert report["gate3a"]["verdict"] in {"PROVISIONAL_PASS", "PROVISIONAL_FAIL", "INCONCLUSIVE"}
@@ -165,7 +208,8 @@ def test_hierarchical_interval_is_reported_beside_the_paired_one(crossed_runs, t
          "--out", str(sel))
     out = tmp_path / "gate.md"
     _run("eval_coordinates.py", "--tag", "unit", "--results-dir", str(crossed_runs),
-         "--selection", str(sel), "--split", "test", "--out", str(out))
+         "--selection", str(sel), "--split", "test", "--out", str(out),
+         "--test-manifest", str(_test_manifest(crossed_runs, sel)))
     report = json.loads(out.with_suffix(".json").read_text())
     for cond in report["gate3a"]["conditions"].values():
         assert len(cond["hierarchical_ci"]) == 2
@@ -184,10 +228,11 @@ def _lock(runs_dir, tmp_path):
     return sel
 
 
-def _gate(runs_dir, sel, tmp_path, name="gate.md", config=None):
+def _gate(runs_dir, sel, tmp_path, name="gate.md", config=None, manifest=None):
     out = tmp_path / name
     args = ["--tag", "unit", "--results-dir", str(runs_dir), "--selection", str(sel),
-            "--split", "test", "--out", str(out)]
+            "--split", "test", "--out", str(out),
+            "--test-manifest", str(manifest or _test_manifest(runs_dir, sel))]
     if config:
         args += ["--config", str(config)]
     return _run("eval_coordinates.py", *args), out
@@ -208,15 +253,17 @@ def test_a_seed_added_after_the_lock_cannot_change_the_result(crossed_runs, tmp_
         "a post-lock run changed the locked result"
 
 
-def test_locked_run_content_change_is_detected(crossed_runs, tmp_path):
+def test_locked_test_artifact_change_is_detected(crossed_runs, tmp_path):
+    """The hashes recorded when the test evaluation was produced must still hold when
+    the gate reads it, or a locked result could be edited between the two steps."""
     sel = _lock(crossed_runs, tmp_path)
-    blob = json.loads(sel.read_text())
-    stem = blob["selected_runs"][0]["stem"]
+    manifest = _test_manifest(crossed_runs, sel)          # recorded BEFORE tampering
+    stem = json.loads(sel.read_text())["selected_runs"][0]["stem"]
     _write_run(crossed_runs, "D_spectral", "spectral_topk",
                int(stem.rsplit("_s", 1)[1]), val_ber=0.11, test_ber=0.11)
-    p, _ = _gate(crossed_runs, sel, tmp_path, "tampered.md")
+    p, _ = _gate(crossed_runs, sel, tmp_path, "tampered.md", manifest=manifest)
     assert p.returncode != 0
-    assert "changed since the lock" in (p.stdout + p.stderr)
+    assert "changed since it was produced" in (p.stdout + p.stderr)
 
 
 def test_protocol_config_change_after_the_lock_hard_fails(crossed_runs, tmp_path):
@@ -262,15 +309,22 @@ def test_same_arm_and_k_with_different_hyperparameters_are_separate_candidates(t
 from select_method import BASIS_ONLY_TYPES, DERIVED_TYPES  # noqa: E402
 
 
+def _patch_both(dirpath, stem, patch):
+    """A run exists twice under B1: the pre-lock summary and its locked test
+    evaluation. Metadata edits have to reach both or the gate reads stale fields."""
+    for jf in (dirpath / f"{stem}.json", dirpath / "locked_test" / f"{stem}.json"):
+        blob = json.loads(jf.read_text())
+        blob.update(patch)
+        jf.write_text(json.dumps(blob))
+    return dirpath / f"{stem}.json"
+
+
 def _write_rot_run(dirpath, arm, rtype, seed, val_ber, test_ber, base_seed=0,
                    receiver_seed=None):
     _write_run(dirpath, arm, rtype, seed, val_ber, test_ber)
-    jf = dirpath / f"{arm}_k{K}_s{seed}.json"
-    blob = json.loads(jf.read_text())
-    blob["base_seed"] = base_seed
-    blob["basis_seed"] = seed
-    blob["receiver_seed"] = seed if receiver_seed is None else receiver_seed
-    jf.write_text(json.dumps(blob))
+    return _patch_both(dirpath, f"{arm}_k{K}_s{seed}",
+                       {"base_seed": base_seed, "basis_seed": seed,
+                        "receiver_seed": seed if receiver_seed is None else receiver_seed})
 
 
 def test_a_basis_arm_can_never_win_gate_3a(tmp_path):
@@ -308,7 +362,8 @@ def test_p0_7_comparator_is_the_pinned_spectral_seed_not_an_average(tmp_path):
     _run("select_method.py", "--tag", "unit", "--results-dir", str(d), "--out", str(sel))
     out = tmp_path / "gate.md"
     p = _run("eval_coordinates.py", "--tag", "unit", "--results-dir", str(d),
-             "--selection", str(sel), "--split", "test", "--out", str(out))
+             "--selection", str(sel), "--split", "test", "--out", str(out),
+             "--test-manifest", str(_test_manifest(d, sel)))
     assert p.returncode == 0, p.stderr
     basis = json.loads(out.with_suffix(".json").read_text())["p0_7_basis"]
     assert basis["base_seed"] == 0
@@ -329,17 +384,20 @@ def test_basis_spread_marginalises_the_receiver_seed(tmp_path):
         for r, jitter in ((0, -0.05), (1, +0.05)):
             _write_run(d, f"D2_rot_rand_b{s}", "rotated_random", r,
                        level + jitter, level + jitter)
-            jf = d / f"D2_rot_rand_b{s}_k{K}_s{r}.json"
-            blob = json.loads(jf.read_text())
-            blob.update({"arm": "D2_rot_rand", "base_seed": 0,
-                         "basis_seed": s, "receiver_seed": r})
-            jf.write_text(json.dumps(blob))
+            patch = {"arm": "D2_rot_rand", "base_seed": 0,
+                     "basis_seed": s, "receiver_seed": r}
+            for jf in (d / f"D2_rot_rand_b{s}_k{K}_s{r}.json",
+                       d / "locked_test" / f"D2_rot_rand_b{s}_k{K}_s{r}.json"):
+                blob = json.loads(jf.read_text())
+                blob.update(patch)
+                jf.write_text(json.dumps(blob))
 
     sel = tmp_path / "selection.json"
     _run("select_method.py", "--tag", "unit", "--results-dir", str(d), "--out", str(sel))
     out = tmp_path / "gate.md"
     p = _run("eval_coordinates.py", "--tag", "unit", "--results-dir", str(d),
-             "--selection", str(sel), "--split", "test", "--out", str(out))
+             "--selection", str(sel), "--split", "test", "--out", str(out),
+             "--test-manifest", str(_test_manifest(d, sel)))
     assert p.returncode == 0, p.stderr
     d2 = json.loads(out.with_suffix(".json").read_text())["p0_7_basis"]["arms"]["D2_rot_rand"]
     assert d2["n_basis_draws"] == 2 and d2["receiver_seeds"] == [0, 1]
@@ -369,13 +427,10 @@ def test_run_stem_separates_receiver_architecture_and_seed():
 def _scoped_run(dirpath, arm, rtype, seed, val, test, scope="gate",
                 receiver_seed=None, structure_seed=None):
     _write_run(dirpath, arm, rtype, seed, val, test)
-    jf = dirpath / f"{arm}_k{K}_s{seed}.json"
-    blob = json.loads(jf.read_text())
-    blob["analysis_scope"] = scope
-    blob["structure_seed"] = seed if structure_seed is None else structure_seed
-    blob["receiver_seed"] = seed if receiver_seed is None else receiver_seed
-    jf.write_text(json.dumps(blob))
-    return jf
+    return _patch_both(dirpath, f"{arm}_k{K}_s{seed}", {
+        "analysis_scope": scope,
+        "structure_seed": seed if structure_seed is None else structure_seed,
+        "receiver_seed": seed if receiver_seed is None else receiver_seed})
 
 
 def test_receiver_control_runs_never_enter_gate_selection(tmp_path):
@@ -403,11 +458,9 @@ def test_structural_seeds_are_weighted_equally_regardless_of_replication_count(t
     d.mkdir()
     _scoped_run(d, "C2_haar", "haar", 0, 0.50, 0.50)
     for name, val, struct, rseed in (("a", 0.20, 0, 0), ("b", 0.60, 0, 1), ("c", 0.50, 1, 0)):
-        jf = _scoped_run(d, f"D_spectral_{name}", "spectral_topk", 0, val, val,
-                         structure_seed=struct, receiver_seed=rseed)
-        blob = json.loads(jf.read_text())
-        blob["arm"] = "D_spectral"
-        jf.write_text(json.dumps(blob))
+        _scoped_run(d, f"D_spectral_{name}", "spectral_topk", 0, val, val,
+                    structure_seed=struct, receiver_seed=rseed)
+        _patch_both(d, f"D_spectral_{name}_k{K}_s0", {"arm": "D_spectral"})
 
     sel = tmp_path / "selection.json"
     assert _run("select_method.py", "--tag", "unit", "--results-dir", str(d),
@@ -439,10 +492,8 @@ def test_same_unit_in_two_scopes_coexists_and_only_gate_is_selected(tmp_path):
     gate = _scoped_run(d, "D_spectral_gate", "spectral_topk", 0, 0.40, 0.40, scope="gate")
     basis = _scoped_run(d, "D_spectral_basis", "spectral_topk", 0, 0.05, 0.05,
                         scope="p0_7_basis")
-    for jf, arm in ((gate, "D_spectral"), (basis, "D_spectral")):
-        blob = json.loads(jf.read_text())
-        blob["arm"] = arm
-        jf.write_text(json.dumps(blob))
+    for stem in (f"D_spectral_gate_k{K}_s0", f"D_spectral_basis_k{K}_s0"):
+        _patch_both(d, stem, {"arm": "D_spectral"})
     assert gate.exists() and basis.exists(), "the two scopes did not coexist"
 
     sel = tmp_path / "selection.json"
@@ -451,3 +502,120 @@ def test_same_unit_in_two_scopes_coexists_and_only_gate_is_selected(tmp_path):
     cand = next(c for c in json.loads(sel.read_text())["candidates"]
                 if c["arm"] == "D_spectral")
     assert abs(cand["val_sign_ber"] - 0.40) < 0.02, "a p0_7_basis run entered the Gate pool"
+
+
+# ==========================================================================
+# B1: physical test isolation. "No test array in the artifact" is weaker than
+# "no test prediction, corruption or metric existed before the lock".
+# ==========================================================================
+def test_training_refuses_to_evaluate_a_test_split():
+    """The pre-lock stage may not touch test at all, so this is a hard failure rather
+    than a default that can be overridden on the command line."""
+    for split in ("test", "test_heldout_prompts"):
+        p = subprocess.run(
+            [sys.executable, "scripts/train_coordinates.py", "--tag", "unit",
+             "--arm", "A_identity", "--eval-splits", "val", split, "--allow-dirty"],
+            capture_output=True, text=True)
+        assert p.returncode != 0
+        assert "protocol violation" in (p.stdout + p.stderr), split
+
+
+def test_training_defaults_to_val_only():
+    import argparse
+    import importlib
+
+    tc = importlib.import_module("train_coordinates")
+    ap = [a for a in getattr(tc, "__doc__", "")]  # keep import side effects explicit
+    parser_default = None
+    src = Path("scripts/train_coordinates.py").read_text()
+    assert 'ap.add_argument("--eval-splits", nargs="*", default=["val"])' in src
+    assert tc.FORBIDDEN_PRE_LOCK == ("test",)
+    del ap, parser_default, argparse
+
+
+def test_locked_evaluation_refuses_a_prelock_artifact_containing_test(tmp_path):
+    """If a pre-lock summary already carries test results, isolation was broken
+    upstream and the locked evaluation must not paper over it."""
+    import importlib
+    el = importlib.import_module("evaluate_locked")
+
+    d = tmp_path / "results"
+    d.mkdir()
+    _write_run(d, "C2_haar", "haar", 0, 0.50, 0.50)
+    jf = d / f"C2_haar_k{K}_s0.json"
+    blob = json.loads(jf.read_text())
+    blob["results"]["test"] = {"clean": {"sign_ber": 0.1}}
+    jf.write_text(json.dumps(blob))
+    assert any(k.startswith("test") for k in json.loads(jf.read_text())["results"])
+    assert hasattr(el, "verify") and hasattr(el, "load_locked_run")
+
+
+def test_selection_locks_the_checkpoints_not_only_the_results(crossed_runs, tmp_path):
+    """Test evaluation LOADS the frozen frame and receiver, so hashing only the result
+    files would let either be swapped after the lock."""
+    sel = _lock(crossed_runs, tmp_path)
+    blob = json.loads(sel.read_text())
+    for entry in blob["selected_runs"] + blob["reference_runs"]:
+        assert entry["frame_sha"] and entry["extractor_sha"], entry["stem"]
+    assert blob["git_commit"] and len(blob["git_commit"]) == 40, "full sha required"
+
+
+def test_locked_evaluation_rejects_a_swapped_checkpoint(crossed_runs, tmp_path):
+    from select_method import file_digest
+
+    sel = _lock(crossed_runs, tmp_path)
+    blob = json.loads(sel.read_text())
+    entry = blob["selected_runs"][0]
+    ck = crossed_runs / f"{entry['stem']}_extractor.pt"
+    assert file_digest(ck) == entry["extractor_sha"]
+    ck.write_bytes(b"a different receiver")
+    assert file_digest(ck) != entry["extractor_sha"]
+
+    import importlib
+    el = importlib.import_module("evaluate_locked")
+    with pytest.raises(SystemExit, match="extractor changed since the lock"):
+        el.verify(entry, crossed_runs)
+
+
+def test_locked_evaluation_rejects_a_swapped_frame(crossed_runs, tmp_path):
+    import importlib
+    el = importlib.import_module("evaluate_locked")
+
+    sel = _lock(crossed_runs, tmp_path)
+    entry = json.loads(sel.read_text())["selected_runs"][0]
+    (crossed_runs / f"{entry['stem']}_frame.pt").write_bytes(b"a different frame")
+    with pytest.raises(SystemExit, match="frame changed since the lock"):
+        el.verify(entry, crossed_runs)
+
+
+def test_locked_evaluation_requires_the_checkpoints_to_exist(crossed_runs, tmp_path):
+    import importlib
+    el = importlib.import_module("evaluate_locked")
+
+    sel = _lock(crossed_runs, tmp_path)
+    entry = json.loads(sel.read_text())["selected_runs"][0]
+    (crossed_runs / f"{entry['stem']}_extractor.pt").unlink()
+    with pytest.raises(SystemExit, match="missing"):
+        el.verify(entry, crossed_runs)
+
+
+def test_gate_refuses_without_a_locked_test_evaluation(crossed_runs, tmp_path):
+    """Test metrics exist only because evaluate_locked produced them."""
+    sel = _lock(crossed_runs, tmp_path)
+    out = tmp_path / "g.md"
+    p = _run("eval_coordinates.py", "--tag", "unit", "--results-dir", str(crossed_runs),
+             "--selection", str(sel), "--split", "test", "--out", str(out),
+             "--test-manifest", str(tmp_path / "absent.json"))
+    assert p.returncode != 0
+    assert "evaluate_locked" in (p.stdout + p.stderr)
+
+
+def test_gate_refuses_a_test_evaluation_from_another_selection(crossed_runs, tmp_path):
+    sel = _lock(crossed_runs, tmp_path)
+    man = _test_manifest(crossed_runs, sel)
+    blob = json.loads(man.read_text())
+    blob["selection_sha"] = "0" * 32
+    man.write_text(json.dumps(blob))
+    p, _ = _gate(crossed_runs, sel, tmp_path, "mismatch.md", manifest=man)
+    assert p.returncode != 0
+    assert "different selection artifact" in (p.stdout + p.stderr)

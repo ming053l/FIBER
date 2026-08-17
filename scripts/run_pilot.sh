@@ -111,9 +111,13 @@ run python scripts/ddim_reference.py --tag "$TAG" --arm C_hadamard --k "$K" --li
 echo "===== Selection (VAL only) — everything choosable is chosen here ====="
 run python scripts/select_method.py --tag "$TAG"
 
-echo "===== Gates (TEST, locked) ====="
-# eval_coordinates cannot pick the family, the seed, k or the reference: it reads
-# reports/selection_$TAG.json and refuses to run without it (P0-3).
+echo "===== TEST computed for the FIRST time, from the frozen checkpoints (B1) ====="
+# Nothing above touched test: train_coordinates hard-fails on a test eval split. This
+# step verifies every locked artifact's hash, refuses to run unless HEAD matches the
+# commit the lock was taken under, and only then computes the test splits.
+run python scripts/evaluate_locked.py --tag "$TAG"
+
+echo "===== Gates (locked) ====="
 run python scripts/eval_coordinates.py --tag "$TAG" --split test
 run python scripts/eval_coordinates.py --tag "$TAG" --split test_heldout_prompts
 
