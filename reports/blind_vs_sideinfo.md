@@ -170,10 +170,132 @@ could then beat the blind arm for a reason that has nothing to do with informati
 * Whether the side teacher sees `S` concatenated at the trunk output or fused earlier.
   The placebo above controls for capacity at whichever choice is made, but the choice
   still has to be registered rather than tuned.
-* Whether `E_s` and `E_b` can be equalised by construction (identical architecture and
-  budget, differing only in the conditioning input) well enough for the difference to be
-  interpretable. If not, the honest object is the pair of certificates, never their
-  difference.
+* `S` fusion point, the concrete definition of `S_null`, and the effect and equivalence
+  margins. These are engineering choices, not conceptual holes, but each must be
+  registered rather than tuned.
 * Sample size. `A_operator` was 537 at pilot scale; a higher-dimensional teacher input
   makes that harder, not easier, and the learning curve says nothing about this
   experiment.
+
+
+---
+
+# Interpretation gate — three quantities that must not be conflated
+
+The four-arm ladder drives the architecture/capacity confound down a long way. It does
+**not** make `E_s - E_b` vanish, and that is not a gap to be engineered away. So the
+preregistration limits the claim instead of pretending to close it.
+
+## Why "make E_s = E_b" must NOT be registered as a control
+
+`E_s = Cov(m_s - f_s)` and `E_b = Cov(m_b - f_b)` are not observable: `m_s` and `m_b` are
+the Bayes estimators, which is exactly what is unknown. Matching architecture, parameter
+count, sample size, optimiser and steps does not imply `E_s = E_b`, and neither does
+matching any observable loss:
+
+    MSE(f) = MMSE + approximation error
+
+and side information changes the irreducible `MMSE` itself, so equal training loss, equal
+validation MSE or matched early stopping all fail to pin the approximation error. A
+procedure that looks fair here would have no mathematical guarantee behind it.
+
+Worse, correct `S` plausibly makes the regression *easier*, i.e. `E_s < E_b`, in which
+case
+
+    Delta C_dec = C_cert^side - C_cert^blind = Delta C_side + (E_b - E_s)
+
+**over**states the Bayes gain. So, written down explicitly:
+
+> The difference of two certificates is **not** a lower bound on `Delta C_side`, in
+> either direction.
+
+## The three quantities
+
+| | object | status |
+|---|---|---|
+| Bayes | `Delta C_side = C_obs^side - C_obs^blind = E[Cov(m_s\|Y)] >= 0` | theorem, unobservable |
+| decoder-certified | `Delta C_dec = C_cert^correct - C_cert^placebo` | estimable, **not** a bound on the above |
+| operational | held-out BER / R2_lin / MSE, correct vs placebo | estimable, no covariance claim |
+
+`Delta C_dec` is named the **decoder-certified side-information contrast**, never the
+"certified gain". It answers: at a fixed decoder family, capacity and training protocol,
+does correct conditioning change what can be certified? Not: has `Delta C_side` been
+lower-bounded.
+
+## Primary contrast
+
+    f(Y, S_correct)   vs   f(Y, S_shuffled)
+
+Identical architecture, input shape, capacity, `S` marginal and training budget; the sole
+intervention is the **pairing**. This is the comparison closest to an information
+intervention, and it is the primary one. `f(Y)` and `f(Y, S_null)` are diagnostic
+controls, not the treatment comparison.
+
+## Reading rule
+
+**Level 1 — operational side-information effect.** Correct conditioning must improve
+held-out recoverability relative to the capacity-matched shuffled placebo under paired
+evaluation. Supports: *receiver side information has operational value.*
+
+**Level 2 — decoder-certified observability effect.** The same ordering must appear in
+decoder-certified observability on frozen subspaces, stable across the registered
+receiver controls. Supports: *side information changes decoder-certified observability.*
+
+**Level 3 — Bayes-level interpretation.** Differences between certificates are **not**
+interpreted as certified lower bounds on `Delta C_side`, because the approximation errors
+need not cancel. A statistically credible `lambda_min(Delta C_dec) < 0` fails the
+Bayes-level interpretation; it does **not** license "side information hurts".
+
+Permitted on Levels 1+2: *correct receiver conditioning increases operational and
+decoder-certified latent observability relative to a capacity- and distribution-matched
+placebo.* Not permitted without Level 3 machinery: *we certify that
+`C_obs^side - C_obs^blind > 0`.*
+
+## The placebo checks need an equivalence margin, not a failed test
+
+`S_null ~ S_shuffled` and `f(Y) ~ f(Y, S_null)` are the controls that make the primary
+contrast interpretable, and `p > 0.05` does not establish either — it is equally
+consistent with insufficient power, which is exactly the objection a reviewer would
+raise. Register margins in advance, `|Delta R2_lin| < eps_R` and
+`|Delta D_cert| < eps_D`, and read these two comparisons as equivalence tests. The
+margins must be set from the between-seed spreads already measured, before any side-info
+number exists.
+
+## Future extension: a direct certificate of the gain
+
+Not for the pilot. It becomes worth building only if the four-arm experiment shows a
+large correct-vs-shuffled effect, because it addresses `E_s - E_b` head on rather than
+limiting the claim around it.
+
+With `r(Y, S) = m_s(Y, S) - m_b(Y)`, the tower property gives `E[r | Y] = 0` and
+
+    Delta C_side = E[Cov(m_s | Y)] = E[r r^T] = Cov(r)
+
+Now take any `h(Y, S)` satisfying `E[h | Y] = 0` and define
+
+    C_gain(h) = E[ Z h^T + h Z^T - h h^T ]
+
+Since `h` is a function of `(Y, S)`, `E[Z h^T] = E[m_s h^T] = E[m_b h^T] + E[r h^T]`, and
+the first term vanishes because `m_b` is `Y`-measurable and `E[h | Y] = 0`. Hence
+
+    C_gain(h) = E[r h^T + h r^T - h h^T] = Cov(r) - Cov(r - h)  <=  Delta C_side
+
+a genuine one-sided certificate of the side-information gain, rather than a difference of
+two certificates.
+
+**It needs no new operator machinery.** `C_gain(h)` is algebraically identical to
+`C_cert(f) = E[z f^T + f z^T - f f^T]` with `f` replaced by `h`, so
+`CertifiedObservabilityOperator`, `fit_certified`, the inner cross-fit and the bootstrap
+all apply verbatim.
+
+**The whole difficulty moves into `E[h | Y] = 0`.** The natural construction is
+residualisation, `h = g(Y, S) - g_hat(Y)` with `g_hat` cross-fitted — and it must be
+cross-fitted, or the residual absorbs its own fitting noise exactly as the discovery
+basis did. The cost of getting it wrong is explicit: if `E[h | Y] = b(Y) != 0` then
+
+    C_gain(h) = Cov(r) - Cov(r - h) + E[m_b b^T + b m_b^T]
+
+and that last term is **sign-indefinite**, so the bound fails rather than loosening. This
+route therefore does not eliminate the difficulty; it exchanges an unidentifiable
+quantity (`E_s - E_b`) for one that cross-fitting can at least attack, and it makes the
+failure mode checkable.
