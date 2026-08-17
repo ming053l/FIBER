@@ -211,6 +211,10 @@ def main() -> int:
             "seeds": sorted(r["seed"] for r in ref_runs),
             "val_sign_ber": float(np.mean([val_mean_ber(r, bank.eval) for r in ref_runs])),
         },
+        # The TEST EXECUTION PROTOCOL is locked here too. Locking the method while
+        # leaving the evaluated population choosable at test time would still allow a
+        # post-hoc decision -- `--limit 100` and `--limit 0` are different experiments.
+        "test_protocol": {"splits": ["test", "test_heldout_prompts"], "limit": 0},
         "candidates": chosen["candidates"],
         # FULL sha: the locked evaluator refuses to run unless HEAD matches, so an
         # abbreviation is not enough to pin the code the lock was taken under.

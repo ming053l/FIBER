@@ -177,6 +177,17 @@ def main() -> int:
             raise SystemExit(
                 f"{tman_path.name} was produced against a different selection artifact; "
                 "re-run scripts/evaluate_locked.py against the current lock.")
+        if tman.get("official") is False:
+            raise SystemExit(f"{tman_path.name} is a DEBUG evaluation and cannot enter a "
+                             "gate. Produce the official one from the locked commit.")
+        if tman.get("git_dirty"):
+            raise SystemExit(f"{tman_path.name} was produced from a dirty tree.")
+        if (tman.get("git_commit") and sel.get("git_commit")
+                and tman["git_commit"] != sel["git_commit"]):
+            raise SystemExit(
+                f"{tman_path.name} was produced at {tman['git_commit'][:7]} but the lock "
+                f"was taken at {sel['git_commit'][:7]}: the evaluator changed after the "
+                "lock, which is a protocol revision rather than a rerun.")
         hashes = {r["stem"]: r for r in tman["runs"]}
         report_provenance = {"test_eval_manifest": str(tman_path),
                              "test_eval_commit": tman.get("git_commit")}

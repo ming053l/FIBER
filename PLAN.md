@@ -536,11 +536,25 @@ learn it before spending Phase 3.
 
 ### Gate 3A — Existence of observable coordinates *(the scientific gate)*
 
-**Test is not computed until selection is locked (B1).** `train_coordinates.py`
-evaluates `val` only and **hard-fails** if a test split is passed, so before the lock
-there is no test prediction, no test corruption and no test metric anywhere on disk —
-which is checkable by an auditor, where "the selection script does not read test" is
-only a claim about control flow. Each pre-lock run freezes its frame *and its receiver*
+**Test does not exist until selection is locked (B1).** `train_coordinates.py`
+evaluates `val` only and **hard-fails** if a test split is passed, and
+`cache_native_dataset.py` **refuses to generate test pixels at all** without
+`--post-lock reports/selection_<tag>.json`, binding the test cache to the lock it was
+created after. So the claim is about the filesystem, not about which script opens what:
+
+> No test sample existed, and no test corruption, prediction or metric was computed,
+> before the method and every evaluation checkpoint were locked.
+
+Where a test cache predates the lock — as the pilot's does — `evaluate_locked.py`
+records `test_cache_post_lock: false` and downgrades the recorded claim to *never
+accessed*, rather than letting the report overstate what the files support.
+
+The official evaluation is **write-once** and has no `--allow-dirty`: `--debug` is a
+separate mode that requires its own output directory, marks its manifest
+`official: false`, and is rejected by the gate — as is any manifest from a dirty tree or
+from a commit other than the one the lock was taken under. The **test execution protocol
+itself is locked** (`test_protocol: {splits, limit}`), since choosing the evaluated
+population after the lock would still be a post-hoc decision. Each pre-lock run freezes its frame *and its receiver*
 to `<stem>_frame.pt` / `<stem>_extractor.pt`; the lock hashes both, since those are what
 test evaluation loads. `scripts/evaluate_locked.py` then verifies every hash, requires a
 clean tree at exactly the commit the lock was taken under — editing the evaluator after

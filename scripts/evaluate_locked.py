@@ -91,14 +91,24 @@ def main() -> int:
     ap.add_argument("--selection", default=None)
     ap.add_argument("--results-dir", default=None)
     ap.add_argument("--out-dir", default=None)
-    ap.add_argument("--splits", nargs="*", default=["test", "test_heldout_prompts"])
-    ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--device", default="cuda:0")
-    ap.add_argument("--allow-dirty", action="store_true")
+    # Debug mode is a separate mode, not a flag that relaxes the official one. It cannot
+    # write the official manifest, and the gate refuses anything it produces.
+    ap.add_argument("--debug", action="store_true",
+                    help="throwaway evaluation from a dirty tree or a different commit; "
+                         "requires --out-dir and is rejected by the gate")
+    ap.add_argument("--splits", nargs="*", default=None, help="debug mode only")
+    ap.add_argument("--limit", type=int, default=None, help="debug mode only")
     args = ap.parse_args()
 
+    if not args.debug and (args.splits is not None or args.limit is not None):
+        raise SystemExit(
+            "--splits/--limit are locked by the selection artifact (test_protocol). "
+            "Choosing the evaluated population after the lock is a post-hoc decision; "
+            "use --debug with --out-dir if you need a throwaway run.")
+
     cfg = load_config(args.config)
-    prov = require_clean("a locked test evaluation", allow_dirty=args.allow_dirty)
+    prov = require_clean("a locked test evaluation", allow_dirty=args.debug)
     sel_path = Path(args.selection or (Path(cfg["paths"]["reports_dir"]) /
                                        f"selection_{args.tag}.json"))
     if not sel_path.exists():
@@ -107,14 +117,25 @@ def main() -> int:
 
     # ---- the code itself is locked -------------------------------------
     locked_commit = sel.get("git_commit")
-    if not args.allow_dirty:
-        if not locked_commit:
-            raise SystemExit("the selection artifact has no full commit sha; re-select")
-        if prov["git_commit"] != locked_commit:
-            raise SystemExit(
-                f"HEAD {prov['git_commit_short']} != the commit the lock was taken under "
-                f"({locked_commit[:7]}). Changing the evaluator after the lock is a "
-                "protocol revision, not a rerun: check out that commit, or re-select.")
+    if not locked_commit:
+        raise SystemExit("the selection artifact has no full commit sha; re-select")
+    code_matches = (prov["git_commit"] == locked_commit) and not prov["git_dirty"]
+    official = code_matches and not args.debug
+    if not official and not args.debug:
+        raise SystemExit(
+            f"HEAD {prov['git_commit_short']} != the commit the lock was taken under "
+            f"({locked_commit[:7]})" + (" and the tree is dirty" if prov["git_dirty"] else "")
+            + ". Changing the evaluator after the lock is a protocol revision, not a "
+              "rerun: check out that commit, or re-select. --debug --out-dir gives a "
+              "throwaway evaluation the gate will not accept.")
+    if args.debug and not args.out_dir:
+        raise SystemExit("--debug requires --out-dir: a throwaway evaluation must not "
+                         "land where the official one lives.")
+
+    protocol = sel.get("test_protocol", {"splits": ["test", "test_heldout_prompts"],
+                                         "limit": 0})
+    splits = args.splits if (args.debug and args.splits) else protocol["splits"]
+    limit = args.limit if (args.debug and args.limit is not None) else int(protocol["limit"])
     now_fp = config_fingerprint(cfg)
     if sel.get("config_fingerprint") and sel["config_fingerprint"] != now_fp:
         raise SystemExit(f"protocol config changed since selection "
@@ -123,6 +144,22 @@ def main() -> int:
     out_dir = Path(args.results_dir or (Path(cfg["paths"]["data_root"]) / "results" / args.tag))
     test_dir = Path(args.out_dir or (out_dir / "locked_test"))
     test_dir.mkdir(parents=True, exist_ok=True)
+    mpath = Path(cfg["paths"]["reports_dir"]) / f"test_eval_{args.tag}.json"
+    if official and mpath.exists():
+        # WRITE-ONCE. Re-running the official evaluation after seeing its result would
+        # let a second "official" number replace the first.
+        raise SystemExit(
+            f"{mpath} already exists: the official test evaluation is write-once. Having "
+            "seen it, producing another would make the first one revisable. Delete it "
+            "deliberately as a recorded protocol revision, or use --debug --out-dir.")
+
+    # Whether the test PIXELS were generated after the lock, or merely never read
+    # before it. Both are defensible; only the first supports "no test sample existed".
+    cache_manifest = Path(cfg["paths"]["cache_dir"]) / args.tag / "test_cache_manifest.json"
+    test_cache_post_lock = False
+    if cache_manifest.exists():
+        tc = json.loads(cache_manifest.read_text())
+        test_cache_post_lock = tc.get("selection_sha") == file_digest(sel_path)
     bank = ChannelBank(cfg)
     root = Path(cfg["paths"]["cache_dir"]) / args.tag
 
@@ -132,7 +169,13 @@ def main() -> int:
 
     manifest = {"tag": args.tag, "selection_sha": file_digest(sel_path),
                 "selection_commit": locked_commit, **prov,
-                "config_fingerprint": now_fp, "splits": list(args.splits), "runs": []}
+                "official": official, "config_fingerprint": now_fp,
+                "test_protocol": {"splits": list(splits), "limit": limit},
+                "test_cache_post_lock": test_cache_post_lock,
+                "claim": ("no test sample existed before the lock" if test_cache_post_lock
+                          else "no test sample was ACCESSED and no test metric computed "
+                               "before the lock; the test cache predates it"),
+                "runs": []}
     for entry in entries:
         stem = entry["stem"]
         paths = verified[stem]
@@ -144,9 +187,9 @@ def main() -> int:
         frame, model = load_locked_run(paths, args.device)
 
         arrays, results = {}, {}
-        for split in args.splits:
+        for split in splits:
             ev = evaluate(model, frame, root, bank, split, bank.eval,
-                          device=args.device, limit=args.limit)
+                          device=args.device, limit=limit)
             results[split] = {a: {kk: v for kk, v in r.items()
                                   if kk not in ("per_sample", "sample_ids",
                                                 "pearson_per_coord")}
@@ -164,9 +207,10 @@ def main() -> int:
             "npz_sha": file_digest(test_dir / f"{stem}.npz")})
         log.info("%-42s %s", stem, " ".join(
             f"{s}:{np.mean([v['sign_ber'] for v in results[s].values()]):.4f}"
-            for s in args.splits))
+            for s in splits))
 
-    mpath = Path(cfg["paths"]["reports_dir"]) / f"test_eval_{args.tag}.json"
+    if not official:
+        mpath = test_dir / f"test_eval_{args.tag}_DEBUG.json"
     mpath.parent.mkdir(parents=True, exist_ok=True)
     mpath.write_text(json.dumps(manifest, indent=2))
     log.info("wrote %d locked test evaluations -> %s (manifest %s)",

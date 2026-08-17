@@ -60,6 +60,12 @@ def main() -> int:
     ap.add_argument("--config", default="configs/linear_fiber.yaml")
     ap.add_argument("--pilot", action="store_true")
     ap.add_argument("--splits", nargs="*", default=None)
+    # B1, strongest form: test PIXELS are generated only after the method is locked, so
+    # "no test sample existed before the lock" is a statement about the filesystem
+    # rather than about which script read what.
+    ap.add_argument("--post-lock", metavar="SELECTION",
+                    help="path to reports/selection_<tag>.json; required to cache any "
+                         "test split")
     ap.add_argument("--batch", type=int, default=8)
     ap.add_argument("--shard-size", type=int, default=500)
     ap.add_argument("--limit", type=int, default=0, help="debug: stop after N images/split")
@@ -82,6 +88,21 @@ def main() -> int:
     fingerprint = config_fingerprint(cfg)
     gen = FrozenGenerator(GeneratorSpec.from_config(cfg), cfg["latent"])
     splits = args.splits or sorted({r.split for r in records})
+    test_splits = [s for s in splits if s.startswith("test")]
+    if test_splits and not args.post_lock:
+        raise SystemExit(
+            f"refusing to cache {test_splits} before a method lock (B1). Test pixels "
+            "generated pre-lock only support 'the test set was never accessed'; "
+            "generating them after selection supports the stronger 'no test sample "
+            "existed'. Pass --post-lock reports/selection_<tag>.json, or --splits "
+            "train val for the pre-lock stage.")
+    lock_sha = None
+    if args.post_lock:
+        sel_path = Path(args.post_lock)
+        if not sel_path.exists():
+            raise SystemExit(f"{sel_path} not found: --post-lock names the selection "
+                             "artifact the test cache is bound to")
+        lock_sha = hashlib.blake2s(sel_path.read_bytes(), digest_size=16).hexdigest()
     res = cfg["model"]["resolution"]
     lshape = tuple(gen.latent_shape)
     timings: dict[str, float] = {}
@@ -168,6 +189,12 @@ def main() -> int:
         "gate1": report,
     }
     (root / "manifest.json").write_text(json.dumps(manifest, indent=2))
+    if lock_sha:
+        (root / "test_cache_manifest.json").write_text(json.dumps({
+            "selection_sha": lock_sha, "selection": str(Path(args.post_lock).resolve()),
+            "splits": test_splits, "config_fingerprint": fingerprint,
+            "generated_after_lock": True}, indent=2))
+        log.info("test cache bound to the lock %s", lock_sha)
     log.info("wrote %s", root / "manifest.json")
     return 0
 

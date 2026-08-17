@@ -171,3 +171,24 @@ def test_cache_fingerprint_tracks_pixels_not_protocol():
     prompts = copy.deepcopy(dict(CFG))
     prompts["dataset"]["prompts"]["num_train_prompts"] = 123
     assert config_fingerprint(prompts) != base
+
+
+def test_caching_a_test_split_requires_a_method_lock():
+    """B1 strongest form: test pixels generated before the lock only support 'the test
+    set was never accessed'. Generating them after selection supports 'no test sample
+    existed', which is a statement about the filesystem rather than about control flow."""
+    import subprocess
+    import sys
+
+    p = subprocess.run([sys.executable, "scripts/cache_native_dataset.py", "--pilot",
+                        "--splits", "test", "--limit", "1"],
+                       capture_output=True, text=True)
+    assert p.returncode != 0
+    out = p.stdout + p.stderr
+    assert "before a method lock" in out and "--post-lock" in out
+
+
+def test_pre_lock_caching_of_train_and_val_is_allowed():
+    src = Path("scripts/cache_native_dataset.py").read_text()
+    assert 'ap.add_argument("--post-lock"' in src
+    assert "generated_after_lock" in src

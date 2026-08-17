@@ -79,7 +79,9 @@ def crossed_runs(tmp_path):
 def _run(script, *args):
     # --allow-dirty: these are unit fixtures, not artifacts of record, and the working
     # tree is routinely dirty while developing.
-    extra = ["--allow-dirty"] if script in ("select_method.py", "evaluate_locked.py") else []
+    # evaluate_locked.py deliberately has no --allow-dirty: its escape hatch is
+    # --debug --out-dir, which the gate then rejects. Tests pass it explicitly.
+    extra = ["--allow-dirty"] if script == "select_method.py" else []
     return subprocess.run([sys.executable, f"scripts/{script}", *args, *extra],
                           capture_output=True, text=True)
 
@@ -94,8 +96,12 @@ def _test_manifest(dirpath: Path, sel: Path) -> Path:
              "npz_sha": file_digest(p.with_suffix(".npz"))}
             for p in sorted(td.glob("*.json"))]
     path = dirpath / "test_eval.json"
-    path.write_text(json.dumps({"selection_sha": file_digest(sel), "runs": runs,
-                                "git_commit": "unit"}))
+    lock = json.loads(sel.read_text())
+    path.write_text(json.dumps({
+        "selection_sha": file_digest(sel), "runs": runs,
+        # what an OFFICIAL evaluation records: clean tree, at the locked commit
+        "official": True, "git_dirty": False, "git_commit": lock.get("git_commit"),
+        "test_protocol": lock.get("test_protocol")}))
     return path
 
 
@@ -619,3 +625,67 @@ def test_gate_refuses_a_test_evaluation_from_another_selection(crossed_runs, tmp
     p, _ = _gate(crossed_runs, sel, tmp_path, "mismatch.md", manifest=man)
     assert p.returncode != 0
     assert "different selection artifact" in (p.stdout + p.stderr)
+
+
+def test_debug_evaluation_cannot_enter_a_gate(crossed_runs, tmp_path):
+    """--debug is a separate mode, not a flag that relaxes the official one: it cannot
+    write the official manifest, and the gate rejects anything it produced."""
+    sel = _lock(crossed_runs, tmp_path)
+    man = _test_manifest(crossed_runs, sel)
+    blob = json.loads(man.read_text())
+    blob["official"] = False
+    man.write_text(json.dumps(blob))
+    p, _ = _gate(crossed_runs, sel, tmp_path, "dbg.md", manifest=man)
+    assert p.returncode != 0 and "DEBUG evaluation" in (p.stdout + p.stderr)
+
+
+def test_gate_rejects_a_test_evaluation_from_a_dirty_tree(crossed_runs, tmp_path):
+    sel = _lock(crossed_runs, tmp_path)
+    man = _test_manifest(crossed_runs, sel)
+    blob = json.loads(man.read_text())
+    blob["git_dirty"] = True
+    man.write_text(json.dumps(blob))
+    p, _ = _gate(crossed_runs, sel, tmp_path, "dirty.md", manifest=man)
+    assert p.returncode != 0 and "dirty tree" in (p.stdout + p.stderr)
+
+
+def test_gate_rejects_a_test_evaluation_from_a_different_commit(crossed_runs, tmp_path):
+    """Editing the evaluator after the lock is a protocol revision, not a rerun."""
+    sel = _lock(crossed_runs, tmp_path)
+    man = _test_manifest(crossed_runs, sel)
+    blob = json.loads(man.read_text())
+    blob["git_commit"] = "b" * 40
+    man.write_text(json.dumps(blob))
+    p, _ = _gate(crossed_runs, sel, tmp_path, "othercommit.md", manifest=man)
+    assert p.returncode != 0 and "protocol revision" in (p.stdout + p.stderr)
+
+
+def test_selection_locks_the_test_execution_protocol(crossed_runs, tmp_path):
+    """Locking the method while leaving the evaluated population choosable at test time
+    would still allow a post-hoc decision: --limit 100 and --limit 0 are different
+    experiments."""
+    sel = _lock(crossed_runs, tmp_path)
+    tp = json.loads(sel.read_text())["test_protocol"]
+    assert tp["splits"] == ["test", "test_heldout_prompts"] and tp["limit"] == 0
+
+    for extra in (["--limit", "1"], ["--splits", "test"]):
+        p = _run("evaluate_locked.py", "--tag", "unit", "--selection", str(sel),
+                 "--results-dir", str(crossed_runs), *extra)
+        assert p.returncode != 0
+        assert "locked by the selection artifact" in (p.stdout + p.stderr), extra
+
+
+def test_official_test_evaluation_is_write_once():
+    """Having seen the official number, producing another would make the first
+    revisable. The source states it and the gate has no way to prefer one."""
+    src = Path("scripts/evaluate_locked.py").read_text()
+    assert "write-once" in src.lower()
+    assert "already exists" in src
+
+
+def test_debug_mode_requires_a_throwaway_directory(crossed_runs, tmp_path):
+    sel = _lock(crossed_runs, tmp_path)
+    p = _run("evaluate_locked.py", "--tag", "unit", "--selection", str(sel),
+             "--results-dir", str(crossed_runs), "--debug")
+    assert p.returncode != 0
+    assert "--debug requires --out-dir" in (p.stdout + p.stderr)
