@@ -1,220 +1,219 @@
-# Invariant -> test map for the Final Integration Audit.
-#
-# The audit's claim is not "we were careful". It is that each protocol invariant is
-# pinned by a named test which fails if the invariant breaks. scripts/audit_invariants.py
-# verifies every node id below exists and runs them, so this file cannot drift from the
-# suite without the audit failing.
-
 P0-1:
   title: the observability operator is a certified lower bound, not Cov(teacher)
   invariants:
-    - statement: "C_cert(f) = C_obs - Cov(m-f) <= C_obs for ANY f, while Cov(f) is not a bound"
-      tests:
-        - tests/test_certified_operator.py::test_certified_operator_equals_c_obs_minus_teacher_error
-        - tests/test_certified_operator.py::test_covariance_of_a_bad_teacher_is_not_a_lower_bound
-        - tests/test_certified_operator.py::test_only_the_covariance_estimator_diverges_with_teacher_scale
-    - statement: "the solver takes the algebraically largest eigenvalues; magnitude selection would pick the worst directions"
-      tests:
-        - tests/test_certified_operator.py::test_fit_certified_returns_the_algebraically_largest_direction
-        - tests/test_certified_operator.py::test_magnitude_based_selection_would_pick_the_wrong_direction
-    - statement: "centering is mandatory; an uncentered estimate turns a decoder bias into a leading direction"
-      tests:
-        - tests/test_certified_operator.py::test_centering_removes_a_constant_teacher_bias
-        - tests/test_certified_operator.py::test_uncentered_bias_injects_a_rank_one_direction
-    - statement: "the teacher fit and the operator estimate never share samples"
-      tests:
-        - tests/test_split_disjoint.py::test_teacher_and_operator_subsplits_are_disjoint
-        - tests/test_split_disjoint.py::test_every_sample_has_exactly_one_role
-    - statement: "in-sample eigenvalues are inflated, so every reported number is cross-fitted"
-      tests:
-        - tests/test_certified_operator.py::test_in_sample_eigenvalues_can_exceed_the_theoretical_bound
-
+  - statement: C_cert(f) = C_obs - Cov(m-f) <= C_obs for ANY f, while Cov(f) is not a bound
+    tests:
+    - tests/test_certified_operator.py::test_certified_operator_equals_c_obs_minus_teacher_error
+    - tests/test_certified_operator.py::test_covariance_of_a_bad_teacher_is_not_a_lower_bound
+    - tests/test_certified_operator.py::test_only_the_covariance_estimator_diverges_with_teacher_scale
+  - statement: the solver takes the algebraically largest eigenvalues; magnitude selection would pick
+      the worst directions
+    tests:
+    - tests/test_certified_operator.py::test_fit_certified_returns_the_algebraically_largest_direction
+    - tests/test_certified_operator.py::test_magnitude_based_selection_would_pick_the_wrong_direction
+  - statement: centering is mandatory; an uncentered estimate turns a decoder bias into a leading direction
+    tests:
+    - tests/test_certified_operator.py::test_centering_removes_a_constant_teacher_bias
+    - tests/test_certified_operator.py::test_uncentered_bias_injects_a_rank_one_direction
+  - statement: the teacher fit and the operator estimate never share samples
+    tests:
+    - tests/test_split_disjoint.py::test_teacher_and_operator_subsplits_are_disjoint
+    - tests/test_split_disjoint.py::test_every_sample_has_exactly_one_role
+  - statement: in-sample eigenvalues are inflated, so every reported number is cross-fitted
+    tests:
+    - tests/test_certified_operator.py::test_in_sample_eigenvalues_can_exceed_the_theoretical_bound
 P0-1.1:
   title: the headline is a property of the subspace, and its own selection is cross-fitted
   invariants:
-    - statement: "D_cert is invariant under any in-subspace rotation; the coordinate diagonal is not"
-      tests:
-        - tests/test_certified_operator.py::test_subspace_score_is_invariant_under_within_subspace_rotation
-        - tests/test_certified_operator.py::test_coordinate_skill_is_NOT_invariant
-        - tests/test_certified_operator.py::test_diagonal_clipping_reports_zero_where_the_subspace_certifies_one
-    - statement: "the eigen-step is itself a selection and is cross-fitted, symmetrically"
-      tests:
-        - tests/test_certified_operator.py::test_inner_crossfit_removes_the_selection_bias_under_the_null
-        - tests/test_certified_operator.py::test_symmetric_folds_use_every_sample_and_agree
-        - tests/test_certified_operator.py::test_symmetric_score_is_less_split_dependent_than_one_fold
-    - statement: "certified means a one-sided lower bound above zero, not a numerical tolerance"
-      tests:
-        - tests/test_certified_operator.py::test_null_certifies_nothing_statistically
-        - tests/test_certified_operator.py::test_real_signal_survives_the_lower_bound
-        - tests/test_certified_operator.py::test_the_bound_is_never_above_the_point_estimate
-        - tests/test_certified_operator.py::test_per_direction_bound_is_multiplicity_corrected
-        - tests/test_certified_operator.py::test_certification_stays_rotation_invariant
-
+  - statement: D_cert is invariant under any in-subspace rotation; the coordinate diagonal is not
+    tests:
+    - tests/test_certified_operator.py::test_subspace_score_is_invariant_under_within_subspace_rotation
+    - tests/test_certified_operator.py::test_coordinate_skill_is_NOT_invariant
+    - tests/test_certified_operator.py::test_diagonal_clipping_reports_zero_where_the_subspace_certifies_one
+  - statement: the eigen-step is itself a selection and is cross-fitted, symmetrically
+    tests:
+    - tests/test_certified_operator.py::test_inner_crossfit_removes_the_selection_bias_under_the_null
+    - tests/test_certified_operator.py::test_symmetric_folds_use_every_sample_and_agree
+    - tests/test_certified_operator.py::test_symmetric_score_is_less_split_dependent_than_one_fold
+  - statement: certified means a one-sided lower bound above zero, not a numerical tolerance
+    tests:
+    - tests/test_certified_operator.py::test_null_certifies_nothing_statistically
+    - tests/test_certified_operator.py::test_real_signal_survives_the_lower_bound
+    - tests/test_certified_operator.py::test_the_bound_is_never_above_the_point_estimate
+    - tests/test_certified_operator.py::test_per_direction_bound_is_multiplicity_corrected
+    - tests/test_certified_operator.py::test_certification_stays_rotation_invariant
+  - statement: counting positive quadratic forms is not a rank; positive inertia is certified separately
+      via Weyl
+    tests:
+    - tests/test_certified_operator.py::test_positive_direction_count_is_not_a_rank
+    - tests/test_certified_operator.py::test_inertia_certificate_never_exceeds_the_true_positive_count
+    - tests/test_certified_operator.py::test_inertia_is_zero_under_the_null_and_full_under_clean_signal
+    - tests/test_certified_operator.py::test_per_sample_terms_average_to_the_operator_diagonal_exactly
+    - tests/test_certified_operator.py::test_multiplicity_spans_directions_and_folds
 P0-2:
   title: the gate denominator is a uniformly random subspace
   invariants:
-    - statement: "Haar frames are orthonormal, isotropic, and distinguishable from Hadamard by spread"
-      tests:
-        - tests/test_orthogonality.py::test_haar_and_random_householder_are_orthonormal
-        - tests/test_orthogonality.py::test_haar_sampling_is_isotropic
-        - tests/test_orthogonality.py::test_haar_is_random_where_hadamard_is_structured
-    - statement: "the frozen control is arm E at initialisation and has no trainable parameters"
-      tests:
-        - tests/test_orthogonality.py::test_frozen_control_is_the_learned_arm_at_initialisation
-
+  - statement: Haar frames are orthonormal, isotropic, and distinguishable from Hadamard by spread
+    tests:
+    - tests/test_orthogonality.py::test_haar_and_random_householder_are_orthonormal
+    - tests/test_orthogonality.py::test_haar_sampling_is_isotropic
+    - tests/test_orthogonality.py::test_haar_is_random_where_hadamard_is_structured
+  - statement: the frozen control is arm E at initialisation and has no trainable parameters
+    tests:
+    - tests/test_orthogonality.py::test_frozen_control_is_the_learned_arm_at_initialisation
 P0-3:
   title: nothing is chosen on test
   invariants:
-    - statement: "the val winner is reported even when another arm wins on test by a wide margin"
-      tests:
-        - tests/test_locked_selection.py::test_test_evaluation_reports_the_val_winner_not_the_test_winner
-        - tests/test_locked_selection.py::test_selection_picks_the_val_winner
-    - statement: "seeds are replications: averaged, never minimised, and equally weighted"
-      tests:
-        - tests/test_locked_selection.py::test_seeds_are_averaged_never_minimised
-        - tests/test_locked_selection.py::test_structural_seeds_are_weighted_equally_regardless_of_replication_count
-    - statement: "the gate refuses without a lock, refuses val, and uses the Haar family not its best draw"
-      tests:
-        - tests/test_locked_selection.py::test_test_evaluation_refuses_without_a_selection_artifact
-        - tests/test_locked_selection.py::test_test_evaluation_refuses_to_run_on_val
-        - tests/test_locked_selection.py::test_gate_denominator_is_the_haar_family_not_its_best_draw
-
+  - statement: the val winner is reported even when another arm wins on test by a wide margin
+    tests:
+    - tests/test_locked_selection.py::test_test_evaluation_reports_the_val_winner_not_the_test_winner
+    - tests/test_locked_selection.py::test_selection_picks_the_val_winner
+  - statement: 'seeds are replications: averaged, never minimised, and equally weighted'
+    tests:
+    - tests/test_locked_selection.py::test_seeds_are_averaged_never_minimised
+    - tests/test_locked_selection.py::test_structural_seeds_are_weighted_equally_regardless_of_replication_count
+  - statement: the gate refuses without a lock, refuses val, and uses the Haar family not its best draw
+    tests:
+    - tests/test_locked_selection.py::test_test_evaluation_refuses_without_a_selection_artifact
+    - tests/test_locked_selection.py::test_test_evaluation_refuses_to_run_on_val
+    - tests/test_locked_selection.py::test_gate_denominator_is_the_haar_family_not_its_best_draw
 P0-3.1:
   title: the lock names exact runs, not (arm, k)
   invariants:
-    - statement: "a run added after the lock cannot change the report"
-      tests:
-        - tests/test_locked_selection.py::test_a_seed_added_after_the_lock_cannot_change_the_result
-    - statement: "edited run content and edited protocol config are both detected"
-      tests:
-        - tests/test_locked_selection.py::test_locked_test_artifact_change_is_detected
-        - tests/test_locked_selection.py::test_protocol_config_change_after_the_lock_hard_fails
-    - statement: "hyperparameter variants of one arm are separate candidates"
-      tests:
-        - tests/test_locked_selection.py::test_same_arm_and_k_with_different_hyperparameters_are_separate_candidates
-
+  - statement: a run added after the lock cannot change the report
+    tests:
+    - tests/test_locked_selection.py::test_a_seed_added_after_the_lock_cannot_change_the_result
+  - statement: edited run content and edited protocol config are both detected
+    tests:
+    - tests/test_locked_selection.py::test_locked_test_artifact_change_is_detected
+    - tests/test_locked_selection.py::test_protocol_config_change_after_the_lock_hard_fails
+  - statement: hyperparameter variants of one arm are separate candidates
+    tests:
+    - tests/test_locked_selection.py::test_same_arm_and_k_with_different_hyperparameters_are_separate_candidates
 P0-4:
   title: the learned arm's objective and starting point are stated honestly
   invariants:
-    - statement: "a hard sign target severs the gradient to the frame, so discovery is MSE and says so"
-      tests:
-        - tests/test_models_and_training.py::test_hard_sign_target_severs_the_gradient_to_the_frame
-        - tests/test_models_and_training.py::test_discovery_refuses_a_sign_weight
-    - statement: "arm E starts exactly at the Haar denominator and can still leave it"
-      tests:
-        - tests/test_orthogonality.py::test_learned_frame_initialises_exactly_at_the_haar_base
-        - tests/test_orthogonality.py::test_one_gradient_step_leaves_the_haar_point_and_reduces_the_loss
-
+  - statement: a hard sign target severs the gradient to the frame, so discovery is MSE and says so
+    tests:
+    - tests/test_models_and_training.py::test_hard_sign_target_severs_the_gradient_to_the_frame
+    - tests/test_models_and_training.py::test_discovery_refuses_a_sign_weight
+  - statement: arm E starts exactly at the Haar denominator and can still leave it
+    tests:
+    - tests/test_orthogonality.py::test_learned_frame_initialises_exactly_at_the_haar_base
+    - tests/test_orthogonality.py::test_one_gradient_step_leaves_the_haar_point_and_reduces_the_loss
 P0-5:
   title: the decoder architecture is part of the claim
   invariants:
-    - statement: "the global teacher is confined to a 512-dimensional subspace and the spatial one is not"
-      tests:
-        - tests/test_models_and_training.py::test_global_teacher_output_lives_in_a_512_dimensional_subspace
-        - tests/test_models_and_training.py::test_spatial_teacher_is_not_confined_to_that_subspace
-    - statement: "the receiver control shares the trunk and is capacity-comparable"
-      tests:
-        - tests/test_models_and_training.py::test_shared_trunk_teacher_really_shares_the_trunk
-        - tests/test_models_and_training.py::test_spatial_extractor_is_capacity_comparable_to_the_global_one
-        - tests/test_models_and_training.py::test_spatial_extractor_keeps_position_and_refuses_imagenet_weights
-
+  - statement: the global teacher is confined to a 512-dimensional subspace and the spatial one is not
+    tests:
+    - tests/test_models_and_training.py::test_global_teacher_output_lives_in_a_512_dimensional_subspace
+    - tests/test_models_and_training.py::test_spatial_teacher_is_not_confined_to_that_subspace
+  - statement: the receiver control shares the trunk and is capacity-comparable
+    tests:
+    - tests/test_models_and_training.py::test_shared_trunk_teacher_really_shares_the_trunk
+    - tests/test_models_and_training.py::test_spatial_extractor_is_capacity_comparable_to_the_global_one
+    - tests/test_models_and_training.py::test_spatial_extractor_keeps_position_and_refuses_imagenet_weights
 P0-6:
   title: the channel is fresh in training and identical across arms at evaluation
   invariants:
-    - statement: "training epochs draw different realisations; evaluation is fixed and arm-independent"
-      tests:
-        - tests/test_channel_determinism.py::test_training_epochs_get_different_noise_realisations
-        - tests/test_channel_determinism.py::test_evaluation_draw_is_fixed_and_reproducible
-        - tests/test_channel_determinism.py::test_every_arm_sees_a_bit_identical_evaluation_corruption
-        - tests/test_channel_determinism.py::test_evaluation_corruption_does_not_depend_on_loader_order
-
+  - statement: training epochs draw different realisations; evaluation is fixed and arm-independent
+    tests:
+    - tests/test_channel_determinism.py::test_training_epochs_get_different_noise_realisations
+    - tests/test_channel_determinism.py::test_evaluation_draw_is_fixed_and_reproducible
+    - tests/test_channel_determinism.py::test_every_arm_sees_a_bit_identical_evaluation_corruption
+    - tests/test_channel_determinism.py::test_evaluation_corruption_does_not_depend_on_loader_order
 P0-7:
   title: subspace quality and coding-basis quality are separated
   invariants:
-    - statement: "every certified quantity is unchanged by an in-subspace rotation while the bits move"
-      tests:
-        - tests/test_subspace_vs_basis.py::test_certified_score_is_invariant_under_any_in_subspace_rotation
-        - tests/test_subspace_vs_basis.py::test_restricted_operator_eigenvalues_are_invariant
-        - tests/test_subspace_vs_basis.py::test_the_control_is_not_vacuous_because_sign_bits_do_move
-    - statement: "gradients reach the rotation and never the subspace"
-      tests:
-        - tests/test_subspace_vs_basis.py::test_gradients_reach_the_rotation_and_never_the_subspace
-        - tests/test_subspace_vs_basis.py::test_rotation_seed_must_not_move_the_subspace
-    - statement: "a basis arm cannot win the scientific gate, and D1 is the pinned subspace"
-      tests:
-        - tests/test_locked_selection.py::test_a_basis_arm_can_never_win_gate_3a
-        - tests/test_locked_selection.py::test_p0_7_comparator_is_the_pinned_spectral_seed_not_an_average
-        - tests/test_locked_selection.py::test_basis_spread_marginalises_the_receiver_seed
-
+  - statement: every certified quantity is unchanged by an in-subspace rotation while the bits move
+    tests:
+    - tests/test_subspace_vs_basis.py::test_certified_score_is_invariant_under_any_in_subspace_rotation
+    - tests/test_subspace_vs_basis.py::test_restricted_operator_eigenvalues_are_invariant
+    - tests/test_subspace_vs_basis.py::test_the_control_is_not_vacuous_because_sign_bits_do_move
+  - statement: gradients reach the rotation and never the subspace
+    tests:
+    - tests/test_subspace_vs_basis.py::test_gradients_reach_the_rotation_and_never_the_subspace
+    - tests/test_subspace_vs_basis.py::test_rotation_seed_must_not_move_the_subspace
+  - statement: a basis arm cannot win the scientific gate, and D1 is the pinned subspace
+    tests:
+    - tests/test_locked_selection.py::test_a_basis_arm_can_never_win_gate_3a
+    - tests/test_locked_selection.py::test_p0_7_comparator_is_the_pinned_spectral_seed_not_an_average
+    - tests/test_locked_selection.py::test_basis_spread_marginalises_the_receiver_seed
 B0:
   title: a run's identity is complete and each analysis reads only its own scope
   invariants:
-    - statement: "receiver architecture, receiver seed and analysis scope all separate runs"
-      tests:
-        - tests/test_locked_selection.py::test_run_stem_separates_receiver_architecture_and_seed
-        - tests/test_locked_selection.py::test_run_stem_separates_the_analysis_scope
-        - tests/test_locked_selection.py::test_same_unit_in_two_scopes_coexists_and_only_gate_is_selected
-        - tests/test_locked_selection.py::test_receiver_control_runs_never_enter_gate_selection
-
+  - statement: receiver architecture, receiver seed and analysis scope all separate runs
+    tests:
+    - tests/test_locked_selection.py::test_run_stem_separates_receiver_architecture_and_seed
+    - tests/test_locked_selection.py::test_run_stem_separates_the_analysis_scope
+    - tests/test_locked_selection.py::test_same_unit_in_two_scopes_coexists_and_only_gate_is_selected
+    - tests/test_locked_selection.py::test_receiver_control_runs_never_enter_gate_selection
 B1:
   title: no test sample or metric exists before the lock
   invariants:
-    - statement: "training refuses a test split and test pixels require a post-lock flag"
-      tests:
-        - tests/test_locked_selection.py::test_training_refuses_to_evaluate_a_test_split
-        - tests/test_locked_selection.py::test_training_defaults_to_val_only
-        - tests/test_split_disjoint.py::test_caching_a_test_split_requires_a_method_lock
-    - statement: "the lock covers the checkpoints test evaluation will load"
-      tests:
-        - tests/test_locked_selection.py::test_selection_locks_the_checkpoints_not_only_the_results
-        - tests/test_locked_selection.py::test_locked_evaluation_rejects_a_swapped_checkpoint
-        - tests/test_locked_selection.py::test_locked_evaluation_rejects_a_swapped_frame
-        - tests/test_locked_selection.py::test_locked_evaluation_requires_the_checkpoints_to_exist
-    - statement: "a debug, dirty or differently-committed evaluation cannot enter a gate"
-      tests:
-        - tests/test_locked_selection.py::test_debug_evaluation_cannot_enter_a_gate
-        - tests/test_locked_selection.py::test_gate_rejects_a_test_evaluation_from_a_dirty_tree
-        - tests/test_locked_selection.py::test_gate_rejects_a_test_evaluation_from_a_different_commit
-        - tests/test_locked_selection.py::test_debug_mode_requires_a_throwaway_directory
-    - statement: "the test execution protocol is locked and the official evaluation is write-once"
-      tests:
-        - tests/test_locked_selection.py::test_selection_locks_the_test_execution_protocol
-        - tests/test_locked_selection.py::test_official_test_evaluation_is_write_once
-        - tests/test_locked_selection.py::test_gate_refuses_without_a_locked_test_evaluation
-        - tests/test_locked_selection.py::test_gate_refuses_a_test_evaluation_from_another_selection
-
+  - statement: training refuses a test split and test pixels require a post-lock flag
+    tests:
+    - tests/test_locked_selection.py::test_training_refuses_to_evaluate_a_test_split
+    - tests/test_locked_selection.py::test_training_defaults_to_val_only
+    - tests/test_split_disjoint.py::test_caching_a_test_split_requires_a_method_lock
+  - statement: the lock covers the checkpoints test evaluation will load
+    tests:
+    - tests/test_locked_selection.py::test_selection_locks_the_checkpoints_not_only_the_results
+    - tests/test_locked_selection.py::test_locked_evaluation_rejects_a_swapped_checkpoint
+    - tests/test_locked_selection.py::test_locked_evaluation_rejects_a_swapped_frame
+    - tests/test_locked_selection.py::test_locked_evaluation_requires_the_checkpoints_to_exist
+  - statement: a debug, dirty or differently-committed evaluation cannot enter a gate
+    tests:
+    - tests/test_locked_selection.py::test_debug_evaluation_cannot_enter_a_gate
+    - tests/test_locked_selection.py::test_gate_rejects_a_test_evaluation_from_a_dirty_tree
+    - tests/test_locked_selection.py::test_gate_rejects_a_test_evaluation_from_a_different_commit
+    - tests/test_locked_selection.py::test_debug_mode_requires_a_throwaway_directory
+  - statement: the test execution protocol is locked and the official evaluation is write-once
+    tests:
+    - tests/test_locked_selection.py::test_selection_locks_the_test_execution_protocol
+    - tests/test_locked_selection.py::test_official_test_evaluation_is_write_once
+    - tests/test_locked_selection.py::test_gate_refuses_without_a_locked_test_evaluation
+    - tests/test_locked_selection.py::test_gate_refuses_a_test_evaluation_from_another_selection
+  - statement: the lock binding is written into each test shard at generation, so a skipped shard cannot
+      be restamped
+    tests:
+    - tests/test_split_disjoint.py::test_caching_a_test_split_requires_a_method_lock
 B2:
   title: a missing registered seed stops the lock
   invariants:
-    - statement: "missing seeds hard-fail; a reduced set must be declared and is recorded"
-      tests:
-        - tests/test_locked_selection.py::test_a_missing_registered_seed_stops_the_lock
-        - tests/test_locked_selection.py::test_a_reduced_seed_set_may_be_declared_and_is_recorded
-        - tests/test_locked_selection.py::test_incompleteness_is_recorded_and_flagged_in_the_report
-        - tests/test_locked_selection.py::test_unknown_arm_in_a_seed_declaration_is_rejected
-
+  - statement: missing seeds hard-fail; a reduced set must be declared and is recorded
+    tests:
+    - tests/test_locked_selection.py::test_a_missing_registered_seed_stops_the_lock
+    - tests/test_locked_selection.py::test_a_reduced_seed_set_may_be_declared_and_is_recorded
+    - tests/test_locked_selection.py::test_incompleteness_is_recorded_and_flagged_in_the_report
+    - tests/test_locked_selection.py::test_unknown_arm_in_a_seed_declaration_is_rejected
+  - statement: a wholly absent required arm is the worst case, and the driver cannot name an arm the config
+      lacks
+    tests:
+    - tests/test_locked_selection.py::test_an_entirely_absent_required_arm_is_the_worst_case_not_an_exemption
+    - tests/test_locked_selection.py::test_every_arm_the_driver_trains_exists_in_the_config
+    - tests/test_locked_selection.py::test_required_arms_are_declared_not_inferred
 B3:
   title: arm E's reflector count is audited, not assumed
   invariants:
-    - statement: "only a dimension-infeasible cell may be called a capacity limit"
-      tests:
-        - tests/test_orthogonality.py::test_only_a_dimension_infeasible_cell_may_be_called_a_capacity_limit
-        - tests/test_orthogonality.py::test_unconverged_cells_cannot_be_read_as_capacity_limits
-    - statement: "the reachable control is genuinely reachable and the metric is the best iterate"
-      tests:
-        - tests/test_orthogonality.py::test_reachable_target_shares_the_fitters_frozen_base
-        - tests/test_orthogonality.py::test_generic_target_is_independent_of_the_fitter
-        - tests/test_orthogonality.py::test_best_step_follows_the_best_alignment
-        - tests/test_orthogonality.py::test_capacity_metric_is_the_best_iterate_not_the_last
-
+  - statement: only a dimension-infeasible cell may be called a capacity limit
+    tests:
+    - tests/test_orthogonality.py::test_only_a_dimension_infeasible_cell_may_be_called_a_capacity_limit
+    - tests/test_orthogonality.py::test_unconverged_cells_cannot_be_read_as_capacity_limits
+  - statement: the reachable control is genuinely reachable and the metric is the best iterate
+    tests:
+    - tests/test_orthogonality.py::test_reachable_target_shares_the_fitters_frozen_base
+    - tests/test_orthogonality.py::test_generic_target_is_independent_of_the_fitter
+    - tests/test_orthogonality.py::test_best_step_follows_the_best_alignment
+    - tests/test_orthogonality.py::test_capacity_metric_is_the_best_iterate_not_the_last
 provenance:
   title: artifacts of record name the code that produced them
   invariants:
-    - statement: "a dirty tree or a missing repository refuses to produce an artifact"
-      tests:
-        - tests/test_orthogonality.py::test_artifacts_refuse_to_come_from_a_dirty_tree
-        - tests/test_orthogonality.py::test_provenance_fails_closed_outside_a_repository
-    - statement: "the cache fingerprint tracks pixels, not protocol"
-      tests:
-        - tests/test_split_disjoint.py::test_cache_fingerprint_tracks_pixels_not_protocol
-        - tests/test_split_disjoint.py::test_index_addressing_is_unchanged
+  - statement: a dirty tree or a missing repository refuses to produce an artifact
+    tests:
+    - tests/test_orthogonality.py::test_artifacts_refuse_to_come_from_a_dirty_tree
+    - tests/test_orthogonality.py::test_provenance_fails_closed_outside_a_repository
+  - statement: the cache fingerprint tracks pixels, not protocol
+    tests:
+    - tests/test_split_disjoint.py::test_cache_fingerprint_tracks_pixels_not_protocol
+    - tests/test_split_disjoint.py::test_index_addressing_is_unchanged

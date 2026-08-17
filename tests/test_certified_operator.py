@@ -560,13 +560,13 @@ def test_principal_cosines_expose_structure_a_mean_would_hide():
 def test_null_certifies_nothing_statistically():
     Z, F, V = _null_case(2000, 16)
     c = subspace_certificate(Z, F, V, bootstrap=400)
-    assert c["statistically_certified_rank"] == 0
+    assert c["certified_positive_direction_count"] == 0
     assert c["D_cert_LCB"] == 0.0
 
 
 def test_real_signal_survives_the_lower_bound():
     c = subspace_certificate(T["Z"], T["m"], T["V"][:8], bootstrap=400)
-    assert c["statistically_certified_rank"] == 8
+    assert c["certified_positive_direction_count"] == 8
     assert 0 < c["D_cert_LCB"] <= c["D_cert_subspace"] + 1e-9
 
 
@@ -598,9 +598,82 @@ def test_certification_stays_rotation_invariant():
     a = subspace_certificate(T["Z"], T["m"], T["V"][:8], bootstrap=300)
     b = subspace_certificate(T["Z"], T["m"], _rotation(8, 4) @ T["V"][:8], bootstrap=300)
     assert abs(a["D_cert_subspace"] - b["D_cert_subspace"]) < 1e-9
-    assert a["statistically_certified_rank"] == b["statistically_certified_rank"]
+    assert a["certified_positive_direction_count"] == b["certified_positive_direction_count"]
+    assert a["certified_positive_inertia"] == b["certified_positive_inertia"]
 
 
 def test_per_direction_bound_is_multiplicity_corrected():
+    """Both levels count: k directions inspected inside each of the two folds, so the
+    union bound is alpha/(2k) per direction per fold -- which needs no independence
+    between the folds."""
     c = subspace_certificate(T["Z"], T["m"], T["V"][:8], bootstrap=300)
-    assert c["per_direction_correction"] == "bonferroni over k"
+    assert c["per_direction_correction"] == "bonferroni over k and folds"
+
+
+# --------------------------------------------------------------------------
+# Counting positive quadratic forms is NOT counting positive eigenvalues.
+# --------------------------------------------------------------------------
+def _positive_diagonal_negative_eigenvalue_data(n=60000, d=8, seed=0):
+    """Realise a C_V with both diagonals positive but one NEGATIVE eigenvalue.
+
+    With B = A M and A whitened, C_V = 2M - M^2, so eigenvalues of M at (1, 2.0954)
+    give C_V eigenvalues (1, -0.2). Rotating M by 45 degrees puts C_V's diagonal at
+    (0.4, 0.4): two positive quadratic forms, positive inertia one.
+    """
+    rng = np.random.default_rng(seed)
+    A = rng.standard_normal((n, 2))
+    w, U = np.linalg.eigh(A.T @ A / n)
+    A = A @ (U / np.sqrt(w)) @ U.T
+    R = np.array([[1.0, -1.0], [1.0, 1.0]]) / np.sqrt(2)
+    M = R @ np.diag([1.0, 1.0 + np.sqrt(1.2)]) @ R.T
+    B = A @ M
+    Z = np.concatenate([A, rng.standard_normal((n, d - 2))], axis=1)
+    F = np.concatenate([B, rng.standard_normal((n, d - 2))], axis=1)
+    return Z, F, np.eye(d)[:2]
+
+
+def test_positive_direction_count_is_not_a_rank():
+    """The name was the claim: `statistically_certified_rank` counted directions whose
+    lower bound cleared zero, which is not the number of positive eigenvalues."""
+    Z, F, V = _positive_diagonal_negative_eigenvalue_data()
+    C_V = project_operator(Z, F, V)
+    diag, eig = np.diag(C_V), np.linalg.eigvalsh(C_V)
+    assert (diag > 0).all(), diag                  # two positive quadratic forms
+    assert (eig < 0).sum() == 1, eig               # one negative eigenvalue
+    assert abs(eig.max() - 1.0) < 0.05 and abs(eig.min() + 0.2) < 0.05
+
+    c = subspace_certificate(Z, F, V, bootstrap=300, crossfit=False)
+    assert "statistically_certified_rank" not in c, "the misleading name is still exported"
+    assert c["certified_positive_inertia"] <= 1
+
+
+def test_inertia_certificate_never_exceeds_the_true_positive_count():
+    for case in (_null_case(4000, 8), (T["Z"], T["m"], T["V"][:8]),
+                 _positive_diagonal_negative_eigenvalue_data()):
+        c = subspace_certificate(*case, bootstrap=200)
+        truth = int((np.linalg.eigvalsh(project_operator(*case)) > 0).sum())
+        assert c["certified_positive_inertia"] <= truth
+        assert c["weyl_radius"] > 0
+
+
+def test_inertia_is_zero_under_the_null_and_full_under_clean_signal():
+    assert subspace_certificate(*_null_case(4000, 8),
+                                bootstrap=200)["certified_positive_inertia"] == 0
+    c = subspace_certificate(T["Z"], T["m"], T["V"][:8], bootstrap=200)
+    assert c["certified_positive_inertia"] == 8
+
+
+def test_per_sample_terms_average_to_the_operator_diagonal_exactly():
+    """The docstring says "exactly", so it has to be exact: the operator uses N-1 and a
+    plain mean uses N."""
+    from fiber.spectrum.certified import _per_sample_contributions
+
+    V = T["V"][:8]
+    got = _per_sample_contributions(T["Z"], T["m"], V).mean(0)
+    want = np.diag(project_operator(T["Z"], T["m"], V))
+    assert np.abs(got - want).max() < 1e-12
+
+
+def test_multiplicity_spans_directions_and_folds():
+    c = subspace_certificate(T["Z"], T["m"], T["V"][:8], bootstrap=200)
+    assert c["per_direction_correction"] == "bonferroni over k and folds"

@@ -63,13 +63,24 @@ def config_fingerprint(cfg) -> str:
                            digest_size=8).hexdigest()
 
 
-def registered_seeds(cfg, overrides: dict[str, list[int]] | None = None) -> dict:
-    """The seeds each arm was PRE-REGISTERED to run, from the config unless explicitly
-    overridden. A reduced set is allowed -- a pilot legitimately runs fewer draws -- but
-    it has to be declared, not inferred from which files happen to exist."""
-    out = {arm: sorted(spec.get("seeds", [])) for arm, spec in cfg["fiber"]["arms"].items()}
+def registered_seeds(cfg, overrides: dict[str, list[int]] | None = None,
+                     required: list[str] | None = None) -> dict:
+    """The seeds each REQUIRED arm was pre-registered to run.
+
+    "Required" is declared (`fiber.required_arms`, or --required-arms), never inferred
+    from which arms happen to have produced files -- otherwise an arm whose every run
+    failed would exempt itself. A reduced seed set is allowed, since a pilot legitimately
+    runs fewer draws, but it too must be declared.
+    """
+    arms = cfg["fiber"]["arms"]
+    names = required if required is not None else cfg["fiber"].get("required_arms",
+                                                                   list(arms))
+    unknown = [a for a in names if a not in arms]
+    if unknown:
+        raise SystemExit(f"required arms name unknown arm(s) {unknown}")
+    out = {arm: sorted(arms[arm].get("seeds", [])) for arm in names}
     for arm, seeds in (overrides or {}).items():
-        if arm not in out:
+        if arm not in arms:
             raise SystemExit(f"--registered-seeds names an unknown arm {arm!r}")
         out[arm] = sorted(seeds)
     return out
@@ -88,11 +99,16 @@ def check_completeness(runs: list[dict], registered: dict, k: int) -> dict:
             present[r["arm"]].add(r.get("structure_seed", r["seed"]))
     report, missing = {}, {}
     for arm, seeds in registered.items():
-        if not seeds or arm not in present:
-            continue                      # an arm nobody ran is absent, not incomplete
-        gap = sorted(set(seeds) - present[arm])
-        report[arm] = {"registered": seeds, "present": sorted(present[arm]),
-                       "missing": gap}
+        if not seeds:
+            continue                      # nothing was registered for this arm
+        # An arm with NO runs at all is the worst case, not an exemption. Skipping it
+        # made whole-arm failure invisible -- the same survivorship bias this check
+        # exists for, one level larger. Exercised for real: run_pilot.sh trained a
+        # misspelled `C3_rand_hh` while the config registered `C3_frozen_hh`, so every
+        # run of that arm failed and completeness stayed silent.
+        have = present.get(arm, set())
+        gap = sorted(set(seeds) - have)
+        report[arm] = {"registered": seeds, "present": sorted(have), "missing": gap}
         if gap:
             missing[arm] = gap
     return {"per_arm": report, "missing": missing, "complete": not missing}
@@ -203,6 +219,9 @@ def main() -> int:
     ap.add_argument("--registered-seeds", action="append", default=[],
                     metavar="ARM=0,1,2",
                     help="declare a reduced seed set for an arm; recorded in the lock")
+    ap.add_argument("--required-arms", default=None,
+                    help="comma-separated arms the gate requires; defaults to "
+                         "fiber.required_arms in the config")
     ap.add_argument("--allow-incomplete", action="store_true",
                     help="proceed with missing registered seeds; recorded in the lock "
                          "and flagged in the gate report")
@@ -221,7 +240,9 @@ def main() -> int:
     if not runs:
         raise SystemExit(f"no runs with {SELECTION_SPLIT} results in {out_dir}")
 
-    registered = registered_seeds(cfg, overrides)
+    required = ([a for a in args.required_arms.split(",") if a]
+                if args.required_arms else None)
+    registered = registered_seeds(cfg, overrides, required)
     chosen = select(runs, bank.eval)
     winner = chosen["winner"]
     completeness = check_completeness(runs, registered, winner["k"])
@@ -274,6 +295,7 @@ def main() -> int:
         # post-hoc decision -- `--limit 100` and `--limit 0` are different experiments.
         "test_protocol": {"splits": ["test", "test_heldout_prompts"], "limit": 0},
         "seed_completeness": {**completeness, "registered": registered,
+                              "required_arms": sorted(registered),
                               "enforced": not args.allow_incomplete,
                               "source": "config+cli" if overrides else "config"},
         "candidates": chosen["candidates"],

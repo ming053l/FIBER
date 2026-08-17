@@ -59,7 +59,7 @@ done
 
 echo "===== Phase 3: all arms at k=$K, cross-fit ====="
 for s in $RANDOM_SEEDS; do
-  for arm in C2_haar B_signperm C_hadamard C3_rand_hh; do
+  for arm in C2_haar B_signperm C_hadamard C3_frozen_hh; do
     # k=64 seed 0 is already done by the sweep above
     [ "$K" = "64" ] && [ "$s" = "0" ] && continue
     run python scripts/train_coordinates.py --tag "$TAG" --arm "$arm" --k "$K" --seed "$s" --epochs "$EPOCHS"

@@ -130,7 +130,10 @@ def main() -> int:
         # The bound is what the word "certified" has to rest on: tau only excludes
         # floating-point noise, a one-sided LCB above zero is a claim.
         "D_cert_LCB": sub.get("D_cert_LCB"),
-        "statistically_certified_rank": sub.get("statistically_certified_rank"),
+        # a count of positive quadratic forms, NOT a rank -- see the inertia field
+        "certified_positive_direction_count": sub.get("certified_positive_direction_count"),
+        "certified_positive_inertia": sub.get("certified_positive_inertia"),
+        "weyl_radius": sub.get("weyl_radius"),
         "fold_masses": sub.get("fold_masses"),
         "D_cert_subspace_insample": sub["D_cert_subspace_insample"],
         "trace_C_V": sub["trace_C_V"],
@@ -218,12 +221,12 @@ def main() -> int:
     rep.parent.mkdir(parents=True, exist_ok=True)
     rep.write_text(json.dumps(summary, indent=2, default=float))
 
-    log.info("SUBSPACE  D_cert = %.3f (LCB %s) over %d numerically / %s statistically "
-             "certified of %d  (tr(C_V) = %.3f)",
+    log.info("SUBSPACE  D_cert = %.3f (LCB %s) over %d numerically positive / %s "
+             "certified positive inertia of %d  (tr(C_V) = %.3f)",
              summary["D_cert_subspace"],
              f"{summary['D_cert_LCB']:.3f}" if summary.get("D_cert_LCB") is not None else "n/a",
              summary["numerical_positive_rank"],
-             summary.get("statistically_certified_rank", "n/a"),
+             summary.get("certified_positive_inertia", "n/a"),
              summary["requested_k"], summary["trace_C_V"])
     log.info("          without the inner cross-fit it would read %.3f -- the gap is "
              "selection bias, not observability", summary["D_cert_subspace_insample"])

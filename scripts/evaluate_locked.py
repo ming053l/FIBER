@@ -159,7 +159,11 @@ def main() -> int:
     test_cache_post_lock = False
     if cache_manifest.exists():
         tc = json.loads(cache_manifest.read_text())
-        test_cache_post_lock = tc.get("selection_sha") == file_digest(sel_path)
+        # Every shard must carry the binding, not just the manifest: a manifest can be
+        # rewritten over skipped pixels, a per-shard marker written at generation cannot.
+        test_cache_post_lock = (tc.get("selection_sha") == file_digest(sel_path)
+                                and tc.get("generated_after_lock") is True
+                                and not tc.get("shards_not_bound_to_this_lock"))
     bank = ChannelBank(cfg)
     root = Path(cfg["paths"]["cache_dir"]) / args.tag
 
@@ -172,9 +176,12 @@ def main() -> int:
                 "official": official, "config_fingerprint": now_fp,
                 "test_protocol": {"splits": list(splits), "limit": limit},
                 "test_cache_post_lock": test_cache_post_lock,
-                "claim": ("no test sample existed before the lock" if test_cache_post_lock
-                          else "no test sample was ACCESSED and no test metric computed "
-                               "before the lock; the test cache predates it"),
+                "claim": ("no test image was materialised or accessed, and no test "
+                          "corruption, prediction or metric computed, before the lock"
+                          if test_cache_post_lock else
+                          "no test image was ACCESSED and no test corruption, prediction "
+                          "or metric computed, before the lock; the test images "
+                          "themselves predate it"),
                 "runs": []}
     for entry in entries:
         stem = entry["stem"]

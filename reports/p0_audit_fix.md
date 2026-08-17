@@ -8,10 +8,15 @@ defect. The report is organised by the audit's own numbering.
 the identified confounds and that each fix is pinned by a test. It says nothing about
 whether the FIBER hypothesis holds — no Phase-2/3 experiment has been run.
 
-Verification is mechanical: `reports/invariants.yaml` maps 34 protocol invariants to 90
-named tests, and `scripts/audit_invariants.py` refuses to pass if any cited test has
-been renamed or deleted. Latest run: **96 test instances, PASS**. Full suite: **284
-tests**.
+Verification is mechanical: `reports/invariants.yaml` maps 37 protocol invariants to
+98 named tests, and `scripts/audit_invariants.py` refuses to pass if any cited test has
+been renamed or deleted. Full suite: **292 tests**.
+
+Three defects were found *by this audit process itself* after the fixes were first
+declared complete, and are recorded in the sections below rather than quietly repaired:
+a test-cache binding that proved only when the manifest was written, a completeness
+check that exempted an arm with no runs at all (exercised for real by a driver typo),
+and a "rank" that counted positive quadratic forms.
 
 ---
 
@@ -70,8 +75,23 @@ same samples rectifies noise into mass — a zero-skill decoder scored 3.58 at
 `N=64, k=32` where the truth is 0. The rotation is now chosen on one half and measured
 on the other, **symmetrically**, and `certified` rests on a **one-sided bootstrap lower
 bound** rather than on the numerical tolerance. Calibration: null gives
-`D = 0.0000, D^LCB = 0.0000`, rank 0; the exact conditional mean gives
-`D = 15.48, D^LCB = 15.23`, rank 16 of 16.
+`D = 0.0000, D^LCB = 0.0000`; the exact conditional mean gives `D = 15.48,
+D^LCB = 15.23`.
+
+**A count of positive directions is not a rank.** `C = [[1,2],[2,1]]` has both
+diagonals positive and eigenvalues `(3, −1)`, so its positive inertia is 1 where a
+direction count would say 2. The count is named
+`certified_positive_direction_count`, and positive inertia is certified separately by
+bounding the whole restricted matrix: a bootstrap spectral-norm radius `ε` plus Weyl
+gives `λ_j(C_V) ≥ λ_j(Ĉ_V) − ε` simultaneously for every `j`, so
+`#{j : λ_j(Ĉ_V) − ε > 0}` lower-bounds the positive eigenvalue count. Eigenvalues are
+rotation-invariant, so this needs no cross-fitted rotation and one radius covers all
+`k` at once. Tested against a data-realised matrix whose diagonal is `(0.4, 0.4)` while
+its eigenvalues are `(1, −0.2)`.
+
+Multiplicity spans both levels — `α/(2k)` per direction per fold, by a union bound that
+needs no independence between folds — and the per-sample terms are scaled by `N/(N−1)`
+so that "the column mean equals `vᵀC_cert v`" is exact rather than nearly so.
 
 ## 2. P0-2 — random subspace baselines
 
@@ -170,8 +190,8 @@ against rotations of one while claiming the subspace was fixed.
 | Naming | `D_obs` is certified observability mass, not Shannon capacity |
 | Provenance | artifacts refuse to be produced from a dirty tree or outside a repository |
 | B0 | run identity is (arm, k, structure seed, receiver arch, receiver seed, scope) |
-| B1 | no test sample or metric exists before the lock; the official evaluation is write-once and the test execution protocol is itself locked |
-| B2 | a missing registered seed stops the lock; a reduced set must be declared |
+| B1 | no test image is materialised or accessed before the lock; the binding is written into each shard at generation, so a skipped shard cannot be covered by a freshly written manifest; the official evaluation is write-once and the test execution protocol is itself locked |
+| B2 | a missing registered seed stops the lock, and a wholly absent required arm counts as all its seeds missing rather than exempting itself; "required" is declared in `fiber.required_arms`, not inferred from which arms produced files |
 
 `environment.yml` / lock file and CI remain open (see §9).
 
@@ -193,6 +213,9 @@ against rotations of one while claiming the subspace was fixed.
    a GitHub Actions run over the CPU suite are not yet in place.
 5. **Nothing has been measured about the channel.** Every number in this report is a
    protocol calibration or a synthetic check.
+6. **The inertia radius is a bootstrap estimate**, not an analytic concentration bound,
+   so `certified_positive_inertia` is an approximate certificate. It is labelled as such
+   in the output.
 
 ## 10. Restarting Phase 2/3
 

@@ -166,7 +166,11 @@ def _per_sample_contributions(Z, F, V, center: bool = True) -> np.ndarray:
     A, B = Z @ V.T, F @ V.T
     if center:
         A, B = A - A.mean(0), B - B.mean(0)
-    return 2 * A * B - B * B
+    # scaled so the column MEAN equals v_j' C_cert v_j exactly: the operator uses the
+    # unbiased N-1 denominator, a plain mean would use N, and "exactly equals" has to
+    # be true rather than nearly true
+    n = A.shape[0]
+    return (2 * A * B - B * B) * (n / max(n - 1, 1))
 
 
 def _fold(Z, F, V, h_fit, h_eval, center: bool):
@@ -175,6 +179,40 @@ def _fold(Z, F, V, h_fit, h_eval, center: bool):
     W = np.ascontiguousarray(np.linalg.eigh(C1)[1][:, ::-1].T)
     terms = _per_sample_contributions(Z[h_eval], F[h_eval], W @ V, center=center)
     return terms.mean(0), terms
+
+
+def _weyl_inertia(Z, F, V, rng, bootstrap: int, alpha: float, center: bool) -> dict:
+    """A genuine lower bound on the POSITIVE INERTIA of the restricted operator.
+
+    Counting directions with a positive lower bound is not a rank: positive quadratic
+    forms do not count positive eigenvalues. Instead bound the whole matrix. With a
+    high-probability radius eps on the spectral-norm deviation, Weyl gives
+
+        lambda_j(C_V) >= lambda_j(C_hat) - eps        simultaneously for every j
+
+    so `#{j : lambda_j(C_hat) - eps > 0}` lower-bounds the number of positive
+    eigenvalues. Eigenvalues are rotation-invariant, so unlike the per-direction count
+    this needs no cross-fitted rotation -- and one radius covers all k at once, so no
+    further multiplicity correction is required.
+
+    eps is estimated by bootstrap, so this is an approximate rather than an analytic
+    bound, and the report says so.
+    """
+    Zc, Fc = _as_2d(Z), _as_2d(F)
+    n = Zc.shape[0]
+    C_hat = project_operator(Zc, Fc, V, center=center)
+    devs = np.empty(bootstrap)
+    for b in range(bootstrap):
+        idx = rng.integers(0, n, n)
+        devs[b] = np.linalg.norm(project_operator(Zc[idx], Fc[idx], V, center=center)
+                                 - C_hat, 2)
+    eps = float(np.quantile(devs, 1 - alpha))
+    lam = np.linalg.eigvalsh(C_hat)[::-1]
+    return {"weyl_radius": eps,
+            "certified_positive_inertia": int((lam - eps > 0).sum()),
+            "eigenvalues_restricted": lam,
+            "inertia_note": ("Weyl with a bootstrap spectral-norm radius: an approximate "
+                             "lower bound on the number of positive eigenvalues")}
 
 
 def subspace_certificate(Z, F, V, center: bool = True, tol: float | None = None,
@@ -234,21 +272,37 @@ def subspace_certificate(Z, F, V, center: bool = True, tol: float | None = None,
     # Bonferroni correction because k of them are inspected at once; the total-mass
     # bound is a single statistic and does not.
     stats: dict = {}
+    if bootstrap:
+        # Eigenvalues are rotation-invariant, so the inertia certificate needs no
+        # cross-fitted rotation and is available even without folds.
+        stats.update(_weyl_inertia(Z, F, V, np.random.default_rng(seed + 2),
+                                   int(bootstrap), alpha, center))
     if bootstrap and folds:
         brng = np.random.default_rng(seed + 1)
-        lcbs, masses = [], []
+        n_folds = max(len(folds), 1)
+        lcbs, masses, ranks = [], [], []
         for mu_f, terms in folds:
             n = terms.shape[0]
             idx = brng.integers(0, n, size=(int(bootstrap), n))
             boot = terms[idx].mean(axis=1)
-            lcbs.append(np.quantile(boot, alpha / max(len(mu_f), 1), axis=0))
-            masses.append(float(np.quantile(np.clip(boot, 0, None).sum(axis=1), alpha)))
+            # multiplicity spans BOTH levels: k directions inspected within each of the
+            # folds, so alpha/(2k) per direction per fold by a union bound, which needs
+            # no independence between the folds. The total mass is one statistic per
+            # fold, hence alpha/2.
+            lcbs.append(np.quantile(boot, alpha / (n_folds * max(len(mu_f), 1)), axis=0))
+            masses.append(float(np.quantile(np.clip(boot, 0, None).sum(axis=1),
+                                            alpha / n_folds)))
         lcb = np.mean(lcbs, axis=0)
-        stats = {"lcb_per_direction": lcb,
-                 "statistically_certified_rank": int((lcb > 0).sum()),
+        stats = {**stats, "lcb_per_direction": lcb,
+                 # NOT a rank: these are quadratic forms along k chosen directions, and
+                 # positive quadratic forms do not count positive eigenvalues.
+                 # C = [[1,2],[2,1]] has diagonal (1,1) but eigenvalues (3,-1), so its
+                 # positive inertia is 1 while this count would say 2.
+                 "certified_positive_direction_count": int((lcb > 0).sum()),
                  "D_cert_LCB": float(np.mean(masses)),
                  "bootstrap_resamples": int(bootstrap), "alpha": alpha,
-                 "per_direction_correction": "bonferroni over k"}
+                 "per_direction_correction": "bonferroni over k and folds",
+                 **stats}
 
     fold_mass = [float(np.clip(m, 0, None).sum()) for m, _ in folds]
     return {

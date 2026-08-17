@@ -126,7 +126,18 @@ def main() -> int:
                     prev = json.loads(done.read_text())
                 except json.JSONDecodeError:
                     prev = {}
-                if prev.get("n") == n and prev.get("fingerprint") == fingerprint:
+                fresh = prev.get("n") == n and prev.get("fingerprint") == fingerprint
+                if fresh and split.startswith("test") and lock_sha:
+                    # A pre-existing test shard may NOT be skipped and then covered by a
+                    # freshly written manifest: that would prove the manifest was created
+                    # after the lock, not that the pixels were. The binding lives in the
+                    # shard's own marker and is written only when the shard is generated.
+                    if prev.get("selection_sha") != lock_sha:
+                        log.warning("%s shard %d predates this lock (%s); regenerating so "
+                                    "the pixels are demonstrably post-lock", split, shard,
+                                    prev.get("selection_sha"))
+                        fresh = False
+                if fresh:
                     log.info("%s shard %d: already cached", split, shard)
                     continue
                 log.warning("%s shard %d: stale cache (%s), regenerating. If only the "
@@ -166,6 +177,9 @@ def main() -> int:
             # so re-generating at another batch does NOT reproduce these pixels.
             done.write_text(json.dumps({"n": n, "shard_size": args.shard_size,
                                         "batch": args.batch, "fingerprint": fingerprint,
+                                        # written only here, when the pixels were made
+                                        "selection_sha": lock_sha if split.startswith("test") else None,
+                                        "generated_under_lock": bool(lock_sha) and split.startswith("test"),
                                         "seconds": round(time.time() - t0, 1)}))
         timings[split] = round(time.time() - t_split, 1)
         log.info("%s done in %.1f s", split, timings[split])
@@ -190,11 +204,21 @@ def main() -> int:
     }
     (root / "manifest.json").write_text(json.dumps(manifest, indent=2))
     if lock_sha:
+        # The manifest only SUMMARISES what the shard markers say; it never asserts more.
+        bound, unbound = [], []
+        for split in test_splits:
+            for marker in sorted((root / split).glob("*.done")):
+                prev = json.loads(marker.read_text())
+                (bound if prev.get("selection_sha") == lock_sha else unbound).append(
+                    f"{split}/{marker.stem}")
         (root / "test_cache_manifest.json").write_text(json.dumps({
             "selection_sha": lock_sha, "selection": str(Path(args.post_lock).resolve()),
             "splits": test_splits, "config_fingerprint": fingerprint,
-            "generated_after_lock": True}, indent=2))
-        log.info("test cache bound to the lock %s", lock_sha)
+            "shards_generated_under_this_lock": bound,
+            "shards_not_bound_to_this_lock": unbound,
+            "generated_after_lock": not unbound}, indent=2))
+        log.info("test cache: %d shards generated under this lock, %d not",
+                 len(bound), len(unbound))
     log.info("wrote %s", root / "manifest.json")
     return 0
 

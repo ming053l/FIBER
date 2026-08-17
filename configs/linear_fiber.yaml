@@ -41,6 +41,11 @@ dataset:
 
 fiber:
   robust_dims: 64                 # ablation: [16, 32, 64, 128, 256]
+  # Arms the GATE requires. Completeness is checked against exactly these: an arm with
+  # no runs at all is the worst case, not an exemption, so "required" has to be declared
+  # rather than inferred from which arms happen to have produced files (B2).
+  # D2_rot_rand / D3_rot_learn are required by the P0-7 basis analysis, not the gate.
+  required_arms: [C2_haar, B_signperm, C_hadamard, C3_frozen_hh, D_spectral, E_learned]
   arms:
     # Sanity only. Identity loses to any global transform for a trivial locality
     # reason, so NO gate ever compares against it (PLAN.md R1).

@@ -733,6 +733,7 @@ def test_a_reduced_seed_set_may_be_declared_and_is_recorded(tmp_path):
         _scoped_run(d, "D_spectral", "spectral_topk", s, 0.40, 0.40)
     sel = tmp_path / "sel.json"
     p = _run("select_method.py", "--tag", "unit", "--results-dir", str(d), "--out", str(sel),
+             "--required-arms", "C2_haar,D_spectral",
              "--registered-seeds", "C2_haar=0,1", "--registered-seeds", "D_spectral=0,1")
     assert p.returncode == 0, p.stderr
     sc = json.loads(sel.read_text())["seed_completeness"]
@@ -764,3 +765,45 @@ def test_unknown_arm_in_a_seed_declaration_is_rejected(tmp_path):
     p = _run("select_method.py", "--tag", "unit", "--results-dir", str(d),
              "--out", str(tmp_path / "s.json"), "--registered-seeds", "NoSuchArm=0")
     assert p.returncode != 0 and "unknown arm" in (p.stdout + p.stderr)
+
+
+def test_an_entirely_absent_required_arm_is_the_worst_case_not_an_exemption(tmp_path):
+    """Skipping an arm with no runs made whole-arm failure invisible -- the same
+    survivorship bias B2 exists for, one level larger."""
+    d = tmp_path / "results"
+    d.mkdir()
+    for s in _arm_seeds("C2_haar"):
+        _scoped_run(d, "C2_haar", "haar", s, 0.50, 0.50)
+    for s in _arm_seeds("D_spectral"):
+        _scoped_run(d, "D_spectral", "spectral_topk", s, 0.40, 0.40)
+    # E_learned is registered by the config and has NO runs whatsoever
+    p = _run("select_method.py", "--tag", "unit", "--results-dir", str(d),
+             "--out", str(tmp_path / "sel.json"))
+    assert p.returncode != 0
+    out = p.stdout + p.stderr
+    assert "registered seeds are missing" in out and "E_learned" in out
+
+
+def test_every_arm_the_driver_trains_exists_in_the_config():
+    """The counterexample that motivated the whole-arm fix: run_pilot.sh trained
+    `C3_rand_hh` while the config defines `C3_frozen_hh`, so every run of that arm
+    failed and completeness -- which skipped absent arms -- stayed silent."""
+    import re
+
+    script = Path("scripts/run_pilot.sh").read_text()
+    known = set(CFG["fiber"]["arms"])
+    referenced = set()
+    # literal names passed to --arm, and the loop lists they are iterated from
+    referenced |= set(re.findall(r"--arm\s+([A-Za-z]\w*)", script))
+    for body in re.findall(r"for (?:arm|a) in ([^;]+); do", script):
+        referenced |= {t for t in body.replace("\\", " ").split() if t[0].isalpha()}
+    unknown = sorted(t for t in referenced if t not in known)
+    assert referenced, "extracted no arm names; the test would pass vacuously"
+    assert not unknown, f"run_pilot.sh names arms the config does not define: {unknown}"
+
+
+def test_required_arms_are_declared_not_inferred():
+    assert set(CFG["fiber"]["required_arms"]) <= set(CFG["fiber"]["arms"])
+    # the P0-7 basis arms belong to that analysis, not to the gate
+    assert "D2_rot_rand" not in CFG["fiber"]["required_arms"]
+    assert "D3_rot_learn" not in CFG["fiber"]["required_arms"]
