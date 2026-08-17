@@ -31,10 +31,15 @@ class SideEncoder(nn.Module):
     """S -> h_S in R^64.
 
     The pooling query is ZERO-INITIALISED, so at init the softmax is exactly uniform and
-    the encoder starts as a mean-pooled linear projection. That matters for the same
-    reason arm C3 (frozen Householder, paired init) matters: the parameterisation
-    contributes nothing at step zero, so anything it gains is learning rather than a
-    different starting point.
+    the encoder starts as a mean-pooled linear projection: the pooling is NON-SELECTIVE
+    at initialisation, and any token preference is acquired during training.
+
+    That is the precise claim, and it is narrower than C3's paired init. The side
+    parameterisation as a whole does NOT contribute nothing at step zero -- the random
+    768->64 projection, the concatenated branch and the widened head all exist and all
+    affect the output from the first forward pass, which is exactly what
+    test_S_actually_changes_the_output asserts. Only the attention selectivity starts at
+    zero.
     """
 
     def __init__(self, tokens: int = S_TOKENS, features: int = S_FEATURES,

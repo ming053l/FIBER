@@ -68,9 +68,9 @@ def make_loader(root, split: str, bank: ChannelBank, *, attacks=None, mode="samp
                 crossfit: str | None = None, crossfit_sub: str | None = None,
                 batch_size: int = 16, workers: int = 8, shuffle: bool = True,
                 epoch_salt: str = "", limit: int = 0,
-                subset_size: int = 0, subset_seed: int = 0) -> DataLoader:
+                subset_size: int = 0, subset_seed: int = 0, side=None) -> DataLoader:
     ds = FiberDataset(root, split, bank, attacks=attacks, mode=mode, crossfit=crossfit,
-                      crossfit_sub=crossfit_sub, epoch_salt=epoch_salt)
+                      crossfit_sub=crossfit_sub, epoch_salt=epoch_salt, side=side)
     if subset_size:
         # NESTED random subsets, for sample-size experiments. A seeded permutation
         # taken as a prefix means N=100 is a subset of N=200 is a subset of the whole
@@ -89,6 +89,22 @@ def make_loader(root, split: str, bank: ChannelBank, *, attacks=None, mode="samp
         ds.records = ds.records[:limit]
     return DataLoader(ds, batch_size=batch_size, shuffle=shuffle, num_workers=workers,
                       pin_memory=True, drop_last=False, persistent_workers=workers > 0)
+
+
+def _apply(model, batch, device):
+    """Call the receiver with S only when it is a side model.
+
+    Explicit rather than duck-typed on the batch: a side model that silently ran blind
+    because `s` was missing from the batch would make three of the four Phase A arms
+    identical and the experiment vacuous, with nothing in the logs to show for it.
+    """
+    x = batch["image"].to(device, non_blocking=True)
+    if getattr(model, "side", None) is None:
+        return model(x)
+    if "s" not in batch:
+        raise RuntimeError("side receiver got a batch without S: the loader was built "
+                           "without a SideConditioning provider")
+    return model(x, batch["s"].to(device, non_blocking=True))
 
 
 def _lr_at(step: int, total: int, cfg: TrainConfig) -> float:
@@ -127,12 +143,19 @@ def head_losses(out: dict, w_true: torch.Tensor, cfg: TrainConfig):
 def train_extractor(frame, root, bank: ChannelBank, cfg: TrainConfig, *, split="train",
                     crossfit: str | None = "B", device="cuda:0", seed: int = 0,
                     learn_frame: bool = False, attacks=None, limit: int = 0,
-                    subset_size: int = 0, subset_seed: int = 0, log_every: int = 50):
+                    subset_size: int = 0, subset_seed: int = 0, side=None,
+                    model=None, log_every: int = 50):
     """Returns (extractor, frame, history). `learn_frame=True` is the DISCOVERY
     stage of arm E only; evaluation always runs with the frame frozen."""
     device = torch.device(device)
     torch.manual_seed(derive_seed("extractor", seed) % (2**31))
-    model = build_extractor(cfg.extractor_arch, k=frame.k).to(device)
+    if model is None:
+        model = build_extractor(cfg.extractor_arch, k=frame.k).to(device)
+    else:
+        # Already constructed and hashed by the caller, so the recorded init digest is
+        # the state that actually gets trained rather than a second draw from the same
+        # seed. The seed is still set above, so the loader's shuffle order is unchanged.
+        model = model.to(device)
     frame = frame.to(device)
     frame.requires_grad_(learn_frame)
 
@@ -163,7 +186,7 @@ def train_extractor(frame, root, bank: ChannelBank, cfg: TrainConfig, *, split="
         loader = make_loader(root, split, bank, attacks=attacks, crossfit=crossfit,
                              batch_size=cfg.batch_size, workers=cfg.num_workers,
                              epoch_salt=f"e{epoch}", limit=limit,
-                             subset_size=subset_size, subset_seed=subset_seed)
+                             subset_size=subset_size, subset_seed=subset_seed, side=side)
         total_steps = cfg.epochs * max(len(loader), 1)
         model.train()
         t0, run = time.time(), []
@@ -171,12 +194,11 @@ def train_extractor(frame, root, bank: ChannelBank, cfg: TrainConfig, *, split="
             lr = _lr_at(step, total_steps, cfg)
             for g in opt.param_groups:
                 g["lr"] = lr * g["lr_scale"]
-            x = batch["image"].to(device, non_blocking=True)
             z = batch["z"].to(device, non_blocking=True)
             with torch.no_grad() if not learn_frame else torch.enable_grad():
                 w = frame.project(z)
             with torch.cuda.amp.autocast(enabled=cfg.amp):
-                out = model(x)
+                out = _apply(model, batch, device)
             out = {kk: v.float() for kk, v in out.items()}
             loss, parts = head_losses(out, w, cfg)
             opt.zero_grad(set_to_none=True)
@@ -204,7 +226,8 @@ def train_extractor(frame, root, bank: ChannelBank, cfg: TrainConfig, *, split="
 
 @torch.no_grad()
 def evaluate(model, frame, root, bank: ChannelBank, split: str, attacks, *, device="cuda:0",
-             batch_size: int = 32, workers: int = 8, limit: int = 0) -> dict:
+             batch_size: int = 32, workers: int = 8, limit: int = 0,
+             side=None) -> dict:
     """Per-attack sign BER, kept PER SAMPLE so Gate 3A's paired bootstrap can
     difference arms on the same (z_i, prompt_i, attack_i)."""
     device = torch.device(device)
@@ -213,13 +236,13 @@ def evaluate(model, frame, root, bank: ChannelBank, split: str, attacks, *, devi
     out: dict[str, dict] = {}
     for attack in attacks:
         loader = make_loader(root, split, bank, attacks=[attack], mode="fixed",
-                             batch_size=batch_size, workers=workers, shuffle=False, limit=limit)
+                             batch_size=batch_size, workers=workers, shuffle=False,
+                             limit=limit, side=side)
         per_sample, ids, w_all, w_hat_all = [], [], [], []
         for batch in loader:
-            x = batch["image"].to(device, non_blocking=True)
             z = batch["z"].to(device, non_blocking=True)
             w = frame.project(z)
-            pred = model(x)
+            pred = _apply(model, batch, device)
             per_sample.append(sign_ber(pred["sign_logits"].float(), w, reduce="per_sample").cpu())
             if "w_hat" in pred:
                 w_all.append(w.cpu())

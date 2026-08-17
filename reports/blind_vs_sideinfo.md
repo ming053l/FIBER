@@ -1,8 +1,7 @@
 # Blind vs side-information observability — design note
 
-**Status: design only. Not registered, not run, nothing implemented.** Written down now
-because the k diagnostic closed the two hypotheses that pointed elsewhere, and because
-the confounds below have to be fixed before a single number is produced.
+**Status: Phase A preregistered and frozen; conditioning foundation and side encoder
+implemented; no Phase A outcome observed.** Scope boundary: `reports/scope_v1.md`.
 
 ## Why this, and not 10k
 
@@ -175,14 +174,13 @@ The permutation must also be **applied once and frozen**, like any other protoco
 Re-randomising each epoch turns the placebo into an easier noise-averaging task, and it
 could then beat the blind arm for a reason that has nothing to do with information.
 
-## Not yet decided
+## Settled, and what genuinely remains open
 
-* Whether the side teacher sees `S` concatenated at the trunk output or fused earlier.
-  The placebo above controls for capacity at whichever choice is made, but the choice
-  still has to be registered rather than tuned.
-* `S` fusion point, the concrete definition of `S_null`, and the effect and equivalence
-  margins. These are engineering choices, not conceptual holes, but each must be
-  registered rather than tuned.
+Fusion point, `S_null`, the margins, the replication and the side encoder are all fixed
+below. Nothing about the design is open; what remains is running it.
+
+Still genuinely open, and out of scope for v1 per `reports/scope_v1.md`:
+
 * Sample size. `A_operator` was 537 at pilot scale; a higher-dimensional teacher input
   makes that harder, not easier, and the learning curve says nothing about this
   experiment.
@@ -405,3 +403,42 @@ seeds give the equivalence test enough precision to pass.* It does not guarantee
 Phase B — the direct `C_gain(h)` certificate and the `E[h|Y] = 0` residualisation problem
 — is opened **only** if Phase A shows a strong `S_correct >> S_shuffled` effect. Building
 inference machinery for an effect that may not exist is the wrong order.
+
+
+## Side encoder — frozen
+
+    S in R^{77 x 768}
+      -> shared Linear(768 -> 64), one projection for all token positions
+      -> single learned-query attention pooling, query ZERO-INITIALISED
+      -> h_S in R^{64}
+    [h_Y (512) ; h_S (64)] -> the same prediction heads
+
+The zero-init query makes the softmax exactly uniform at step zero (measured:
+`max|alpha - 1/77| = 0`), so the encoder begins as a mean-pooled linear projection: the
+pooling is **non-selective at initialisation**, and any token preference is acquired
+during training.
+
+That claim is narrower than arm C3's paired initialisation and must not be stated as
+"the parameterisation contributes nothing at step zero". It does contribute: the random
+`768 -> 64` projection, the concatenated branch and the widened head all exist and all
+affect the output from the first forward pass — which is exactly what
+`test_S_actually_changes_the_output` asserts. Only the attention selectivity starts at
+zero. No Transformer, no second MLP layer, no pooling ablation.
+
+### Capacity, per arm and not per branch
+
+The side branch is 49,280 parameters in both roles, but the concatenation also widens the
+head — and the head is `Linear(., k)` for the receiver and `Linear(., d)` for the teacher:
+
+| model | total | vs blind | side branch | head increase |
+|---|---|---|---|---|
+| Extractor, k=64 | 11,299,648 | **+57,472** | 49,280 | 64 x 64 x 2 = 8,192 |
+| Teacher, d=16384 | 20,679,360 | **+1,097,856** | 49,280 | 64 x 16384 = 1,048,576 |
+
+Quoting "the side branch is 49K parameters" would understate the teacher by a factor of
+20. Report the total per arm.
+
+This does not threaten the primary contrast: `S_correct` and `S_shuffled` run the *same*
+576-d architecture, and the `S_null` arm exists precisely to measure whatever the extra
+capacity buys on its own. Fusion is not redesigned to save the 1M — concatenation is what
+was registered, and the effect it introduces is already captured by a control.

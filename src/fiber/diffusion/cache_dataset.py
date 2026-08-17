@@ -175,7 +175,8 @@ class FiberDataset(torch.utils.data.Dataset):
     def __init__(self, root, split: str, bank: ChannelBank, attacks=None,
                  mode: str = "sampled", crossfit: str | None = None,
                  crossfit_sub: str | None = None, epoch_salt: str = "",
-                 eval_draw_salt: str = "eval-v1", normalise: bool = True):
+                 eval_draw_salt: str = "eval-v1", normalise: bool = True,
+                 side=None):
         self.root = Path(root)
         self.split = split
         self.bank = bank
@@ -201,6 +202,7 @@ class FiberDataset(torch.utils.data.Dataset):
                                "(images are not regenerated)")
             recs = [r for r in recs if r["crossfit_sub"] == crossfit_sub]
         self.records = sorted(recs, key=lambda r: r["index"])
+        self.side = side
         self._shards: dict[int, tuple] = {}
 
     def __len__(self) -> int:
@@ -236,13 +238,20 @@ class FiberDataset(torch.utils.data.Dataset):
         x = torch.from_numpy(np.ascontiguousarray(y)).permute(2, 0, 1).float() / 255.0
         if self.normalise:
             x = (x - 0.5) / 0.5
-        return {
+        item = {
             "image": x,
             "z": torch.from_numpy(z).reshape(-1),
             "attack": name,
             "sample_id": rec["sample_id"],
             "index": rec["index"],
         }
+        if self.side is not None:
+            sv = self.side.get(rec["sample_id"])
+            if sv is not None:
+                # already float32 [77, 768] from the provider; every arm sees the same
+                # representation so the arms differ in content and nothing else
+                item["s"] = torch.from_numpy(np.ascontiguousarray(sv))
+        return item
 
 
 def write_index(records: list[Sample], root: Path) -> None:
