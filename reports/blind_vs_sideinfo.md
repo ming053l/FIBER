@@ -21,7 +21,17 @@ are out, it stops being a footnote and becomes the obvious question.
 Fixed notation, so that "conditioning" never has to be disambiguated later:
 
     P = the raw prompt (text)
-    S = C(P) = the conditioning TENSOR actually supplied to the generator
+    S = C(P) = the SAMPLE-SPECIFIC POSITIVE CFG CONDITIONING EMBEDDING
+               actually used during generation
+
+`S` is deliberately not "the UNet's conditioning tensor". Under classifier-free guidance
+the UNet also consumes an unconditional branch, and that branch is a fixed part of the
+**channel protocol**, not something the receiver could know about a particular sample. It
+is also not a constant in the naive sense: measured, it is identical across rows within a
+batch (max|diff| 0.000000) yet differs by 0.015625 between batch sizes 12 and 8/4/1, so
+its text being fixed does not make its value fixed. Excluding it keeps the question
+clean — *what happens when the receiver knows the generator's sample-specific textual
+conditioning* — with no semantic gap to argue about.
 
 The side information in this experiment is **S, never P**. That choice asks "what if the
 receiver knows what the generator knew", not "which text encoder is better", and takes
