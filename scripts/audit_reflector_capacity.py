@@ -58,12 +58,37 @@ CAPACITY_SUFFICIENT = 0.99
 CAPACITY_MARGINAL = 0.95
 
 
-def classify(a_sub: float) -> str:
-    if a_sub >= CAPACITY_SUFFICIENT:
-        return "sufficient"
-    if a_sub >= CAPACITY_MARGINAL:
-        return "marginal"
-    return "insufficient"
+def dimension_feasible(k: int, m: int, d: int) -> bool:
+    """m(d-1) >= k(d-k): the Grassmann degrees-of-freedom count. Necessary for generic
+    coverage, not sufficient."""
+    return m * (d - 1) >= k * (d - k)
+
+
+def classify(a_best: float, feasible: bool = True, converged: bool = True) -> str:
+    """Classify by the BEST alignment reached, and never call a plateau a capacity limit
+    unless the dimension count already rules generic coverage out.
+
+    A low plateau says the paired-identity start plus this optimiser stopped there. It
+    does NOT show that no parameter setting reaches the target -- a local basin looks
+    identical. So:
+
+      not_converged        only hit the step limit; says nothing
+      empirically_sufficient  generic target reached >= 0.99: constructive evidence the
+                              parameterisation covers the sampled targets
+      marginal_fit         0.95 <= A < 0.99
+      structurally_insufficient  low fit AND the dimension count already forbids generic
+                              coverage -- the only label that is a capacity claim
+      ambiguous_capacity_vs_optimization  low fit while dimension-feasible: unresolved
+                              between coverage and trainability, and a multi-start
+                              diagnostic is what separates them
+    """
+    if not converged:
+        return "not_converged"
+    if a_best >= CAPACITY_SUFFICIENT:
+        return "empirically_sufficient"
+    if a_best >= CAPACITY_MARGINAL:
+        return "marginal_fit"
+    return "structurally_insufficient" if not feasible else "ambiguous_capacity_vs_optimization"
 
 
 def recommend_m(rows: list[dict]) -> dict:
@@ -82,12 +107,14 @@ def recommend_m(rows: list[dict]) -> dict:
         if worst is None:
             raise KeyError(f"row for k={row['k']} m={row['m']} has no alignment")
         entry = out.setdefault(k, {"k": k, "recommended_m": None, "by_m": {}})
-        cls = row.get("capacity_class") or classify(worst)
+        cls = row.get("capacity_class") or classify(
+            worst, dimension_feasible(row["k"], row["m"], row.get("d", 16384)),
+            row.get("converged", True))
         entry["by_m"][row["m"]] = {"alignment_min_over_seeds": worst, "class": cls,
                                    "converged": row.get("converged", True)}
         # An unconverged cell says nothing about capacity, so it can neither be
         # recommended nor rule out a smaller m.
-        if entry["recommended_m"] is None and cls == "sufficient":
+        if entry["recommended_m"] is None and cls == "empirically_sufficient":
             entry["recommended_m"] = row["m"]
     return out
 
@@ -144,7 +171,7 @@ def fit(d: int, k: int, m: int, kind: str, seed: int, max_steps: int, lr: float,
     opt = torch.optim.Adam(frame.parameters(), lr=lr)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=max_steps)
     start = float(alignment(frame.rows().detach(), target))
-    t0, best, best_step, step = time.time(), -1.0, 0, 0
+    t0, best, best_step, step = time.time(), start, 0, 0
     while step < max_steps:
         opt.zero_grad(set_to_none=True)
         loss = 1.0 - alignment(frame.rows(), target)
@@ -161,13 +188,20 @@ def fit(d: int, k: int, m: int, kind: str, seed: int, max_steps: int, lr: float,
                 break
     with torch.no_grad():
         a = float(alignment(frame.rows(), target))
+        best = max(best, a)
         ortho = frame.orthonormality_error()
-    return {"k": k, "m": m, "target": kind, "seed": seed,
-            "alignment_start": start, "alignment_final": a,
-            "projector_error": projector_error(a),
+    feasible = dimension_feasible(k, m, d)
+    return {"k": k, "m": m, "d": d, "target": kind, "seed": seed,
+            "alignment_start": start,
+            # capacity asks whether the subspace was EVER reached, so the best iterate is
+            # the capacity metric; the final one is an optimisation-stability diagnostic
+            "alignment_best": best, "best_step": best_step, "alignment_final": a,
+            "dimension_feasible": feasible,
+            "projector_error": projector_error(best),
             "orthonormality_error": ortho,
             "steps_used": step, "max_steps": max_steps,
             "converged": step < max_steps,
+            "capacity_class": classify(best, feasible, step < max_steps),
             "necessary_m": round(necessary_m(k, d), 1),
             "m_meets_necessary_condition": m >= necessary_m(k, d),
             "seconds": round(time.time() - t0, 1)}
@@ -197,7 +231,9 @@ def main() -> int:
             # two seeds: mean and spread determine the minimum exactly
             if "alignment_min" not in row:
                 row["alignment_min"] = row["alignment_final"] - row.get("alignment_spread", 0) / 2
-            row["capacity_class"] = classify(row["alignment_min"])
+            row["capacity_class"] = classify(
+                row["alignment_min"], dimension_feasible(row["k"], row["m"], blob["d"]),
+                row.get("converged", True))
         blob["recommended_m_by_k"] = recommend_m(rows)
         blob["decision_rule"] = {"sufficient": CAPACITY_SUFFICIENT,
                                  "marginal": CAPACITY_MARGINAL,
@@ -218,20 +254,21 @@ def main() -> int:
                 res = [fit(args.d, k, m, kind, s, args.steps, args.lr, device,
                            patience=args.patience) for s in args.seeds]
                 a = sum(r["alignment_final"] for r in res) / len(res)
-                e = sum(r["projector_error"] for r in res) / len(res)
-                worst = min(r["alignment_final"] for r in res)
+                worst = min(r["alignment_best"] for r in res)
                 converged = all(r["converged"] for r in res)
-                row = {**res[0], "seed": args.seeds, "alignment_final": a,
-                       "projector_error": e, "converged": converged,
+                feasible = res[0]["dimension_feasible"]
+                row = {**res[0], "seed": args.seeds,
+                       "alignment_best": float(sum(r["alignment_best"] for r in res) / len(res)),
+                       "alignment_final": a, "projector_error": projector_error(worst),
+                       "converged": converged, "dimension_feasible": feasible,
                        "steps_used": [r["steps_used"] for r in res],
                        "alignment_min": worst,
-                       # a cell that only ran out of steps is not a capacity statement
-                       "capacity_class": classify(worst) if converged else "not_converged",
-                       "alignment_spread": max(r["alignment_final"] for r in res) - worst}
+                       "capacity_class": classify(worst, feasible, converged),
+                       "alignment_spread": max(r["alignment_best"] for r in res) - worst}
                 rows.append(row)
-                log.info("%-9s k=%-4d m=%-4d  A_sub %.4f  E_sub %.4f  steps %s  %s",
-                         kind, k, m, a, e, row["steps_used"],
-                         "converged" if converged else "HIT STEP LIMIT")
+                log.info("%-9s k=%-4d m=%-4d  A_best %.4f (final %.4f)  steps %s  %s",
+                         kind, k, m, row["alignment_best"], a, row["steps_used"],
+                         row["capacity_class"])
 
     out = {"d": args.d, "steps": args.steps, "lr": args.lr, "rows": rows,
            "decision_rule": {"sufficient": CAPACITY_SUFFICIENT,

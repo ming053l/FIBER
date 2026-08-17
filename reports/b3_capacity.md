@@ -85,4 +85,30 @@ steps — and records `converged` and `steps_used` per cell. A cell that merely 
 step limit is classified `not_converged`, and can neither be recommended nor rule out a
 smaller `m`.
 
-_Table above retained as the record of the invalid run; the corrected sweep replaces it._
+## What a low plateau can and cannot establish
+
+A plateau at low alignment says the paired-identity start plus this optimiser stopped
+there. It does **not** show that no parameter setting reaches the target — a local basin
+looks identical from outside. So the classification separates the three levels of
+evidence rather than collapsing them into "insufficient":
+
+| class | when | strength |
+|---|---|---|
+| `structurally_insufficient` | fit below threshold **and** `m(d-1) < k(d-k)` | a genuine capacity claim; the degrees of freedom are not there |
+| `empirically_sufficient` | generic target reaches `A_best >= 0.99` at every seed | constructive: the parameterisation demonstrably covers the sampled targets |
+| `marginal_fit` | `0.95 <= A_best < 0.99` | |
+| `ambiguous_capacity_vs_optimization` | fit below threshold while dimension-feasible | **unresolved**; coverage and trainability are not separated |
+| `not_converged` | only hit the step limit | says nothing |
+
+Only `ambiguous` cells need the follow-up: refit the same `(k, m, T)` from several
+random *unpaired* reflector initialisations. A restart reaching ~1.0 where the paired
+start reached 0.80 shows the capacity exists and trainability from the Haar-paired start
+is the limitation. That diagnostic is not a proposal for arm E's initialisation — arm E
+starts at Haar by design (P0-4) — it is only how the ambiguity is resolved.
+
+The capacity metric is `alignment_best` over the trajectory, since the question is
+whether the subspace was ever reached; `alignment_final` is retained as an
+optimisation-stability diagnostic.
+
+_The 250-step table above is retained as the record of the invalid run; the corrected
+convergence-based sweep replaces it._

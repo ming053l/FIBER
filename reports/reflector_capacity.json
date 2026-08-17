@@ -1,6 +1,6 @@
 {
   "d": 16384,
-  "steps": 250,
+  "steps": 6000,
   "lr": 0.05,
   "rows": [
     {
@@ -12,15 +12,21 @@
         1
       ],
       "alignment_start": 0.000983389443717897,
-      "alignment_final": 0.944520890712738,
-      "projector_error": 0.33243365120818613,
-      "orthonormality_error": 1.1920928955078125e-07,
+      "alignment_final": 1.0,
+      "projector_error": 0.0,
+      "orthonormality_error": 2.384185791015625e-07,
+      "steps_used": [
+        700,
+        1000
+      ],
+      "max_steps": 6000,
+      "converged": true,
       "necessary_m": 16.0,
       "m_meets_necessary_condition": true,
-      "seconds": 6.5,
-      "alignment_spread": 0.014042496681213379,
-      "alignment_min": 0.9374996423721313,
-      "capacity_class": "insufficient"
+      "seconds": 18.7,
+      "alignment_min": 1.0,
+      "capacity_class": "sufficient",
+      "alignment_spread": 0.0
     },
     {
       "k": 16,
@@ -31,15 +37,21 @@
         1
       ],
       "alignment_start": 0.000983389443717897,
-      "alignment_final": 0.9992278516292572,
-      "projector_error": 0.027959655073894266,
+      "alignment_final": 1.0,
+      "projector_error": 0.0,
       "orthonormality_error": 1.1920928955078125e-07,
+      "steps_used": [
+        600,
+        700
+      ],
+      "max_steps": 6000,
+      "converged": true,
       "necessary_m": 16.0,
       "m_meets_necessary_condition": true,
-      "seconds": 11.9,
-      "alignment_spread": 0.001544177532196045,
-      "alignment_min": 0.9984557628631592,
-      "capacity_class": "sufficient"
+      "seconds": 27.4,
+      "alignment_min": 1.0,
+      "capacity_class": "sufficient",
+      "alignment_spread": 0.0
     },
     {
       "k": 16,
@@ -53,12 +65,18 @@
       "alignment_final": 1.0,
       "projector_error": 0.0,
       "orthonormality_error": 1.1920928955078125e-07,
+      "steps_used": [
+        600,
+        600
+      ],
+      "max_steps": 6000,
+      "converged": true,
       "necessary_m": 16.0,
       "m_meets_necessary_condition": true,
-      "seconds": 31.3,
-      "alignment_spread": 0.0,
+      "seconds": 51.6,
       "alignment_min": 1.0,
-      "capacity_class": "sufficient"
+      "capacity_class": "sufficient",
+      "alignment_spread": 0.0
     },
     {
       "k": 16,
@@ -69,91 +87,121 @@
         1
       ],
       "alignment_start": 0.0009833895601332188,
+      "alignment_final": 0.9999472796916962,
+      "projector_error": 0.007260875174786646,
+      "orthonormality_error": 1.1920928955078125e-07,
+      "steps_used": [
+        500,
+        500
+      ],
+      "max_steps": 6000,
+      "converged": true,
+      "necessary_m": 16.0,
+      "m_meets_necessary_condition": true,
+      "seconds": 98.8,
+      "alignment_min": 0.9998945593833923,
+      "capacity_class": "sufficient",
+      "alignment_spread": 0.00010544061660766602
+    },
+    {
+      "k": 64,
+      "m": 64,
+      "target": "generic",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.003934213891625404,
+      "alignment_final": 0.9765704274177551,
+      "projector_error": 0.21335618980596285,
+      "orthonormality_error": 1.7881393432617188e-07,
+      "steps_used": [
+        1600,
+        1900
+      ],
+      "max_steps": 6000,
+      "converged": true,
+      "necessary_m": 63.8,
+      "m_meets_necessary_condition": true,
+      "seconds": 43.0,
+      "alignment_min": 0.9687653183937073,
+      "capacity_class": "marginal",
+      "alignment_spread": 0.015610218048095703
+    },
+    {
+      "k": 64,
+      "m": 128,
+      "target": "generic",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.003934214357286692,
+      "alignment_final": 1.0,
+      "projector_error": 0.0,
+      "orthonormality_error": 2.384185791015625e-07,
+      "steps_used": [
+        1200,
+        1000
+      ],
+      "max_steps": 6000,
+      "converged": true,
+      "necessary_m": 63.8,
+      "m_meets_necessary_condition": true,
+      "seconds": 55.4,
+      "alignment_min": 1.0,
+      "capacity_class": "sufficient",
+      "alignment_spread": 0.0
+    },
+    {
+      "k": 64,
+      "m": 256,
+      "target": "generic",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.003934213891625404,
+      "alignment_final": 1.0,
+      "projector_error": 0.0,
+      "orthonormality_error": 2.384185791015625e-07,
+      "steps_used": [
+        700,
+        700
+      ],
+      "max_steps": 6000,
+      "converged": true,
+      "necessary_m": 63.8,
+      "m_meets_necessary_condition": true,
+      "seconds": 60.2,
+      "alignment_min": 1.0,
+      "capacity_class": "sufficient",
+      "alignment_spread": 0.0
+    },
+    {
+      "k": 64,
+      "m": 512,
+      "target": "generic",
+      "seed": [
+        0,
+        1
+      ],
+      "alignment_start": 0.003934214357286692,
       "alignment_final": 1.0,
       "projector_error": 0.0,
       "orthonormality_error": 1.1920928955078125e-07,
-      "necessary_m": 16.0,
+      "steps_used": [
+        600,
+        600
+      ],
+      "max_steps": 6000,
+      "converged": true,
+      "necessary_m": 63.8,
       "m_meets_necessary_condition": true,
-      "seconds": 72.1,
-      "alignment_spread": 0.0,
+      "seconds": 138.7,
       "alignment_min": 1.0,
-      "capacity_class": "sufficient"
-    },
-    {
-      "k": 64,
-      "m": 64,
-      "target": "generic",
-      "seed": [
-        0,
-        1
-      ],
-      "alignment_start": 0.003934213891625404,
-      "alignment_final": 0.7368717789649963,
-      "projector_error": 0.7254331786707469,
-      "orthonormality_error": 2.384185791015625e-07,
-      "necessary_m": 63.8,
-      "m_meets_necessary_condition": true,
-      "seconds": 6.7,
-      "alignment_spread": 0.0025731325149536133,
-      "alignment_min": 0.7355852127075195,
-      "capacity_class": "insufficient"
-    },
-    {
-      "k": 64,
-      "m": 128,
-      "target": "generic",
-      "seed": [
-        0,
-        1
-      ],
-      "alignment_start": 0.003934214357286692,
-      "alignment_final": 0.9372562170028687,
-      "projector_error": 0.3542422037462082,
-      "orthonormality_error": 1.7881393432617188e-07,
-      "necessary_m": 63.8,
-      "m_meets_necessary_condition": true,
-      "seconds": 11.9,
-      "alignment_spread": 0.00011658668518066406,
-      "alignment_min": 0.9371979236602783,
-      "capacity_class": "insufficient"
-    },
-    {
-      "k": 64,
-      "m": 256,
-      "target": "generic",
-      "seed": [
-        0,
-        1
-      ],
-      "alignment_start": 0.003934213891625404,
-      "alignment_final": 0.9999873042106628,
-      "projector_error": 0.00416842870467707,
-      "orthonormality_error": 2.384185791015625e-07,
-      "necessary_m": 63.8,
-      "m_meets_necessary_condition": true,
-      "seconds": 21.5,
-      "alignment_spread": 2.3603439331054688e-05,
-      "alignment_min": 0.9999755024909973,
-      "capacity_class": "sufficient"
-    },
-    {
-      "k": 64,
-      "m": 512,
-      "target": "generic",
-      "seed": [
-        0,
-        1
-      ],
-      "alignment_start": 0.003934214357286692,
-      "alignment_final": 1.0,
-      "projector_error": 0.0,
-      "orthonormality_error": 2.384185791015625e-07,
-      "necessary_m": 63.8,
-      "m_meets_necessary_condition": true,
-      "seconds": 57.7,
-      "alignment_spread": 0.0,
-      "alignment_min": 1.0,
-      "capacity_class": "sufficient"
+      "capacity_class": "sufficient",
+      "alignment_spread": 0.0
     },
     {
       "k": 128,
@@ -164,15 +212,21 @@
         1
       ],
       "alignment_start": 0.007950173690915108,
-      "alignment_final": 0.5016175508499146,
-      "projector_error": 0.9983811387298449,
+      "alignment_final": 0.5065936148166656,
+      "projector_error": 0.9933845023923172,
       "orthonormality_error": 2.384185791015625e-07,
+      "steps_used": [
+        3100,
+        3700
+      ],
+      "max_steps": 6000,
+      "converged": true,
       "necessary_m": 127.0,
       "m_meets_necessary_condition": false,
-      "seconds": 6.7,
-      "alignment_spread": 2.2649765014648438e-05,
-      "alignment_min": 0.5016062259674072,
-      "capacity_class": "insufficient"
+      "seconds": 81.2,
+      "alignment_min": 0.5065659880638123,
+      "capacity_class": "insufficient",
+      "alignment_spread": 5.525350570678711e-05
     },
     {
       "k": 128,
@@ -183,15 +237,21 @@
         1
       ],
       "alignment_start": 0.007950173690915108,
-      "alignment_final": 0.8043524026870728,
-      "projector_error": 0.6255055510948657,
+      "alignment_final": 0.9882820546627045,
+      "projector_error": 0.1508837258483485,
       "orthonormality_error": 2.980232238769531e-07,
+      "steps_used": [
+        1800,
+        1800
+      ],
+      "max_steps": 6000,
+      "converged": true,
       "necessary_m": 127.0,
       "m_meets_necessary_condition": true,
-      "seconds": 12.7,
-      "alignment_spread": 0.00771176815032959,
-      "alignment_min": 0.800496518611908,
-      "capacity_class": "insufficient"
+      "seconds": 91.2,
+      "alignment_min": 0.9843765497207642,
+      "capacity_class": "marginal",
+      "alignment_spread": 0.007811009883880615
     },
     {
       "k": 128,
@@ -202,15 +262,21 @@
         1
       ],
       "alignment_start": 0.007950173690915108,
-      "alignment_final": 0.964582622051239,
-      "projector_error": 0.2657011832723412,
+      "alignment_final": 1.0,
+      "projector_error": 0.0,
       "orthonormality_error": 2.384185791015625e-07,
+      "steps_used": [
+        900,
+        900
+      ],
+      "max_steps": 6000,
+      "converged": true,
       "necessary_m": 127.0,
       "m_meets_necessary_condition": true,
-      "seconds": 28.7,
-      "alignment_spread": 0.008191823959350586,
-      "alignment_min": 0.9604867100715637,
-      "capacity_class": "marginal"
+      "seconds": 103.1,
+      "alignment_min": 1.0,
+      "capacity_class": "sufficient",
+      "alignment_spread": 0.0
     },
     {
       "k": 128,
@@ -224,12 +290,18 @@
       "alignment_final": 1.0,
       "projector_error": 0.0,
       "orthonormality_error": 2.384185791015625e-07,
+      "steps_used": [
+        600,
+        600
+      ],
+      "max_steps": 6000,
+      "converged": true,
       "necessary_m": 127.0,
       "m_meets_necessary_condition": true,
-      "seconds": 71.1,
-      "alignment_spread": 0.0,
+      "seconds": 170.3,
       "alignment_min": 1.0,
-      "capacity_class": "sufficient"
+      "capacity_class": "sufficient",
+      "alignment_spread": 0.0
     },
     {
       "k": 256,
@@ -240,15 +312,21 @@
         1
       ],
       "alignment_start": 0.015601865947246552,
-      "alignment_final": 0.25969168543815613,
-      "projector_error": 1.2168059125100232,
+      "alignment_final": 0.26502521336078644,
+      "projector_error": 1.2124147688757867,
       "orthonormality_error": 3.5762786865234375e-07,
+      "steps_used": [
+        2600,
+        2900
+      ],
+      "max_steps": 6000,
+      "converged": true,
       "necessary_m": 252.0,
       "m_meets_necessary_condition": false,
-      "seconds": 9.9,
-      "alignment_spread": 4.89354133605957e-05,
-      "alignment_min": 0.25966721773147583,
-      "capacity_class": "insufficient"
+      "seconds": 102.6,
+      "alignment_min": 0.26497840881347656,
+      "capacity_class": "insufficient",
+      "alignment_spread": 9.360909461975098e-05
     },
     {
       "k": 256,
@@ -259,15 +337,21 @@
         1
       ],
       "alignment_start": 0.015601865015923977,
-      "alignment_final": 0.5041444003582001,
-      "projector_error": 0.9958469757689062,
+      "alignment_final": 0.5136258602142334,
+      "projector_error": 0.9862800189154703,
       "orthonormality_error": 3.5762786865234375e-07,
+      "steps_used": [
+        3500,
+        3900
+      ],
+      "max_steps": 6000,
+      "converged": true,
       "necessary_m": 252.0,
       "m_meets_necessary_condition": false,
-      "seconds": 20.7,
-      "alignment_spread": 2.3186206817626953e-05,
-      "alignment_min": 0.5041328072547913,
-      "capacity_class": "insufficient"
+      "seconds": 289.7,
+      "alignment_min": 0.5135645866394043,
+      "capacity_class": "insufficient",
+      "alignment_spread": 0.00012254714965820312
     },
     {
       "k": 256,
@@ -278,15 +362,21 @@
         1
       ],
       "alignment_start": 0.015601865015923977,
-      "alignment_final": 0.8692536652088165,
-      "projector_error": 0.5113594611292456,
+      "alignment_final": 0.9941417872905731,
+      "projector_error": 0.10668161512726039,
       "orthonormality_error": 3.5762786865234375e-07,
+      "steps_used": [
+        1900,
+        1500
+      ],
+      "max_steps": 6000,
+      "converged": true,
       "necessary_m": 252.0,
       "m_meets_necessary_condition": true,
-      "seconds": 44.6,
-      "alignment_spread": 0.0020887255668640137,
-      "alignment_min": 0.8682093024253845,
-      "capacity_class": "insufficient"
+      "seconds": 338.6,
+      "alignment_min": 0.9921878576278687,
+      "capacity_class": "sufficient",
+      "alignment_spread": 0.0039078593254089355
     },
     {
       "k": 256,
@@ -297,15 +387,21 @@
         1
       ],
       "alignment_start": 0.015601865947246552,
-      "alignment_final": 0.9879932701587677,
-      "projector_error": 0.1549617986583781,
-      "orthonormality_error": 4.76837158203125e-07,
+      "alignment_final": 1.0,
+      "projector_error": 0.0,
+      "orthonormality_error": 3.5762786865234375e-07,
+      "steps_used": [
+        800,
+        900
+      ],
+      "max_steps": 6000,
+      "converged": true,
       "necessary_m": 252.0,
       "m_meets_necessary_condition": true,
-      "seconds": 102.8,
-      "alignment_spread": 0.00016993284225463867,
-      "alignment_min": 0.9879083037376404,
-      "capacity_class": "marginal"
+      "seconds": 328.9,
+      "alignment_min": 1.0,
+      "capacity_class": "sufficient",
+      "alignment_spread": 0.0
     },
     {
       "k": 16,
@@ -316,15 +412,21 @@
         1
       ],
       "alignment_start": 0.9844127893447876,
-      "alignment_final": 0.9999999701976776,
-      "projector_error": 0.00017263349150062197,
-      "orthonormality_error": 1.1920928955078125e-07,
+      "alignment_final": 0.9999882876873016,
+      "projector_error": 0.0048395819821812555,
+      "orthonormality_error": 2.384185791015625e-07,
+      "steps_used": [
+        500,
+        500
+      ],
+      "max_steps": 6000,
+      "converged": true,
       "necessary_m": 16.0,
       "m_meets_necessary_condition": true,
-      "seconds": 6.8,
-      "alignment_spread": 5.960464477539063e-08,
-      "alignment_min": 0.9999999403953552,
-      "capacity_class": "sufficient"
+      "seconds": 13.4,
+      "alignment_min": 0.9999880194664001,
+      "capacity_class": "sufficient",
+      "alignment_spread": 5.364418029785156e-07
     },
     {
       "k": 16,
@@ -335,15 +437,21 @@
         1
       ],
       "alignment_start": 0.9689368605613708,
-      "alignment_final": 1.0,
-      "projector_error": 0.0,
+      "alignment_final": 0.9999626874923706,
+      "projector_error": 0.008634380914995675,
       "orthonormality_error": 2.384185791015625e-07,
+      "steps_used": [
+        500,
+        500
+      ],
+      "max_steps": 6000,
+      "converged": true,
       "necessary_m": 16.0,
       "m_meets_necessary_condition": true,
-      "seconds": 12.0,
-      "alignment_spread": 0.0,
-      "alignment_min": 1.0,
-      "capacity_class": "sufficient"
+      "seconds": 22.6,
+      "alignment_min": 0.9999603629112244,
+      "capacity_class": "sufficient",
+      "alignment_spread": 4.649162292480469e-06
     },
     {
       "k": 16,
@@ -354,15 +462,21 @@
         1
       ],
       "alignment_start": 0.9397574663162231,
-      "alignment_final": 0.999999463558197,
-      "projector_error": 0.0010208839234257948,
+      "alignment_final": 0.9999014735221863,
+      "projector_error": 0.014018269257067173,
       "orthonormality_error": 1.1920928955078125e-07,
+      "steps_used": [
+        500,
+        500
+      ],
+      "max_steps": 6000,
+      "converged": true,
       "necessary_m": 16.0,
       "m_meets_necessary_condition": true,
-      "seconds": 21.4,
-      "alignment_spread": 3.5762786865234375e-07,
-      "alignment_min": 0.9999992847442627,
-      "capacity_class": "sufficient"
+      "seconds": 43.0,
+      "alignment_min": 0.9998911619186401,
+      "capacity_class": "sufficient",
+      "alignment_spread": 2.0623207092285156e-05
     },
     {
       "k": 16,
@@ -373,15 +487,21 @@
         1
       ],
       "alignment_start": 0.8832675218582153,
-      "alignment_final": 0.9997892379760742,
-      "projector_error": 0.019825381832936494,
+      "alignment_final": 0.9997979700565338,
+      "projector_error": 0.02009465197566831,
       "orthonormality_error": 1.1920928955078125e-07,
+      "steps_used": [
+        500,
+        500
+      ],
+      "max_steps": 6000,
+      "converged": true,
       "necessary_m": 16.0,
       "m_meets_necessary_condition": true,
-      "seconds": 48.4,
-      "alignment_spread": 0.00021159648895263672,
-      "alignment_min": 0.9996834397315979,
-      "capacity_class": "sufficient"
+      "seconds": 97.2,
+      "alignment_min": 0.9997876286506653,
+      "capacity_class": "sufficient",
+      "alignment_spread": 2.0682811737060547e-05
     },
     {
       "k": 64,
@@ -392,15 +512,21 @@
         1
       ],
       "alignment_start": 0.9837906956672668,
-      "alignment_final": 0.9983693957328796,
-      "projector_error": 0.05709579936238346,
+      "alignment_final": 0.9999114871025085,
+      "projector_error": 0.01329366954563365,
       "orthonormality_error": 2.384185791015625e-07,
+      "steps_used": [
+        1800,
+        1700
+      ],
+      "max_steps": 6000,
+      "converged": true,
       "necessary_m": 63.8,
       "m_meets_necessary_condition": true,
-      "seconds": 6.6,
-      "alignment_spread": 0.0001291036605834961,
-      "alignment_min": 0.9983048439025879,
-      "capacity_class": "sufficient"
+      "seconds": 47.7,
+      "alignment_min": 0.9999041557312012,
+      "capacity_class": "sufficient",
+      "alignment_spread": 1.4662742614746094e-05
     },
     {
       "k": 64,
@@ -414,12 +540,18 @@
       "alignment_final": 1.0,
       "projector_error": 0.0,
       "orthonormality_error": 2.384185791015625e-07,
+      "steps_used": [
+        500,
+        500
+      ],
+      "max_steps": 6000,
+      "converged": true,
       "necessary_m": 63.8,
       "m_meets_necessary_condition": true,
-      "seconds": 11.7,
-      "alignment_spread": 0.0,
+      "seconds": 22.3,
       "alignment_min": 1.0,
-      "capacity_class": "sufficient"
+      "capacity_class": "sufficient",
+      "alignment_spread": 0.0
     },
     {
       "k": 64,
@@ -433,12 +565,18 @@
       "alignment_final": 1.0,
       "projector_error": 0.0,
       "orthonormality_error": 2.384185791015625e-07,
+      "steps_used": [
+        500,
+        500
+      ],
+      "max_steps": 6000,
+      "converged": true,
       "necessary_m": 63.8,
       "m_meets_necessary_condition": true,
-      "seconds": 20.6,
-      "alignment_spread": 0.0,
+      "seconds": 43.6,
       "alignment_min": 1.0,
-      "capacity_class": "sufficient"
+      "capacity_class": "sufficient",
+      "alignment_spread": 0.0
     },
     {
       "k": 64,
@@ -449,15 +587,21 @@
         1
       ],
       "alignment_start": 0.8826888799667358,
-      "alignment_final": 0.9999999701976776,
-      "projector_error": 0.00017263349150062197,
+      "alignment_final": 1.0,
+      "projector_error": 0.0,
       "orthonormality_error": 2.384185791015625e-07,
+      "steps_used": [
+        500,
+        500
+      ],
+      "max_steps": 6000,
+      "converged": true,
       "necessary_m": 63.8,
       "m_meets_necessary_condition": true,
-      "seconds": 57.1,
-      "alignment_spread": 5.960464477539063e-08,
-      "alignment_min": 0.9999999403953552,
-      "capacity_class": "sufficient"
+      "seconds": 115.9,
+      "alignment_min": 1.0,
+      "capacity_class": "sufficient",
+      "alignment_spread": 0.0
     },
     {
       "k": 128,
@@ -468,15 +612,21 @@
         1
       ],
       "alignment_start": 0.9845653176307678,
-      "alignment_final": 0.9975025653839111,
-      "projector_error": 0.0706743772056401,
-      "orthonormality_error": 2.384185791015625e-07,
+      "alignment_final": 0.9999813735485077,
+      "projector_error": 0.005455499535740366,
+      "orthonormality_error": 2.980232238769531e-07,
+      "steps_used": [
+        1500,
+        1500
+      ],
+      "max_steps": 6000,
+      "converged": true,
       "necessary_m": 127.0,
       "m_meets_necessary_condition": false,
-      "seconds": 6.6,
-      "alignment_spread": 5.7220458984375e-06,
-      "alignment_min": 0.9974997043609619,
-      "capacity_class": "sufficient"
+      "seconds": 40.5,
+      "alignment_min": 0.9999664425849915,
+      "capacity_class": "sufficient",
+      "alignment_spread": 2.9861927032470703e-05
     },
     {
       "k": 128,
@@ -487,15 +637,21 @@
         1
       ],
       "alignment_start": 0.9693096876144409,
-      "alignment_final": 0.9972172975540161,
-      "projector_error": 0.07460159507338161,
-      "orthonormality_error": 2.980232238769531e-07,
+      "alignment_final": 0.999902069568634,
+      "projector_error": 0.01398520835458684,
+      "orthonormality_error": 2.384185791015625e-07,
+      "steps_used": [
+        1700,
+        1800
+      ],
+      "max_steps": 6000,
+      "converged": true,
       "necessary_m": 127.0,
       "m_meets_necessary_condition": true,
-      "seconds": 12.7,
-      "alignment_spread": 1.239776611328125e-05,
-      "alignment_min": 0.9972110986709595,
-      "capacity_class": "sufficient"
+      "seconds": 86.1,
+      "alignment_min": 0.9998947381973267,
+      "capacity_class": "sufficient",
+      "alignment_spread": 1.4662742614746094e-05
     },
     {
       "k": 128,
@@ -509,12 +665,18 @@
       "alignment_final": 1.0,
       "projector_error": 0.0,
       "orthonormality_error": 2.384185791015625e-07,
+      "steps_used": [
+        500,
+        500
+      ],
+      "max_steps": 6000,
+      "converged": true,
       "necessary_m": 127.0,
       "m_meets_necessary_condition": true,
-      "seconds": 28.6,
-      "alignment_spread": 0.0,
+      "seconds": 57.3,
       "alignment_min": 1.0,
-      "capacity_class": "sufficient"
+      "capacity_class": "sufficient",
+      "alignment_spread": 0.0
     },
     {
       "k": 128,
@@ -527,13 +689,19 @@
       "alignment_start": 0.8829229474067688,
       "alignment_final": 1.0,
       "projector_error": 0.0,
-      "orthonormality_error": 2.980232238769531e-07,
+      "orthonormality_error": 2.384185791015625e-07,
+      "steps_used": [
+        500,
+        500
+      ],
+      "max_steps": 6000,
+      "converged": true,
       "necessary_m": 127.0,
       "m_meets_necessary_condition": true,
-      "seconds": 71.0,
-      "alignment_spread": 0.0,
+      "seconds": 142.1,
       "alignment_min": 1.0,
-      "capacity_class": "sufficient"
+      "capacity_class": "sufficient",
+      "alignment_spread": 0.0
     },
     {
       "k": 256,
@@ -544,15 +712,21 @@
         1
       ],
       "alignment_start": 0.9847338795661926,
-      "alignment_final": 0.9982488751411438,
-      "projector_error": 0.05917836756158394,
-      "orthonormality_error": 2.980232238769531e-07,
+      "alignment_final": 0.9999999701976776,
+      "projector_error": 0.00017263349150062197,
+      "orthonormality_error": 3.5762786865234375e-07,
+      "steps_used": [
+        1100,
+        1000
+      ],
+      "max_steps": 6000,
+      "converged": true,
       "necessary_m": 252.0,
       "m_meets_necessary_condition": false,
-      "seconds": 9.9,
-      "alignment_spread": 4.887580871582031e-05,
-      "alignment_min": 0.9982244372367859,
-      "capacity_class": "sufficient"
+      "seconds": 43.4,
+      "alignment_min": 0.9999999403953552,
+      "capacity_class": "sufficient",
+      "alignment_spread": 5.960464477539063e-08
     },
     {
       "k": 256,
@@ -563,15 +737,21 @@
         1
       ],
       "alignment_start": 0.9696344137191772,
-      "alignment_final": 0.997065007686615,
-      "projector_error": 0.07661581423059538,
+      "alignment_final": 0.9999787211418152,
+      "projector_error": 0.006510606170789702,
       "orthonormality_error": 3.5762786865234375e-07,
+      "steps_used": [
+        1400,
+        1700
+      ],
+      "max_steps": 6000,
+      "converged": true,
       "necessary_m": 252.0,
       "m_meets_necessary_condition": false,
-      "seconds": 20.7,
-      "alignment_spread": 6.198883056640625e-06,
-      "alignment_min": 0.9970619082450867,
-      "capacity_class": "sufficient"
+      "seconds": 115.9,
+      "alignment_min": 0.9999760389328003,
+      "capacity_class": "sufficient",
+      "alignment_spread": 5.364418029785156e-06
     },
     {
       "k": 256,
@@ -582,15 +762,21 @@
         1
       ],
       "alignment_start": 0.939984142780304,
-      "alignment_final": 0.9964416027069092,
-      "projector_error": 0.08436104639979472,
-      "orthonormality_error": 2.980232238769531e-07,
+      "alignment_final": 0.9998700022697449,
+      "projector_error": 0.016124150575368493,
+      "orthonormality_error": 3.5762786865234375e-07,
+      "steps_used": [
+        1700,
+        1700
+      ],
+      "max_steps": 6000,
+      "converged": true,
       "necessary_m": 252.0,
       "m_meets_necessary_condition": true,
-      "seconds": 44.6,
-      "alignment_spread": 1.5497207641601562e-05,
-      "alignment_min": 0.9964338541030884,
-      "capacity_class": "sufficient"
+      "seconds": 303.1,
+      "alignment_min": 0.999868631362915,
+      "capacity_class": "sufficient",
+      "alignment_spread": 2.7418136596679688e-06
     },
     {
       "k": 256,
@@ -604,109 +790,132 @@
       "alignment_final": 1.0,
       "projector_error": 0.0,
       "orthonormality_error": 3.5762786865234375e-07,
+      "steps_used": [
+        500,
+        500
+      ],
+      "max_steps": 6000,
+      "converged": true,
       "necessary_m": 252.0,
       "m_meets_necessary_condition": true,
-      "seconds": 102.8,
-      "alignment_spread": 0.0,
+      "seconds": 205.6,
       "alignment_min": 1.0,
-      "capacity_class": "sufficient"
+      "capacity_class": "sufficient",
+      "alignment_spread": 0.0
     }
   ],
-  "metric_note": "E_sub = ||R'R - T'T||_F / ||T'T||_F = sqrt(2(1 - A_sub)); the projector error and the mean squared principal cosine are the same quantity, and only R T' (k x k) is ever formed",
-  "necessary_condition": "m >= k(d-k)/(d-1), necessary not sufficient",
+  "decision_rule": {
+    "sufficient": 0.99,
+    "marginal": 0.95,
+    "statistic": "minimum generic alignment over seeds",
+    "registered": "before the sweep completed"
+  },
   "recommended_m_by_k": {
     "16": {
       "k": 16,
-      "recommended_m": 128,
+      "recommended_m": 64,
       "by_m": {
         "64": {
-          "alignment_min_over_seeds": 0.9374996423721313,
-          "class": "insufficient"
+          "alignment_min_over_seeds": 1.0,
+          "class": "sufficient",
+          "converged": true
         },
         "128": {
-          "alignment_min_over_seeds": 0.9984557628631592,
-          "class": "sufficient"
+          "alignment_min_over_seeds": 1.0,
+          "class": "sufficient",
+          "converged": true
         },
         "256": {
           "alignment_min_over_seeds": 1.0,
-          "class": "sufficient"
+          "class": "sufficient",
+          "converged": true
         },
         "512": {
-          "alignment_min_over_seeds": 1.0,
-          "class": "sufficient"
+          "alignment_min_over_seeds": 0.9998945593833923,
+          "class": "sufficient",
+          "converged": true
         }
       }
     },
     "64": {
       "k": 64,
-      "recommended_m": 256,
+      "recommended_m": 128,
       "by_m": {
         "64": {
-          "alignment_min_over_seeds": 0.7355852127075195,
-          "class": "insufficient"
+          "alignment_min_over_seeds": 0.9687653183937073,
+          "class": "marginal",
+          "converged": true
         },
         "128": {
-          "alignment_min_over_seeds": 0.9371979236602783,
-          "class": "insufficient"
+          "alignment_min_over_seeds": 1.0,
+          "class": "sufficient",
+          "converged": true
         },
         "256": {
-          "alignment_min_over_seeds": 0.9999755024909973,
-          "class": "sufficient"
+          "alignment_min_over_seeds": 1.0,
+          "class": "sufficient",
+          "converged": true
         },
         "512": {
           "alignment_min_over_seeds": 1.0,
-          "class": "sufficient"
+          "class": "sufficient",
+          "converged": true
         }
       }
     },
     "128": {
       "k": 128,
-      "recommended_m": 512,
+      "recommended_m": 256,
       "by_m": {
         "64": {
-          "alignment_min_over_seeds": 0.5016062259674072,
-          "class": "insufficient"
+          "alignment_min_over_seeds": 0.5065659880638123,
+          "class": "insufficient",
+          "converged": true
         },
         "128": {
-          "alignment_min_over_seeds": 0.800496518611908,
-          "class": "insufficient"
+          "alignment_min_over_seeds": 0.9843765497207642,
+          "class": "marginal",
+          "converged": true
         },
         "256": {
-          "alignment_min_over_seeds": 0.9604867100715637,
-          "class": "marginal"
+          "alignment_min_over_seeds": 1.0,
+          "class": "sufficient",
+          "converged": true
         },
         "512": {
           "alignment_min_over_seeds": 1.0,
-          "class": "sufficient"
+          "class": "sufficient",
+          "converged": true
         }
       }
     },
     "256": {
       "k": 256,
-      "recommended_m": null,
+      "recommended_m": 256,
       "by_m": {
         "64": {
-          "alignment_min_over_seeds": 0.25966721773147583,
-          "class": "insufficient"
+          "alignment_min_over_seeds": 0.26497840881347656,
+          "class": "insufficient",
+          "converged": true
         },
         "128": {
-          "alignment_min_over_seeds": 0.5041328072547913,
-          "class": "insufficient"
+          "alignment_min_over_seeds": 0.5135645866394043,
+          "class": "insufficient",
+          "converged": true
         },
         "256": {
-          "alignment_min_over_seeds": 0.8682093024253845,
-          "class": "insufficient"
+          "alignment_min_over_seeds": 0.9921878576278687,
+          "class": "sufficient",
+          "converged": true
         },
         "512": {
-          "alignment_min_over_seeds": 0.9879083037376404,
-          "class": "marginal"
+          "alignment_min_over_seeds": 1.0,
+          "class": "sufficient",
+          "converged": true
         }
       }
     }
   },
-  "decision_rule": {
-    "sufficient": 0.99,
-    "marginal": 0.95,
-    "statistic": "minimum generic alignment over seeds"
-  }
+  "metric_note": "E_sub = ||R'R - T'T||_F / ||T'T||_F = sqrt(2(1 - A_sub)); the projector error and the mean squared principal cosine are the same quantity, and only R T' (k x k) is ever formed",
+  "necessary_condition": "m >= k(d-k)/(d-1), necessary not sufficient"
 }

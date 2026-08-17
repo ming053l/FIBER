@@ -291,9 +291,13 @@ def test_capacity_decision_rule_is_applied_by_code_not_by_eye():
     sys.path.insert(0, "scripts")
     from audit_reflector_capacity import classify, recommend_m
 
-    assert classify(0.995) == "sufficient"
-    assert classify(0.96) == "marginal"
-    assert classify(0.80) == "insufficient"
+    assert classify(0.995) == "empirically_sufficient"
+    assert classify(0.96) == "marginal_fit"
+    # a low plateau while the dimension count still permits coverage is UNRESOLVED
+    assert classify(0.80, feasible=True) == "ambiguous_capacity_vs_optimization"
+    # only a dimension-infeasible cell may be called a capacity limit
+    assert classify(0.80, feasible=False) == "structurally_insufficient"
+    assert classify(0.80, converged=False) == "not_converged"
 
     rows = [
         {"k": 128, "m": 128, "target": "generic", "alignment_min": 0.804},
@@ -304,7 +308,8 @@ def test_capacity_decision_rule_is_applied_by_code_not_by_eye():
     ]
     rec = recommend_m(rows)
     assert rec[128]["recommended_m"] == 256, "reachable rows leaked into the choice"
-    assert rec[128]["by_m"][128]["class"] == "insufficient"
+    # m=128 is dimension-feasible at k=128 (127.0), so a low fit stays unresolved
+    assert rec[128]["by_m"][128]["class"] == "ambiguous_capacity_vs_optimization"
 
 
 def test_recommendation_requires_every_seed_not_the_average():
@@ -333,11 +338,40 @@ def test_unconverged_cells_cannot_be_read_as_capacity_limits():
         {"k": 64, "m": 128, "target": "generic", "alignment_min": 0.937,
          "capacity_class": "not_converged", "converged": False},
         {"k": 64, "m": 256, "target": "generic", "alignment_min": 0.999,
-         "capacity_class": "sufficient", "converged": True},
+         "capacity_class": "empirically_sufficient", "converged": True},
     ]
     rec = recommend_m(rows)
     assert rec[64]["by_m"][128]["class"] == "not_converged"
     assert rec[64]["recommended_m"] == 256
-    # and once it converges, the smaller m wins
-    rows[0].update({"alignment_min": 1.0, "capacity_class": "sufficient", "converged": True})
+    # and once it converges, the smaller m wins -- which is what actually happened:
+    # (k=64, m=128) went from 0.9373 at 250 steps to 1.0000 at 2000
+    rows[0].update({"alignment_min": 1.0, "capacity_class": "empirically_sufficient",
+                    "converged": True})
     assert recommend_m(rows)[64]["recommended_m"] == 128
+
+
+def test_only_a_dimension_infeasible_cell_may_be_called_a_capacity_limit():
+    """A low plateau shows where the paired-identity start plus this optimiser stopped.
+    It does not show that no parameter setting reaches the target -- a local basin looks
+    the same. So `structurally_insufficient` is reserved for cells the Grassmann
+    dimension count already rules out."""
+    import sys
+    sys.path.insert(0, "scripts")
+    from audit_reflector_capacity import dimension_feasible
+
+    d = 16384
+    assert dimension_feasible(64, 128, d) and dimension_feasible(128, 128, d)
+    assert not dimension_feasible(256, 128, d)      # needs m >= 252
+    assert dimension_feasible(256, 256, d)
+
+
+def test_capacity_metric_is_the_best_iterate_not_the_last():
+    """The question is whether the subspace was ever reached, so an optimiser that
+    overshoots after touching 0.997 must not be recorded as a 0.991 capacity."""
+    import sys
+    sys.path.insert(0, "scripts")
+    from audit_reflector_capacity import classify
+
+    assert classify(0.997) == "empirically_sufficient"
+    assert classify(0.991) == "empirically_sufficient"
+    assert classify(0.985) == "marginal_fit"
