@@ -251,7 +251,8 @@ seeds separately, before anything else.
 | 2 | 0.4882 | +0.02310 | 0.00399 | 1.018 | 0.1451 |
 | **mean** | | | **0.00323** | **0.825** | |
 
-`R2_lin = (1/k) sum_j rho_j^2`; null `1/(n-1) = 0.00392` at n=256. Between-seed
+`R2_lin = (1/k) sum_j rho_j^2`, against the **analytic zero-correlation reference**
+`1/(n-1) = 0.00392` at n=256 — validated against an empirical permutation null below. Between-seed
 sd = 0.00094, and the mean sits 0.00069 **below** the null — 0.73 spreads on the wrong
 side. Seeds above null: 1 of 3.
 
@@ -289,3 +290,75 @@ Combined with the learning curve, two hypotheses are now out at this scale: samp
 at fixed compute, and task dimensionality. Neither 10k nor a smaller k is the indicated
 next step. The registered follow-up is the receiver's information set — see
 `reports/blind_vs_sideinfo.md`.
+
+
+---
+
+# Hardening: an empirical null for R2_lin
+
+`1/(n-1)` is the standard zero-correlation reference for a Pearson `r`, but it is an
+**analytic** one: it assumes a distribution the receiver's outputs need not follow, and
+says nothing about dependence between coordinates or between attacks. A negative result
+should not rest on it. `scripts/permutation_null.py` recomputes `W` and `W_hat` from the
+frozen frame and extractor of every run — no retraining, no new experiment — and builds
+the null by permuting the pairing, so both marginals stay exactly empirical.
+
+2000 permutations, all 36 runs, val split. Commit `cdb0d48`.
+
+## The permutation has to be at the sample level
+
+The first version drew an independent permutation **per attack**. That is wrong, and
+anti-conservative. Sample `i` has one latent seen through ten attacks, and its ten
+predictions are strongly correlated; the observed statistic therefore averages ten
+*dependent* estimates, while a per-attack permutation averages ten *independent* ones.
+Same mean, far smaller variance, so every p-value shrinks.
+
+| | independent per attack | one permutation per replicate |
+|---|---|---|
+| null sd at k=64 | 0.00022 | 0.00065 (2.9x) |
+| k-diagnostic runs at p<0.05 | 6/18 | 2/18 |
+| learning-curve runs at p<0.05 | 7/18 | 1/18 |
+| rejection rate on synthetic NULL data | 0.275 | 0.050 |
+
+The last row is measured in `tests/test_permutation_null.py` over 40 datasets with no
+signal at all: the shared permutation lands exactly on the nominal 0.05, the per-attack
+version fires 5.5x too often. The reported numbers below use the shared permutation.
+
+## Result
+
+The empirical null reproduces the analytic reference: mean 0.00393 against
+`1/(n-1) = 0.00392`, maximum absolute difference 0.00009 over 36 runs. So `1/(n-1)` was
+in fact adequate here — but that is now a measurement rather than an assumption.
+
+Across all 36 runs, 3 have `p < 0.05` against 1.8 expected by chance. Bonferroni over 36
+tests puts the threshold at 0.0014 and none of the three approaches it (smallest
+p = 0.013). Of those three, the smallest is **C2_haar** at k=8 seed 2 — the random
+reference — and its sign BER is 0.5040, worse than chance.
+
+| arm | k | seed | observed | perm null | perm sd | p |
+|---|---|---|---|---|---|---|
+| D_spectral | 8 | 0 | 0.00218 | 0.00401 | 0.00189 | 0.853 |
+| D_spectral | 8 | 1 | 0.00353 | 0.00390 | 0.00186 | 0.516 |
+| D_spectral | 8 | 2 | 0.00399 | 0.00396 | 0.00187 | 0.422 |
+| D_spectral | 16 | 0 | 0.00379 | 0.00394 | 0.00133 | 0.487 |
+| D_spectral | 16 | 1 | 0.00638 | 0.00392 | 0.00128 | 0.042 |
+| D_spectral | 16 | 2 | 0.00446 | 0.00392 | 0.00128 | 0.306 |
+| D_spectral | 64 | 0 | 0.00482 | 0.00393 | 0.00065 | 0.094 |
+| D_spectral | 64 | 1 | 0.00267 | 0.00388 | 0.00064 | 0.976 |
+| D_spectral | 64 | 2 | 0.00467 | 0.00393 | 0.00066 | 0.128 |
+| C2_haar | 8 | 0 | 0.00306 | 0.00390 | 0.00180 | 0.636 |
+| C2_haar | 8 | 1 | 0.00453 | 0.00392 | 0.00184 | 0.322 |
+| C2_haar | 8 | 2 | 0.00910 | 0.00385 | 0.00180 | 0.013 |
+| C2_haar | 16 | 0 | 0.00221 | 0.00391 | 0.00129 | 0.928 |
+| C2_haar | 16 | 1 | 0.00389 | 0.00394 | 0.00129 | 0.472 |
+| C2_haar | 16 | 2 | 0.00433 | 0.00393 | 0.00128 | 0.330 |
+| C2_haar | 64 | 0 | 0.00433 | 0.00394 | 0.00066 | 0.257 |
+| C2_haar | 64 | 1 | 0.00350 | 0.00391 | 0.00063 | 0.748 |
+| C2_haar | 64 | 2 | 0.00442 | 0.00393 | 0.00065 | 0.206 |
+
+The observed `R2_lin` recomputed here from the checkpoints agrees exactly with the values
+derived earlier from the stored `pearson_per_coord` arrays — an independent path to the
+same numbers.
+
+**No run departs from its own empirical null after multiplicity.** The negative result no
+longer depends on `1/(n-1)` being the right reference.

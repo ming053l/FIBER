@@ -18,17 +18,21 @@ are out, it stops being a footnote and becomes the obvious question.
 
 ## The quantity
 
-Let `P` be the conditioning the generator actually received, and `C(P)` its encoding —
-**not** raw prompt text. Defining side information as the generator's own conditioning
-variable asks "what if the receiver knows what the generator knew", not "which NLP
-encoder is better", and removes the CLIP-vs-one-hot-vs-text confound from the primary
-comparison. A compression ladder `Y ⊂ (Y, q(P)) ⊂ (Y, P)` is a separate follow-up.
+Fixed notation, so that "conditioning" never has to be disambiguated later:
+
+    P = the raw prompt (text)
+    S = C(P) = the conditioning TENSOR actually supplied to the generator
+
+The side information in this experiment is **S, never P**. That choice asks "what if the
+receiver knows what the generator knew", not "which text encoder is better", and takes
+the CLIP-vs-one-hot-vs-raw-text question out of the primary comparison entirely. A
+compression ladder `Y ⊂ (Y, q(S)) ⊂ (Y, S)` is a separate follow-up.
 
     m_b(Y)    = E[Z | Y]
-    m_s(Y, P) = E[Z | Y, P]
+    m_s(Y, S) = E[Z | Y, S]
     C_obs^blind = Cov(m_b),   C_obs^side = Cov(m_s)
 
-Since `E[m_s | Y] = m_b` by the tower property, the law of total covariance gives
+Since `E[m_s(Y, S) | Y] = m_b(Y)` by the tower property, the law of total covariance gives
 
     Cov(m_s) = Cov(E[m_s | Y]) + E[Cov(m_s | Y)] = Cov(m_b) + E[Cov(m_s | Y)]
 
@@ -82,9 +86,9 @@ plus the principal angles between `span(V_blind)` and `span(V_side)`. This separ
 
 ## Design: the difference must be estimated paired, not by subtraction
 
-Every held-out sample carries `(Z_i, Y_i, C(P_i))` at once. On a frozen `V`:
+Every held-out sample carries `(Z_i, Y_i, S_i)` at once. On a frozen `V`:
 
-    A_i = Z_i V^T,   B_i^b = f_b(Y_i) V^T,   B_i^s = f_s(Y_i, C(P_i)) V^T
+    A_i = Z_i V^T,   B_i^b = f_b(Y_i) V^T,   B_i^s = f_s(Y_i, S_i) V^T
 
 Estimate `Delta C_cert,V = V (C_cert^side - C_cert^blind) V^T` as **one object**,
 bootstrapping the joint tuples `(Z_i, F_i^b, F_i^s)` and re-centring inside each
@@ -98,11 +102,46 @@ path (`certified.py`) centres once with the full measurement-half means and resa
 already-centred terms; paired-difference inference specifically requires re-centring
 inside the replicate.
 
+## The control that decides whether any of this means anything
+
+A side teacher takes an extra input, so it differs from the blind teacher in **two** ways
+at once: it knows more, and it is a bigger model with a wider effective representation.
+If the experiment returns `D_bs >> D_bb`, the first question asked will be whether the
+conditioning helped or whether the larger model simply learned more easily. Without an
+answer prepared in advance, the number is not interpretable and should not be produced.
+
+The control that isolates information from capacity is a **shuffled-conditioning
+placebo**: the same architecture, fed `S` from a DIFFERENT sample.
+
+    blind                 f(Y)
+    capacity-matched      f(Y, S_shuffled)     S permuted across the split
+    true side information  f(Y, S_correct)
+
+Across the second and third arms the architecture, the input dimensionality, the
+parameter count, the optimiser and the budget are identical. The single difference is
+whether `S` is correctly paired with `(Y, Z)`. The hierarchy to look for is
+
+    (Y, S_shuffled) ~ Y     and     (Y, S_correct) >> (Y, S_shuffled)
+
+which cannot be explained by capacity, because the placebo has all of it and none of the
+information. The converse pattern — the placebo already gaining over blind — would say
+the extra width alone is doing work, and the side arm's number could not then be read as
+an information effect at all.
+
+Note this is the same logical shape as the P0-5 receiver control (which isolated the
+pooling architecture from the frame) and the C3 frozen-Householder arm (which isolated
+the parameterisation from the learning). It is not a new kind of control for this project,
+which is a good sign.
+
+The permutation must be **within the split and applied once**, frozen like any other
+protocol choice, so a "placebo" is not silently re-randomised each epoch into an easier
+noise-averaging task.
+
 ## Not yet decided
 
-* Whether the side teacher sees `C(P)` concatenated at the trunk output or fused earlier.
-  It changes capacity as well as information, which is a confound of the same kind the
-  P0-5 receiver control was built for.
+* Whether the side teacher sees `S` concatenated at the trunk output or fused earlier.
+  The placebo above controls for capacity at whichever choice is made, but the choice
+  still has to be registered rather than tuned.
 * Whether `E_s` and `E_b` can be equalised by construction (identical architecture and
   budget, differing only in the conditioning input) well enough for the difference to be
   interpretable. If not, the honest object is the pair of certificates, never their
