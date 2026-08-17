@@ -1,0 +1,372 @@
+{
+  "tag": "triage1",
+  "split_used": "val",
+  "selection_rule": "lowest seed-averaged val sign BER over the eval attacks, among data-derived families only",
+  "selected": {
+    "arm": "D_spectral",
+    "family": "spectral_topk",
+    "k": 64,
+    "seeds": [
+      0,
+      1
+    ],
+    "hyperparameters": {
+      "type": "spectral_topk"
+    },
+    "hyperparameters_fingerprint": "adf28488cf576dae",
+    "val_sign_ber": 0.497186279296875
+  },
+  "selected_runs": [
+    {
+      "stem": "D_spectral_k64_s0_rxresnet18_r0_scgate",
+      "arm": "D_spectral",
+      "k": 64,
+      "seed": 0,
+      "hyperparameters_fingerprint": "adf28488cf576dae",
+      "json_sha": "e88d3e6bf75584e6d929195347228fdc",
+      "npz_sha": "8ff0132edb5a2a3f8c2bf482a799324f",
+      "frame_sha": "20b30c2b5d1ea187b9c2264d1798f42f",
+      "extractor_sha": "7f3f1401cbc03e1035add964eed4a72d"
+    },
+    {
+      "stem": "D_spectral_k64_s1_rxresnet18_r1_scgate",
+      "arm": "D_spectral",
+      "k": 64,
+      "seed": 1,
+      "hyperparameters_fingerprint": "adf28488cf576dae",
+      "json_sha": "b0da2df9ecb2a2c3ec35a32f548dec34",
+      "npz_sha": "9db06a6ba9065645f889be142c5ecf7a",
+      "frame_sha": "7a3aed955b486c85011a4688ab236f4b",
+      "extractor_sha": "f52490cebadcd715a3b3dfc269fa94b4"
+    }
+  ],
+  "reference_runs": [
+    {
+      "stem": "C2_haar_k64_s0_rxresnet18_r0_scgate",
+      "arm": "C2_haar",
+      "k": 64,
+      "seed": 0,
+      "hyperparameters_fingerprint": "ab2f4d4dd2ae4deb",
+      "json_sha": "c352a135e0151520c500651a951018e9",
+      "npz_sha": "5672de44fc95716a08c0a986616d4eb2",
+      "frame_sha": "e6aad3f277ff9166f777199b8d6d66b7",
+      "extractor_sha": "08b53deeba7b7058113fc6dcebb7d7ef"
+    },
+    {
+      "stem": "C2_haar_k64_s1_rxresnet18_r1_scgate",
+      "arm": "C2_haar",
+      "k": 64,
+      "seed": 1,
+      "hyperparameters_fingerprint": "ab2f4d4dd2ae4deb",
+      "json_sha": "d137d4143520d2b7658c4afcbd5142ac",
+      "npz_sha": "ced3dea0b7d873c14c3bf24da59092b8",
+      "frame_sha": "bdf40ece8731cfbc8b03c1c8601ca344",
+      "extractor_sha": "01fdfeb28c958a32e878b8c73101ca18"
+    },
+    {
+      "stem": "C2_haar_k64_s2_rxresnet18_r2_scgate",
+      "arm": "C2_haar",
+      "k": 64,
+      "seed": 2,
+      "hyperparameters_fingerprint": "ab2f4d4dd2ae4deb",
+      "json_sha": "39fc6b247c175889416eca745ad15224",
+      "npz_sha": "fe93e0402b8c688277219d1995d9be01",
+      "frame_sha": "faa4a659e602ad6355c8210f9436c70f",
+      "extractor_sha": "710be989e446613881f646e50793890e"
+    }
+  ],
+  "context_runs": [
+    {
+      "stem": "C3_frozen_hh_k64_s0_rxresnet18_r0_scgate",
+      "arm": "C3_frozen_hh",
+      "k": 64,
+      "seed": 0,
+      "hyperparameters_fingerprint": "370c3206b6a506b1",
+      "json_sha": "dc54d8f27ec39003c429a36b438b0bbd",
+      "npz_sha": "91edc72f8f84ec676cab451e64aa0abf",
+      "frame_sha": "feeaea81c1406ec597a0e98135dc7fd4",
+      "extractor_sha": "a0946a9ce840b4712df62ec16a9f031a"
+    },
+    {
+      "stem": "C_hadamard_k64_s0_rxresnet18_r0_scgate",
+      "arm": "C_hadamard",
+      "k": 64,
+      "seed": 0,
+      "hyperparameters_fingerprint": "69a337b1d3d18167",
+      "json_sha": "16cb5d52436897a9c126e2e2a68f0142",
+      "npz_sha": "9b57ba7bd5abacfcc054c0db1bbe83f4",
+      "frame_sha": "1c0a0ae475996c4788b63b1296053608",
+      "extractor_sha": "c1d89a9f8e225b745d2a8a69c3813cd5"
+    },
+    {
+      "stem": "E_learned_k64_s0_rxresnet18_r0_scgate",
+      "arm": "E_learned",
+      "k": 64,
+      "seed": 0,
+      "hyperparameters_fingerprint": "41f885fb2ef12e69",
+      "json_sha": "7010c6cad89bbbf2a5071fc2722b98d2",
+      "npz_sha": "dc00f256c34b23acdf4e60c2afe9fd56",
+      "frame_sha": "94f10bc91ed43dc2fba60ebd97df974b",
+      "extractor_sha": "5ab1d4c6356b5f86edca53345ba850b2"
+    },
+    {
+      "stem": "E_learned_k64_s1_rxresnet18_r1_scgate",
+      "arm": "E_learned",
+      "k": 64,
+      "seed": 1,
+      "hyperparameters_fingerprint": "41f885fb2ef12e69",
+      "json_sha": "e2b5f685eaeaad22b111874ef8528f15",
+      "npz_sha": "836e59c5e334551de41967253ea87bae",
+      "frame_sha": "8ef45062bd803c01a3244f061a80d5f4",
+      "extractor_sha": "69cac936637bfc8a1afdb6c7ff4ecf7d"
+    }
+  ],
+  "random_reference": {
+    "arm": "C2_haar",
+    "type": "haar",
+    "seeds": [
+      0,
+      1,
+      2
+    ],
+    "val_sign_ber": 0.4982381184895834
+  },
+  "test_protocol": {
+    "splits": [
+      "test",
+      "test_heldout_prompts"
+    ],
+    "limit": 0,
+    "attacks": [
+      "clean",
+      "jpeg50",
+      "resize050",
+      "noise010",
+      "blur20"
+    ],
+    "cache_tag": "pilot"
+  },
+  "seed_completeness": {
+    "per_arm": {
+      "C2_haar": {
+        "registered": [
+          0,
+          1,
+          2
+        ],
+        "present": [
+          0,
+          1,
+          2
+        ],
+        "missing": []
+      },
+      "C_hadamard": {
+        "registered": [
+          0
+        ],
+        "present": [
+          0
+        ],
+        "missing": []
+      },
+      "C3_frozen_hh": {
+        "registered": [
+          0
+        ],
+        "present": [
+          0
+        ],
+        "missing": []
+      },
+      "D_spectral": {
+        "registered": [
+          0,
+          1
+        ],
+        "present": [
+          0,
+          1
+        ],
+        "missing": []
+      },
+      "E_learned": {
+        "registered": [
+          0,
+          1
+        ],
+        "present": [
+          0,
+          1
+        ],
+        "missing": []
+      }
+    },
+    "missing": {},
+    "complete": true,
+    "registered": {
+      "C2_haar": [
+        0,
+        1,
+        2
+      ],
+      "C_hadamard": [
+        0
+      ],
+      "C3_frozen_hh": [
+        0
+      ],
+      "D_spectral": [
+        0,
+        1
+      ],
+      "E_learned": [
+        0,
+        1
+      ]
+    },
+    "required_arms": [
+      "C2_haar",
+      "C3_frozen_hh",
+      "C_hadamard",
+      "D_spectral",
+      "E_learned"
+    ],
+    "enforced": true,
+    "source": "config+cli"
+  },
+  "candidates": [
+    {
+      "arm": "C2_haar",
+      "k": 64,
+      "type": "haar",
+      "hyperparameters_fingerprint": "ab2f4d4dd2ae4deb",
+      "runs": [
+        "C2_haar_k64_s0_rxresnet18_r0_scgate",
+        "C2_haar_k64_s1_rxresnet18_r1_scgate",
+        "C2_haar_k64_s2_rxresnet18_r2_scgate"
+      ],
+      "seeds": [
+        0,
+        1,
+        2
+      ],
+      "receiver_replications": {
+        "0": 1,
+        "1": 1,
+        "2": 1
+      },
+      "val_sign_ber_per_structure_seed": {
+        "0": 0.5025146484375,
+        "1": 0.49476318359375,
+        "2": 0.4974365234375
+      },
+      "val_sign_ber": 0.4982381184895834,
+      "is_derived": false
+    },
+    {
+      "arm": "C3_frozen_hh",
+      "k": 64,
+      "type": "frozen_householder_on_haar",
+      "hyperparameters_fingerprint": "370c3206b6a506b1",
+      "runs": [
+        "C3_frozen_hh_k64_s0_rxresnet18_r0_scgate"
+      ],
+      "seeds": [
+        0
+      ],
+      "receiver_replications": {
+        "0": 1
+      },
+      "val_sign_ber_per_structure_seed": {
+        "0": 0.49547119140625
+      },
+      "val_sign_ber": 0.49547119140625,
+      "is_derived": false
+    },
+    {
+      "arm": "C_hadamard",
+      "k": 64,
+      "type": "hadamard",
+      "hyperparameters_fingerprint": "69a337b1d3d18167",
+      "runs": [
+        "C_hadamard_k64_s0_rxresnet18_r0_scgate"
+      ],
+      "seeds": [
+        0
+      ],
+      "receiver_replications": {
+        "0": 1
+      },
+      "val_sign_ber_per_structure_seed": {
+        "0": 0.5003662109375
+      },
+      "val_sign_ber": 0.5003662109375,
+      "is_derived": false
+    },
+    {
+      "arm": "D_spectral",
+      "k": 64,
+      "type": "spectral_topk",
+      "hyperparameters_fingerprint": "adf28488cf576dae",
+      "runs": [
+        "D_spectral_k64_s0_rxresnet18_r0_scgate",
+        "D_spectral_k64_s1_rxresnet18_r1_scgate"
+      ],
+      "seeds": [
+        0,
+        1
+      ],
+      "receiver_replications": {
+        "0": 1,
+        "1": 1
+      },
+      "val_sign_ber_per_structure_seed": {
+        "0": 0.4932373046875,
+        "1": 0.50113525390625
+      },
+      "val_sign_ber": 0.497186279296875,
+      "is_derived": true
+    },
+    {
+      "arm": "E_learned",
+      "k": 64,
+      "type": "householder",
+      "hyperparameters_fingerprint": "41f885fb2ef12e69",
+      "runs": [
+        "E_learned_k64_s0_rxresnet18_r0_scgate",
+        "E_learned_k64_s1_rxresnet18_r1_scgate"
+      ],
+      "seeds": [
+        0,
+        1
+      ],
+      "receiver_replications": {
+        "0": 1,
+        "1": 1
+      },
+      "val_sign_ber_per_structure_seed": {
+        "0": 0.50234375,
+        "1": 0.49853515625
+      },
+      "val_sign_ber": 0.500439453125,
+      "is_derived": true
+    }
+  ],
+  "git_commit": "48e8351e680a1ffbff777e78574d5b98a5845d8a",
+  "git_commit_short": "48e8351",
+  "git_available": true,
+  "git_dirty": false,
+  "git_dirty_files": [],
+  "git_dirty_artifacts": [
+    "reports/p0_fix_plan.md",
+    "reports/spectrum_triage1_seed0.json",
+    "reports/spectrum_triage1_seed0_spatial_sharedtrunk.json",
+    "reports/spectrum_triage1_seed1.json",
+    "reports/teacher_comparison_triage1_seed0.json"
+  ],
+  "commit": "48e8351",
+  "config_fingerprint": "a9c8c73425575c95",
+  "written_at": "2026-08-17T07:11:17+00:00",
+  "locked": true
+}

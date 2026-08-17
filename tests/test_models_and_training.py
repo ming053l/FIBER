@@ -287,3 +287,71 @@ def test_subset_runs_get_their_own_stem_and_cannot_be_gate_scoped():
     b = run_stem("C2_haar", 64, 0, "resnet18", 0, "powercurve", 200, 0)
     c = run_stem("C2_haar", 64, 0, "resnet18", 0, "powercurve", 100, 1)
     assert len({plain, a, b, c}) == 4, "sample-size points would overwrite each other"
+
+
+# --- the frozen spectrum must be provenance-bound before it can be a treatment ------
+
+def _spectrum_blob(**over):
+    base = {"operator": "certified", "git_commit": "a" * 40, "git_dirty": False,
+            "tag": "pilot", "seed": 0, "cache_tag": "pilot"}
+    return {**base, **over}
+
+
+def test_a_dirty_spectrum_cannot_become_a_gate_treatment(tmp_path):
+    """The producer stamps provenance; before this nothing consumed it. That left a legal
+    path: fit --allow-dirty, commit the tree, then a CLEAN gate run loads the dirty frame
+    and records its own git_dirty=False."""
+    from train_coordinates import _bind_spectrum
+    p = tmp_path / "s.pt"
+    p.write_bytes(b"x")
+    prov = {"git_commit": "a" * 40}
+    with pytest.raises(SystemExit) as e:
+        _bind_spectrum(p, _spectrum_blob(git_dirty=True), "pilot", 0, "gate", prov)
+    assert "git_dirty=True" in str(e.value)
+
+
+def test_a_spectrum_from_another_commit_cannot_become_a_gate_treatment(tmp_path):
+    from train_coordinates import _bind_spectrum
+    p = tmp_path / "s.pt"
+    p.write_bytes(b"x")
+    with pytest.raises(SystemExit) as e:
+        _bind_spectrum(p, _spectrum_blob(git_commit="b" * 40), "pilot", 0, "gate",
+                       {"git_commit": "a" * 40})
+    assert "this run is at" in str(e.value)
+
+
+@pytest.mark.parametrize("over,needle", [({"tag": "other"}, "tag"), ({"seed": 7}, "seed")])
+def test_a_spectrum_from_another_tag_or_seed_is_refused(tmp_path, over, needle):
+    from train_coordinates import _bind_spectrum
+    p = tmp_path / "s.pt"
+    p.write_bytes(b"x")
+    with pytest.raises(SystemExit) as e:
+        _bind_spectrum(p, _spectrum_blob(**over), "pilot", 0, "gate",
+                       {"git_commit": "a" * 40})
+    assert needle in str(e.value)
+
+
+def test_a_clean_matching_spectrum_is_accepted_and_recorded(tmp_path):
+    """The facts must reach the run summary, and from there the selection lock: a path
+    alone leaves the binding undetectable after the fact."""
+    from train_coordinates import _bind_spectrum
+    p = tmp_path / "s.pt"
+    p.write_bytes(b"x")
+    facts = _bind_spectrum(p, _spectrum_blob(), "pilot", 0, "gate", {"git_commit": "a" * 40})
+    assert facts["spectrum_git_dirty"] is False
+    assert facts["spectrum_git_commit"] == "a" * 40
+    assert facts["spectrum_cache_tag"] == "pilot"
+    assert facts["spectrum_provenance_enforced"] is True
+    assert len(facts["spectrum_digest"]) == 32
+
+
+def test_exploratory_scopes_may_reuse_a_stale_spectrum_but_it_is_recorded(tmp_path):
+    """The k diagnostic deliberately reuses a frame from an earlier commit. That must
+    keep working -- and must be visible in the summary as unenforced."""
+    from train_coordinates import _bind_spectrum
+    p = tmp_path / "s.pt"
+    p.write_bytes(b"x")
+    facts = _bind_spectrum(p, _spectrum_blob(git_dirty=True, git_commit="b" * 40),
+                           "pilot", 0, "powercurve", {"git_commit": "a" * 40})
+    assert facts["spectrum_provenance_enforced"] is False
+    assert facts["spectrum_git_dirty"] is True

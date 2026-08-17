@@ -1,0 +1,77 @@
+{
+  "tag": "triage1",
+  "selection_sha": "e511e0beeade28972c8d228e081cef6e",
+  "selection_commit": "48e8351e680a1ffbff777e78574d5b98a5845d8a",
+  "git_commit": "48e8351e680a1ffbff777e78574d5b98a5845d8a",
+  "git_commit_short": "48e8351",
+  "git_available": true,
+  "git_dirty": false,
+  "git_dirty_files": [],
+  "git_dirty_artifacts": [
+    "reports/p0_fix_plan.md",
+    "reports/selection_triage1.json",
+    "reports/spectrum_triage1_seed0.json",
+    "reports/spectrum_triage1_seed0_spatial_sharedtrunk.json",
+    "reports/spectrum_triage1_seed1.json",
+    "reports/teacher_comparison_triage1_seed0.json"
+  ],
+  "official": true,
+  "config_fingerprint": "a9c8c73425575c95",
+  "test_protocol": {
+    "splits": [
+      "test",
+      "test_heldout_prompts"
+    ],
+    "limit": 0,
+    "cache_tag": "pilot"
+  },
+  "test_cache_post_lock": true,
+  "claim": "no test image was materialised or accessed, and no test corruption, prediction or metric computed, before the lock",
+  "runs": [
+    {
+      "stem": "D_spectral_k64_s0_rxresnet18_r0_scgate",
+      "json_sha": "2c57b2b8c3584cb645db1415f31f119b",
+      "npz_sha": "37ad73e2e07e2260b9298e8bd7df07ae"
+    },
+    {
+      "stem": "D_spectral_k64_s1_rxresnet18_r1_scgate",
+      "json_sha": "7b36fdca6546eda78aea17320df435ae",
+      "npz_sha": "ca03419e48205842d2c2771cdafafa28"
+    },
+    {
+      "stem": "C2_haar_k64_s0_rxresnet18_r0_scgate",
+      "json_sha": "39975d06aab6b38166cf7245660447f3",
+      "npz_sha": "d89b1acb678ce24abfad3512e490aef2"
+    },
+    {
+      "stem": "C2_haar_k64_s1_rxresnet18_r1_scgate",
+      "json_sha": "3dc5314d87943aa601cbe789010c28ad",
+      "npz_sha": "a4af43ecb7886b85cc61eb5d47aa9649"
+    },
+    {
+      "stem": "C2_haar_k64_s2_rxresnet18_r2_scgate",
+      "json_sha": "e07a4b9ef61faf847233f10be9b4dddb",
+      "npz_sha": "5768d04f6f009777f1350afa562f74b5"
+    },
+    {
+      "stem": "C3_frozen_hh_k64_s0_rxresnet18_r0_scgate",
+      "json_sha": "48acb2beb2c4835cca796aceed21a5c1",
+      "npz_sha": "9beafe8d3c24283c7d257ea5e9da5a2e"
+    },
+    {
+      "stem": "C_hadamard_k64_s0_rxresnet18_r0_scgate",
+      "json_sha": "3101dc31f50b4ddb6dafc01be487b570",
+      "npz_sha": "7428ba2b15afd90f2143b5e615898061"
+    },
+    {
+      "stem": "E_learned_k64_s0_rxresnet18_r0_scgate",
+      "json_sha": "30493f7fc9e5cbf45af38e97697f65b3",
+      "npz_sha": "64812ab77a4aab32747d02e26e886bbd"
+    },
+    {
+      "stem": "E_learned_k64_s1_rxresnet18_r1_scgate",
+      "json_sha": "5d1486f48db1df1fe3afe236d4d94eb9",
+      "npz_sha": "1b1714eaea1bb9b0b9da400209c0115c"
+    }
+  ]
+}

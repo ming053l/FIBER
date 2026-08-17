@@ -64,7 +64,53 @@ def run_stem(arm: str, k: int, seed: int, extractor_arch: str, receiver_seed: in
     return stem
 
 
-def build_arm_frame(cfg, arm: str, k: int, seed: int, tag: str, d: int):
+GATE_SCOPE = "gate"
+
+
+def _bind_spectrum(path: Path, blob: dict, tag: str, seed: int, scope: str, prov: dict):
+    """What the Gate requires of a frozen spectral frame before it becomes a treatment.
+
+    The producer stamps provenance; without this nothing consumed it. That left a legal
+    path where `fit_observability_spectrum.py --allow-dirty` writes git_dirty=True, the
+    tree is then committed, and a clean Gate run loads the dirty frame and records
+    git_dirty=False -- its own. Downstream clean provenance masking upstream dirty
+    evidence is the exact failure the provenance discipline exists to prevent, and the
+    run summary kept only `spectrum_file`, a path, so it was undetectable afterwards.
+
+    Exploratory scopes are exempt on purpose: the k diagnostic reuses a frame from an
+    earlier commit deliberately, and that reuse is registered in reports/powercurve.md.
+    """
+    facts = {"spectrum_file": str(path),
+             "spectrum_digest": hashlib.blake2s(path.read_bytes(), digest_size=16).hexdigest(),
+             "spectrum_git_commit": blob.get("git_commit"),
+             "spectrum_git_dirty": blob.get("git_dirty"),
+             "spectrum_tag": blob.get("tag"), "spectrum_seed": blob.get("seed"),
+             "spectrum_cache_tag": blob.get("cache_tag"),
+             "spectrum_provenance_enforced": scope == GATE_SCOPE}
+    if scope != GATE_SCOPE:
+        return facts
+    problems = []
+    if blob.get("git_dirty") is not False:
+        problems.append(f"git_dirty={blob.get('git_dirty')!r} (needs False; a frame fit "
+                        "from an edited tree cannot name the code that produced it)")
+    if prov.get("git_commit") and blob.get("git_commit") != prov["git_commit"]:
+        problems.append(f"fit at {blob.get('git_commit')}, this run is at "
+                        f"{prov['git_commit']}")
+    if blob.get("tag") != tag:
+        problems.append(f"tag {blob.get('tag')!r} != {tag!r}")
+    if blob.get("seed") != seed:
+        problems.append(f"seed {blob.get('seed')!r} != {seed!r}")
+    if problems:
+        raise SystemExit(
+            f"refusing a Gate run on {path}:\n  - " + "\n  - ".join(problems)
+            + "\nRefit the spectrum on the current committed tree, or run this as an "
+              "exploratory scope (--scope powercurve), which is exempt and is recorded "
+              "as such in the run summary.")
+    return facts
+
+
+def build_arm_frame(cfg, arm: str, k: int, seed: int, tag: str, d: int,
+                    scope: str = GATE_SCOPE, prov: dict | None = None):
     spec = dict(cfg["fiber"]["arms"][arm])
     if spec["type"] in ("rotated_random", "rotated_learned"):
         # P0-7: the ambient subspace comes from the certified spectral fit and is
@@ -77,7 +123,7 @@ def build_arm_frame(cfg, arm: str, k: int, seed: int, tag: str, d: int):
         # comparing two things at once.
         base_arm = spec.get("base_arm", "D_spectral")
         base_seed = int(spec.get("base_seed", 0))
-        base, extra = build_arm_frame(cfg, base_arm, k, base_seed, tag, d)
+        base, extra = build_arm_frame(cfg, base_arm, k, base_seed, tag, d, scope, prov)
         mode = "random" if spec["type"] == "rotated_random" else "learned"
         return RotatedFrame(base, k=k, mode=mode, seed=seed), {
             **extra, "rotation_mode": mode, "base_arm": base_arm, "base_seed": base_seed}
@@ -87,7 +133,10 @@ def build_arm_frame(cfg, arm: str, k: int, seed: int, tag: str, d: int):
             raise FileNotFoundError(
                 f"{path} missing: run scripts/fit_observability_spectrum.py --tag {tag} "
                 f"--seed {seed} first (arm D is the spectrum, not a baseline)")
-        return SpectralFrame(d=d, k=k, path=path), {"spectrum_file": str(path)}
+        blob = torch.load(path, map_location="cpu", weights_only=False)
+        facts = _bind_spectrum(path, blob if isinstance(blob, dict) else {}, tag, seed,
+                               scope, prov or {})
+        return SpectralFrame(d=d, k=k, path=path), facts
     return build_frame(spec, d=d, k=k, seed=seed), {}
 
 
@@ -192,7 +241,7 @@ def main() -> int:
             "--subset-size is an exploratory diagnostic and must not produce a run the "
             "selector can see. Pass an explicit --scope (e.g. --scope powercurve); "
             "select_method.py only reads analysis_scope == 'gate'.")
-    frame, extra = build_arm_frame(cfg, args.arm, k, args.seed, args.tag, d)
+    frame, extra = build_arm_frame(cfg, args.arm, k, args.seed, args.tag, d, scope, prov)
     learnable = any(p.requires_grad for p in frame.parameters()) or \
         cfg["fiber"]["arms"][args.arm]["type"] == "householder"
     t0 = time.time()

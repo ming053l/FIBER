@@ -1,0 +1,220 @@
+{
+  "tag": "triage1",
+  "split": "test",
+  "k": 64,
+  "selection": {
+    "file": "/ssd1/ming/FIBER/reports/selection_triage1.json",
+    "arm": "D_spectral",
+    "commit": "48e8351",
+    "config_fingerprint": "a9c8c73425575c95",
+    "config_fingerprint_now": "a9c8c73425575c95",
+    "test_eval_manifest": "/ssd1/ming/FIBER/reports/test_eval_triage1.json",
+    "test_eval_commit": "48e8351e680a1ffbff777e78574d5b98a5845d8a",
+    "locked_runs": [
+      "D_spectral_k64_s0_rxresnet18_r0_scgate",
+      "D_spectral_k64_s1_rxresnet18_r1_scgate"
+    ],
+    "locked_reference_runs": [
+      "C2_haar_k64_s0_rxresnet18_r0_scgate",
+      "C2_haar_k64_s1_rxresnet18_r1_scgate",
+      "C2_haar_k64_s2_rxresnet18_r2_scgate"
+    ]
+  },
+  "n_locked_seeds": 2,
+  "n_haar_draws": 3,
+  "gate3a": {
+    "verdict": "PROVISIONAL_FAIL",
+    "provisional": true,
+    "groups_passed": [],
+    "n_passed": 0,
+    "n_required": 3,
+    "best_relative_reduction": 0.0006499845247436162,
+    "conditions": {
+      "blur": {
+        "ci_ok": false,
+        "relative_ok": false,
+        "absolute_ok": false,
+        "passed": false,
+        "mean_delta": -0.0025329586351290345,
+        "ci_low": -0.009633636366925201,
+        "ci_high": 0.0044456494855694435,
+        "p_one_sided": 0.7616,
+        "relative_reduction": -0.005062209593679911,
+        "baseline": 0.500366211286746,
+        "treatment": 0.502899169921875,
+        "n": 256,
+        "hierarchical_ci": [
+          -0.011679585774739586,
+          0.006165568033854161
+        ],
+        "hierarchical_delta": -0.002532958984375,
+        "haar_spread": 0.0011908374726772308,
+        "controls": {
+          "C_hadamard": 0.49285888671875
+        },
+        "controls_beating_locked": {
+          "C_hadamard": 0.49285888671875
+        }
+      },
+      "identity": {
+        "ci_ok": false,
+        "relative_ok": false,
+        "absolute_ok": false,
+        "passed": false,
+        "mean_delta": -0.0018819170072674751,
+        "ci_low": -0.008738454218837432,
+        "ci_high": 0.004862467665225268,
+        "p_one_sided": 0.7029,
+        "relative_reduction": -0.003766286021324999,
+        "baseline": 0.4996744794771075,
+        "treatment": 0.501556396484375,
+        "n": 256,
+        "hierarchical_ci": [
+          -0.012921142578125001,
+          0.009493255615234363
+        ],
+        "hierarchical_delta": -0.0018819173177083148,
+        "haar_spread": 0.001520035439170897,
+        "controls": {
+          "C_hadamard": 0.494873046875
+        },
+        "controls_beating_locked": {
+          "C_hadamard": 0.494873046875
+        }
+      },
+      "jpeg": {
+        "ci_ok": false,
+        "relative_ok": false,
+        "absolute_ok": false,
+        "passed": false,
+        "mean_delta": 0.0003255212213844061,
+        "ci_low": -0.006469981328700669,
+        "ci_high": 0.006998954692971889,
+        "p_one_sided": 0.4562,
+        "relative_reduction": 0.0006499845247436162,
+        "baseline": 0.5008138024713844,
+        "treatment": 0.50048828125,
+        "n": 256,
+        "hierarchical_ci": [
+          -0.010885111490885408,
+          0.011496988932291657
+        ],
+        "hierarchical_delta": 0.00032552083333337034,
+        "haar_spread": 0.0028995804022997618,
+        "controls": {
+          "C_hadamard": 0.496826171875
+        },
+        "controls_beating_locked": {
+          "C_hadamard": 0.496826171875
+        }
+      },
+      "noise": {
+        "ci_ok": false,
+        "relative_ok": false,
+        "absolute_ok": false,
+        "passed": false,
+        "mean_delta": -0.00011189933866262436,
+        "ci_low": -0.007191976768081076,
+        "ci_high": 0.007029468959080983,
+        "p_one_sided": 0.5031,
+        "relative_reduction": -0.00022421835756428112,
+        "baseline": 0.4990641260519624,
+        "treatment": 0.499176025390625,
+        "n": 256,
+        "hierarchical_ci": [
+          -0.010152689615885413,
+          0.0096435546875
+        ],
+        "hierarchical_delta": -0.00011189778645831483,
+        "haar_spread": 0.001859542215242982,
+        "controls": {
+          "C_hadamard": 0.49224853515625
+        },
+        "controls_beating_locked": {
+          "C_hadamard": 0.49224853515625
+        }
+      },
+      "resize": {
+        "ci_ok": false,
+        "relative_ok": false,
+        "absolute_ok": false,
+        "passed": false,
+        "mean_delta": -0.002461751806549728,
+        "ci_low": -0.009704589846660384,
+        "ci_high": 0.0046793599758530036,
+        "p_one_sided": 0.7548,
+        "relative_reduction": -0.0049177006672411795,
+        "baseline": 0.5005900060059503,
+        "treatment": 0.5030517578125,
+        "n": 256,
+        "hierarchical_ci": [
+          -0.012146504720052086,
+          0.007448069254557283
+        ],
+        "hierarchical_delta": -0.0024617513020833703,
+        "haar_spread": 0.0007725764298811555,
+        "controls": {
+          "C_hadamard": 0.4979248046875
+        },
+        "controls_beating_locked": {
+          "C_hadamard": 0.4979248046875
+        }
+      }
+    }
+  },
+  "gate3b": {
+    "per_group": {
+      "blur": {
+        "mean_delta": 0.001617431640625,
+        "ci_low": -0.006256103515625,
+        "ci_high": 0.009919738769531242,
+        "p_one_sided": 0.3365,
+        "relative_reduction": 0.003216214576127192,
+        "baseline": 0.502899169921875,
+        "treatment": 0.50128173828125,
+        "n": 256
+      },
+      "identity": {
+        "mean_delta": 0.00323486328125,
+        "ci_low": -0.00494537353515625,
+        "ci_high": 0.011567687988281242,
+        "p_one_sided": 0.2205,
+        "relative_reduction": 0.006449650136902951,
+        "baseline": 0.501556396484375,
+        "treatment": 0.498321533203125,
+        "n": 256
+      },
+      "jpeg": {
+        "mean_delta": 0.000274658203125,
+        "ci_low": -0.007782745361328125,
+        "ci_high": 0.00882034301757812,
+        "p_one_sided": 0.471,
+        "relative_reduction": 0.0005487804878048781,
+        "baseline": 0.50048828125,
+        "treatment": 0.500213623046875,
+        "n": 256
+      },
+      "noise": {
+        "mean_delta": -0.000762939453125,
+        "ci_low": -0.009765625,
+        "ci_high": 0.00781326293945312,
+        "p_one_sided": 0.5635,
+        "relative_reduction": -0.0015283976279268814,
+        "baseline": 0.499176025390625,
+        "treatment": 0.49993896484375,
+        "n": 256
+      },
+      "resize": {
+        "mean_delta": 0.003448486328125,
+        "ci_low": -0.004120635986328125,
+        "ci_high": 0.011138916015625,
+        "p_one_sided": 0.19,
+        "relative_reduction": 0.006855132249454016,
+        "baseline": 0.5030517578125,
+        "treatment": 0.499603271484375,
+        "n": 256
+      }
+    },
+    "story": "the observability geometry is discoverable in closed form"
+  }
+}

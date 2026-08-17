@@ -266,11 +266,23 @@ def subspace_certificate(Z, F, V, center: bool = True, tol: float | None = None,
     positive = mu[mu > tau]
 
     # ---- statistical certification --------------------------------------
-    # tau only excludes floating-point noise. "Certified" in a paper sense needs a
-    # one-sided lower bound above zero, so the per-sample terms are bootstrapped with
-    # the rotation held FIXED from the other half. Per-direction bounds carry a
-    # Bonferroni correction because k of them are inspected at once; the total-mass
-    # bound is a single statistic and does not.
+    # tau only excludes floating-point noise. A claim needs a one-sided lower bound
+    # above zero, so the per-sample terms are bootstrapped with the rotation held FIXED
+    # from the other half. Per-direction bounds carry a Bonferroni correction because k
+    # of them are inspected at once; the mass bound is derived from them and spends no
+    # further alpha.
+    #
+    # These are BOOTSTRAP PERCENTILE lower confidence bounds, not analytic or
+    # finite-sample certificates, and the reported names say so. Two approximations are
+    # deliberately left in:
+    #   * the percentile interval has no bias/skew correction (no BCa);
+    #   * `_per_sample_contributions` centres with the full measurement-half means before
+    #     the resampling, so a replicate reuses A_bar and B_bar rather than re-estimating
+    #     A_bar*, B_bar* from itself. That understates the variance contributed by the
+    #     centering, slightly.
+    # Neither is load-bearing for "is this above zero at all" at the current effect
+    # sizes, but neither may be dropped from the wording if the claim is ever upgraded
+    # to a theorem-grade certificate.
     stats: dict = {}
     if bootstrap:
         # Eigenvalues are rotation-invariant, so the inertia certificate needs no
@@ -327,6 +339,10 @@ def subspace_certificate(Z, F, V, center: bool = True, tol: float | None = None,
                  "D_cert_LCB": float(max(masses)),
                  "D_cert_LCB_per_fold": [float(m) for m in masses],
                  "bootstrap_resamples": int(bootstrap), "alpha": alpha,
+                 # so a reader of the JSON cannot mistake this for an analytic bound
+                 "bound_type": ("one-sided bootstrap percentile LCB, Bonferroni over k "
+                                "and folds; not analytic, no BCa, centering fixed at "
+                                "the measurement-half means"),
                  "per_direction_correction": "bonferroni over k and folds",
                  "mass_bound_derivation": "sum_j max(L_fj, 0) from the simultaneous "
                                           "directional bounds; no separate alpha",

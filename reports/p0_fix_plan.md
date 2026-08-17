@@ -523,3 +523,52 @@ power to discriminate arms at pilot scale.
 Next, and explicitly NOT part of any gate: an exploratory power diagnostic
 (learning curve). It is registered here before it is run, so its status cannot be
 revised afterwards.
+
+---
+
+## Pre-full mechanical blocker: the spectrum's provenance is recorded but never enforced
+
+`fit_observability_spectrum.py` now refuses a dirty tree and stamps `git_commit` /
+`git_dirty` into the frame checkpoint. The **consumer** does not check either.
+
+`build_arm_frame` resolves `spectrum/{tag}_seed{seed}.pt` and hands it to `SpectralFrame`,
+which validates `operator == "certified"`, warns on `validity_pass is False`, and takes
+`eigenvectors`. Nothing reads `git_dirty` or `git_commit`. So this path is legal:
+
+    fit_observability_spectrum.py --allow-dirty      ->  git_dirty = True in the .pt
+    (commit the tree)
+    train_coordinates.py --scope gate                ->  run summary git_dirty = False
+
+and the Gate run's own clean provenance masks the dirty evidence it was built on. The
+summary records only `spectrum_file`, a path, so nothing downstream can even detect it
+after the fact.
+
+**Required before any full Gate run**, in gate scope only:
+
+* refuse unless `blob["git_dirty"] is False`
+* refuse unless `blob["git_commit"] == prov["git_commit"]`
+* refuse unless `blob["tag"] == args.tag` and `blob["seed"] == args.seed`
+* record `spectrum_git_commit`, `spectrum_digest`, `spectrum_cache_tag` in the arm
+  summary so they propagate into the selection lock
+
+Exploratory scopes (`powercurve`, `receiver_control`, `p0_7_basis`) must keep working
+against a stale frame: the k diagnostic reuses `triage1_seed0` from `48e8351`
+deliberately, and that reuse is registered in `reports/powercurve.md`.
+
+## Wording, fixed: the learning curve is a fixed-compute result
+
+"Ruled out data volume" overstated it. The curve holds optimisation compute at 2320
+steps, which is what makes sample count the isolated variable and is also the limit of
+the claim. A 10k run under the full protocol's 40 epochs carries 5.0x the optimisation
+compute (extractor trains on split B only, 46.4% of train: 10000 -> B ~ 4640 ->
+40*ceil(4640/16) = 11600 steps vs 2320 here), so it would differ in two ways at once.
+Supported: *at fixed optimisation compute, 100 -> 928 unique samples produces no
+reproducible improvement, and that does not justify the more expensive 10k run.*
+
+## Wording, fixed: D_cert^LCB is a bootstrap percentile bound
+
+The mass-from-directional-bounds algebra is exact, but the underlying `L_fj` are
+bootstrap percentile quantiles with no BCa correction, and `_per_sample_contributions`
+centres with the full measurement-half means before resampling, so a replicate reuses
+`A_bar`, `B_bar` instead of re-estimating them. Reported as `bound_type` in the JSON.
+Not a blocker at current effect sizes; must not be called analytic.

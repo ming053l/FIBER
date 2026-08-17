@@ -77,6 +77,13 @@ scores exactly 1.0, so the extractor is adding variance rather than information.
 **Verdict: does not support caching 10k.** 18 runs, 2026-08-17, tag `triage1`,
 scope `powercurve`, commit `24b56f2`.
 
+> **The raw artifacts behind the table below were deleted by operator error** — an
+> `rm '*scpowercurve*'` meant to clear an aborted k-diagnostic also matched these runs,
+> whose stems are `..._scpowercurve_n<N>_ss<seed>`. The numbers are as recorded at the
+> time; the sweep is being re-run on the current committed tree so the table has backing
+> artifacts again, and the re-run doubles as a reproducibility check. Section marked
+> **AWAITING RE-RUN** until then.
+
 Trajectories are reported per subset seed and are never averaged before being read —
 the rule is about consistency across seeds, and a mean would hide exactly that.
 
@@ -140,13 +147,42 @@ do, and not the C_obs ceiling.
 that the trivial predictor `w_hat = 0` scores. More data makes the receiver's output
 variance hurt more, not less.
 
-Train loss behaves exactly as memorisation predicts — 0.12 at N=100 (331 epochs over 100
-samples) rising to 0.52–0.68 at N=928 — so the flatness is not an optimisation failure.
+Train loss rises from 0.12 at N=100 (331 epochs over 100 samples) to 0.52–0.68 at
+N=928. That is exactly what fixed-step training predicts — larger N means each image is
+revisited fewer times — so it shows small-N runs memorise easily. It does **not** show
+that N=928 reached an optimisation plateau, and this report does not claim it does.
 
 ### Consequence, per the rule as written
 
-Do **not** cache 10k. The next suspects are the prompt-free receiver bottleneck or the
-target/frame, not data volume. Pre-registered follow-up: the k in {8, 16, 64} diagnostic.
+Do **not** cache 10k.
+
+### What this does and does not establish
+
+The curve holds **optimisation compute** fixed at 2320 steps, which is what makes sample
+count the isolated variable — and is also the limit of the claim. The supported statement
+is:
+
+> At fixed optimisation compute, increasing the number of unique training samples from
+> 100 to 928 produces no reproducible improvement in held-out recoverability. This
+> diagnostic therefore does not justify the substantially more expensive 10k cache and
+> run.
+
+It is **not** "more data can never help", and this report does not say so. A 10k run under
+the full protocol's 40 epochs would carry more optimisation compute, not the same:
+
+    extractor trains on split B only, measured at 46.4% of train (2000 -> 928)
+    full: train = 10000  ->  B ~ 4640  ->  40 * ceil(4640/16)  = 11600 steps
+    here: N = 928                      ->  40 * ceil(928/16)   =  2320 steps
+    ratio = 5.0x
+
+so a 10k run would differ from this curve's top point in **two** ways at once. The
+diagnostic answers the sample-count question at fixed compute; it does not answer the
+joint one, and it was never registered to.
+
+### Next
+
+The next suspects are the prompt-free receiver bottleneck or the target/frame, not
+sample count at this compute. Pre-registered follow-up: the k in {8, 16, 64} diagnostic.
 If k=8 generalises where k=64 does not, the problem is task dimensionality; if k=8 is
 also flat, it is not.
 
