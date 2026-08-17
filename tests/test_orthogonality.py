@@ -296,8 +296,11 @@ def test_capacity_decision_rule_is_applied_by_code_not_by_eye():
     # a low plateau while the dimension count still permits coverage is UNRESOLVED
     assert classify(0.80, feasible=True) == "ambiguous_capacity_vs_optimization"
     # only a dimension-infeasible cell may be called a capacity limit
-    assert classify(0.80, feasible=False) == "structurally_insufficient"
+    assert classify(0.80, feasible=False) == "structurally_insufficient_for_generic_coverage"
     assert classify(0.80, converged=False) == "not_converged"
+    # the dimension count is analytic: it does not wait for an optimiser to converge
+    assert (classify(0.80, feasible=False, converged=False)
+            == "structurally_insufficient_for_generic_coverage")
 
     rows = [
         {"k": 128, "m": 128, "target": "generic", "alignment_min": 0.804},
@@ -375,3 +378,32 @@ def test_capacity_metric_is_the_best_iterate_not_the_last():
     assert classify(0.997) == "empirically_sufficient"
     assert classify(0.991) == "empirically_sufficient"
     assert classify(0.985) == "marginal_fit"
+
+
+def test_best_step_follows_the_best_alignment():
+    """Two bugs this pins: `best = max(best, final)` without updating best_step, and
+    recording only the every-100-step checkpoints, which gives the best CHECKED value
+    rather than the best reached."""
+    import sys
+    sys.path.insert(0, "scripts")
+    from audit_reflector_capacity import fit
+
+    r = fit(d=256, k=4, m=8, kind="reachable", seed=0, max_steps=300, lr=0.05,
+            device=torch.device("cpu"), patience=100, check_every=50)
+    assert r["alignment_best"] >= r["alignment_final"] - 1e-9
+    assert 0 <= r["best_step"] <= r["steps_used"]
+    # the best must not be pinned to a checkpoint multiple unless it truly fell there
+    assert r["alignment_best"] > 0.5
+
+
+def test_artifacts_refuse_to_come_from_a_dirty_tree():
+    """A result file that cannot name the commit that produced it is 'some commit plus
+    an unknown diff'. require_clean makes that a precondition rather than a habit."""
+    from fiber.utils.provenance import provenance, require_clean
+
+    p = provenance()
+    assert set(p) == {"git_commit", "git_commit_short", "git_dirty", "git_dirty_files"}
+    assert require_clean("x", allow_dirty=True) == p        # opt-out still works
+    if p["git_dirty"]:
+        with pytest.raises(SystemExit, match="dirty working tree"):
+            require_clean("x")

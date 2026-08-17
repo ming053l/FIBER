@@ -46,6 +46,7 @@ import torch
 
 from fiber.transforms import HaarRandomFrame, HouseholderFrame
 from fiber.utils.logging import get_logger
+from fiber.utils.provenance import require_clean
 
 log = get_logger("capacity")
 
@@ -76,19 +77,27 @@ def classify(a_best: float, feasible: bool = True, converged: bool = True) -> st
       empirically_sufficient  generic target reached >= 0.99: constructive evidence the
                               parameterisation covers the sampled targets
       marginal_fit         0.95 <= A < 0.99
-      structurally_insufficient  low fit AND the dimension count already forbids generic
-                              coverage -- the only label that is a capacity claim
+      structurally_insufficient_for_generic_coverage  the dimension count forbids
+                              generic coverage. The only label that is a capacity claim,
+                              it is analytic, and it says nothing about whether one
+                              PARTICULAR target is reachable -- a low-dimensional family
+                              of targets may well be
       ambiguous_capacity_vs_optimization  low fit while dimension-feasible: unresolved
                               between coverage and trainability, and a multi-start
                               diagnostic is what separates them
     """
+    # The dimension count comes FIRST: it is an analytic statement about the family
+    # and does not depend on whether an optimiser converged. A dimension-infeasible cell
+    # that merely ran out of steps is still dimension-infeasible.
+    if not feasible:
+        return "structurally_insufficient_for_generic_coverage"
     if not converged:
         return "not_converged"
     if a_best >= CAPACITY_SUFFICIENT:
         return "empirically_sufficient"
     if a_best >= CAPACITY_MARGINAL:
         return "marginal_fit"
-    return "structurally_insufficient" if not feasible else "ambiguous_capacity_vs_optimization"
+    return "ambiguous_capacity_vs_optimization"
 
 
 def recommend_m(rows: list[dict]) -> dict:
@@ -171,10 +180,16 @@ def fit(d: int, k: int, m: int, kind: str, seed: int, max_steps: int, lr: float,
     opt = torch.optim.Adam(frame.parameters(), lr=lr)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=max_steps)
     start = float(alignment(frame.rows().detach(), target))
-    t0, best, best_step, step = time.time(), start, 0, 0
+    # The loss already IS the alignment at the current parameters, so the true best
+    # iterate is free -- recording only the every-100-step checkpoints would give the
+    # best CHECKED value, not the best reached. Stored on-device and reduced at the end
+    # so no per-step host sync is added.
+    traj = torch.empty(max_steps, device=device)
+    t0, plateau_best, plateau_step, step = time.time(), start, 0, 0
     while step < max_steps:
         opt.zero_grad(set_to_none=True)
         loss = 1.0 - alignment(frame.rows(), target)
+        traj[step] = loss.detach()
         loss.backward()
         opt.step()
         sched.step()
@@ -182,14 +197,18 @@ def fit(d: int, k: int, m: int, kind: str, seed: int, max_steps: int, lr: float,
         if step % check_every == 0:
             with torch.no_grad():
                 a_now = float(alignment(frame.rows(), target))
-            if a_now > best + tol:
-                best, best_step = a_now, step
-            elif step - best_step >= patience:
+            if a_now > plateau_best + tol:
+                plateau_best, plateau_step = a_now, step
+            elif step - plateau_step >= patience:
                 break
     with torch.no_grad():
         a = float(alignment(frame.rows(), target))
-        best = max(best, a)
         ortho = frame.orthonormality_error()
+        seen = 1.0 - traj[:step]
+        idx = int(seen.argmax())
+        best, best_step = float(seen[idx]), idx
+        if a > best:                      # the final point can beat every iterate seen
+            best, best_step = a, step
     feasible = dimension_feasible(k, m, d)
     return {"k": k, "m": m, "d": d, "target": kind, "seed": seed,
             "alignment_start": start,
@@ -220,6 +239,8 @@ def main() -> int:
     ap.add_argument("--targets", nargs="*", default=["generic", "reachable"])
     ap.add_argument("--device", default="cuda:0" if torch.cuda.is_available() else "cpu")
     ap.add_argument("--out", default="reports/reflector_capacity.json")
+    ap.add_argument("--allow-dirty", action="store_true",
+                    help="permit a throwaway run from an uncommitted tree")
     ap.add_argument("--classify-only", action="store_true",
                     help="apply the pre-registered rule to an existing result file")
     args = ap.parse_args()
@@ -244,6 +265,9 @@ def main() -> int:
                      {m: v["class"] for m, v in sorted(e["by_m"].items())})
         return 0
 
+    prov = require_clean("a capacity audit", allow_dirty=args.allow_dirty)
+    log.info("provenance: %s%s", prov["git_commit_short"],
+             " (DIRTY)" if prov["git_dirty"] else " (clean)")
     device = torch.device(args.device)
     rows = []
     for kind in args.targets:
@@ -271,6 +295,7 @@ def main() -> int:
                          row["capacity_class"])
 
     out = {"d": args.d, "steps": args.steps, "lr": args.lr, "rows": rows,
+           **prov,
            "decision_rule": {"sufficient": CAPACITY_SUFFICIENT,
                              "marginal": CAPACITY_MARGINAL,
                              "statistic": "minimum generic alignment over seeds",
