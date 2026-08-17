@@ -328,7 +328,7 @@ def test_subspace_score_is_invariant_under_within_subspace_rotation():
     for seed in (0, 1, 2):
         rot = subspace_certificate(T["Z"], T["m"], _rotation(8, seed) @ V)
         assert abs(rot["D_cert_subspace"] - base["D_cert_subspace"]) < 1e-9
-        assert rot["certified_positive_rank"] == base["certified_positive_rank"]
+        assert rot["numerical_positive_rank"] == base["numerical_positive_rank"]
         assert np.abs(np.sort(rot["mu"]) - np.sort(base["mu"])).max() < 1e-9
 
 
@@ -372,7 +372,7 @@ def test_diagonal_clipping_reports_zero_where_the_subspace_certifies_one():
     assert (cert["coordinate_skill"] < 0).all()
     assert cert["D_coordinate_clipped"] == 0.0          # what the old metric said
     assert abs(cert["D_cert_subspace"] - 1.0) < 0.05    # what the subspace certifies
-    assert cert["certified_positive_rank"] == 1
+    assert cert["numerical_positive_rank"] == 1
 
 
 def test_subspace_score_comes_from_eigenvalues_not_from_the_diagonal():
@@ -399,7 +399,7 @@ def test_numerical_zero_does_not_become_certified_rank():
     Z = rng.standard_normal((5000, 16))
     F = np.zeros_like(Z)
     cert = subspace_certificate(Z, F, np.eye(16)[:6])
-    assert cert["certified_positive_rank"] == 0
+    assert cert["numerical_positive_rank"] == 0
     assert cert["D_cert_subspace"] == 0.0
     assert cert["zero_tolerance"] > 0
 
@@ -418,7 +418,7 @@ def test_rank_is_reported_against_the_requested_k():
     a result to report, not a number to quietly round up."""
     Z, F, V = _counterexample_data()
     cert = subspace_certificate(Z, F, V)
-    assert cert["requested_k"] == 2 and cert["certified_positive_rank"] == 1
+    assert cert["requested_k"] == 2 and cert["numerical_positive_rank"] == 1
 
 
 # --------------------------------------------------------------------------
@@ -492,7 +492,7 @@ def test_reported_mu_range_is_consistent_with_the_certified_rank():
         c = subspace_certificate(*case)
         assert c["mu_max"] == pytest.approx(float(np.max(c["mu"])))
         assert c["mu_min"] == pytest.approx(float(np.min(c["mu"])))
-        if c["certified_positive_rank"] > 0:
+        if c["numerical_positive_rank"] > 0:
             assert c["mu_max"] > c["zero_tolerance"]
         else:
             assert c["mu_max"] <= c["zero_tolerance"]
@@ -534,7 +534,9 @@ def test_positive_rank_is_named_as_numerical_not_statistical():
     """`tau` only excludes floating-point noise; it is not a significance test."""
     c = subspace_certificate(*_null_case(256, 32))
     assert "numerical_positive_rank" in c
-    assert c["numerical_positive_rank"] == c["certified_positive_rank"]
+    # the alias is gone: it let a caller read a numerical count under a name that
+    # promised certification, and hid a field mismatch until runtime
+    assert "certified_positive_rank" not in c
 
 
 def test_principal_cosines_expose_structure_a_mean_would_hide():

@@ -44,6 +44,9 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="configs/linear_fiber.yaml")
     ap.add_argument("--tag", default="pilot")
+    ap.add_argument("--cache-tag", default=None,
+                    help="image cache namespace; defaults to --tag. A triage writes its "
+                         "artifacts under a fresh --tag while reusing an existing cache.")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--k", type=int, default=None, help="directions to keep")
     ap.add_argument("--epochs", type=int, default=None)
@@ -61,7 +64,7 @@ def main() -> int:
     cfg = load_config(args.config)
     set_determinism(cfg)
     bank = ChannelBank(cfg)
-    root = Path(cfg["paths"]["cache_dir"]) / args.tag
+    root = Path(cfg["paths"]["cache_dir"]) / (args.cache_tag or args.tag)
     scfg = cfg["spectrum"]
     xfit = cfg["dataset"]["crossfit"]
     d = int(cfg["latent"]["dim"])
@@ -111,7 +114,8 @@ def main() -> int:
     tol = float(scfg.get("validity_tol", 0.10))
 
     summary = {
-        "tag": args.tag, "seed": args.seed, "operator": "certified",
+        "tag": args.tag, "cache_tag": args.cache_tag or args.tag,
+        "seed": args.seed, "operator": "certified",
         "solver": spec.solver, "k_kept": int(V.shape[0]),
         "teacher_arch": arch, "teacher_loss": "mse",
         "teacher_parameters": sum(p.numel() for p in teacher.parameters()),
@@ -138,7 +142,9 @@ def main() -> int:
         "D_cert_subspace_insample": sub["D_cert_subspace_insample"],
         "trace_C_V": sub["trace_C_V"],
         "inner_crossfit": sub["crossfit"], "rotation_split": sub["rotation_split"],
-        "certified_positive_rank": sub["certified_positive_rank"],
+        # numerical, NOT certified: tau excludes floating-point noise only. The
+        # certified quantity is the inertia below, which carries a confidence radius.
+        "numerical_positive_rank": sub["numerical_positive_rank"],
         "requested_k": sub["requested_k"],
         "mu_max": sub["mu_max"], "mu_min": sub["mu_min"],
         "zero_tolerance": sub["zero_tolerance"],
@@ -179,7 +185,7 @@ def main() -> int:
                                  seed=args.seed, method="range_eigh")
             per[attack] = {
                 "D_cert_subspace": va["subspace"]["D_cert_subspace"],
-                "certified_positive_rank": va["subspace"]["certified_positive_rank"],
+                "numerical_positive_rank": va["subspace"]["numerical_positive_rank"],
                 "coordinate_skill_top1": float(va["lambda_skill"][0]),
                 "alignment_with_mixture": subspace_alignment(
                     torch.from_numpy(sp_a.eigenvectors[:64]).float(),
@@ -187,7 +193,7 @@ def main() -> int:
             }
             log.info("%-10s D_cert_subspace=%7.3f (rank %d)  align=%.3f", attack,
                      per[attack]["D_cert_subspace"],
-                     per[attack]["certified_positive_rank"],
+                     per[attack]["numerical_positive_rank"],
                      per[attack]["alignment_with_mixture"])
         summary["per_attack"] = per
         summary["per_attack_note"] = (
@@ -207,7 +213,8 @@ def main() -> int:
         "lambda_var_heldout": torch.from_numpy(np.asarray(valid["lambda_var"])).float(),
         "eigenvalues_insample": torch.from_numpy(spec.eigenvalues[:k]).float(),
         "validity_pass": summary["validity_pass"], "k": k, "d": d,
-        "teacher_loss": "mse", "teacher_arch": arch, "seed": args.seed,
+        "teacher_loss": "mse", "teacher_arch": arch, "seed": args.seed, "k": k,
+        "tag": args.tag, "cache_tag": args.cache_tag or args.tag,
         "commit": summary["commit"],
     }, out_dir / f"{stem}.pt")
 

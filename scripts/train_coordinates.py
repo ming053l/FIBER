@@ -106,6 +106,9 @@ def main() -> int:
     ap.add_argument("--crossfit", default=None, help="'A', 'B' or 'none'")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--device", default="cuda:0")
+    ap.add_argument("--cache-tag", default=None,
+                    help="image cache namespace; defaults to --tag. A triage writes its "
+                         "artifacts under a fresh --tag while reusing an existing cache.")
     ap.add_argument("--eval-attacks", nargs="*", default=None,
                     help="restrict the evaluated attacks (triage uses one per family); "
                          "recorded in the run so the locked test evaluation matches")
@@ -137,7 +140,8 @@ def main() -> int:
         if unknown:
             raise SystemExit(f"unknown attacks {unknown}")
         bank.eval = list(args.eval_attacks)
-    root = Path(cfg["paths"]["cache_dir"]) / args.tag
+    cache_tag = args.cache_tag or args.tag
+    root = Path(cfg["paths"]["cache_dir"]) / cache_tag
     d = int(cfg["latent"]["dim"])
     k = args.k or int(cfg["fiber"]["robust_dims"])
     if args.arm not in cfg["fiber"]["arms"]:
@@ -258,6 +262,7 @@ def main() -> int:
         **prov,
         "train_config": {kk: vv for kk, vv in tcfg.__dict__.items()},
         "eval_splits": list(args.eval_splits), "eval_attacks": list(bank.eval),
+        "cache_tag": cache_tag,
         "crossfit_eval_split": xfit_eval, "train_split": args.train_split,
         "limit": args.limit,
         "epochs": tcfg.epochs, "final_train_loss": hist[-1]["loss"],

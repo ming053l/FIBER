@@ -331,7 +331,6 @@ def subspace_certificate(Z, F, V, center: bool = True, tol: float | None = None,
         # `statistically_certified_rank` above is the one that counts directions whose
         # one-sided lower bound clears zero.
         "numerical_positive_rank": int(positive.size),
-        "certified_positive_rank": int(positive.size),   # deprecated alias
         "requested_k": int(V.shape[0]),
         # mu.max()/min(), NOT mu[0]/mu[-1]: after the inner cross-fit mu is ordered by
         # the rotation chosen on half 1, so it is no longer sorted descending.

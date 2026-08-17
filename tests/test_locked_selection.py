@@ -807,3 +807,122 @@ def test_required_arms_are_declared_not_inferred():
     # the P0-7 basis arms belong to that analysis, not to the gate
     assert "D2_rot_rand" not in CFG["fiber"]["required_arms"]
     assert "D3_rot_learn" not in CFG["fiber"]["required_arms"]
+
+
+def test_spectrum_summary_exposes_every_field_its_own_logging_reads():
+    """A field renamed in one place and read in another survives until the very end of a
+    run: the spectrum script wrote `certified_positive_rank` and its final log line read
+    `numerical_positive_rank`, so every fit crashed AFTER writing its outputs."""
+    import ast
+
+    def summary_keys(tree):
+        """Keys actually ASSIGNED into `summary`. Collecting every string constant
+        instead would include the subscript's own key, making the check vacuous --
+        verified: on the buggy code that version reported nothing missing."""
+        out = set()
+        for n in ast.walk(tree):
+            if not isinstance(n, ast.Assign):
+                continue
+            for t in n.targets:
+                if (isinstance(t, ast.Name) and t.id == "summary"
+                        and isinstance(n.value, ast.Dict)):
+                    out |= {k.value for k in n.value.keys
+                            if isinstance(k, ast.Constant) and isinstance(k.value, str)}
+                if (isinstance(t, ast.Subscript) and isinstance(t.value, ast.Name)
+                        and t.value.id == "summary" and isinstance(t.slice, ast.Constant)):
+                    out.add(t.slice.value)
+        return out
+
+    def summary_reads(tree):
+        return {n.slice.value for n in ast.walk(tree)
+                if isinstance(n, ast.Subscript) and isinstance(n.value, ast.Name)
+                and n.value.id == "summary" and isinstance(n.slice, ast.Constant)}
+
+    # the check must fail on the shape of the real bug
+    buggy = ast.parse('summary = {"certified_positive_rank": 1}\n'
+                      'print(summary["numerical_positive_rank"])\n')
+    assert summary_reads(buggy) - summary_keys(buggy) == {"numerical_positive_rank"}, \
+        "the check cannot detect the bug it exists for"
+
+    tree = ast.parse(Path("scripts/fit_observability_spectrum.py").read_text())
+    missing = sorted(summary_reads(tree) - summary_keys(tree))
+    assert not missing, f"summary[...] reads keys never assigned: {missing}"
+
+
+def test_triage_driver_cannot_cross_the_lock_with_a_failure_behind_it():
+    """Collecting failures and reporting at the end is fine inside a phase. Crossing into
+    selection, or from selection into materialising test pixels, is irreversible."""
+    src = Path("scripts/run_triage.sh").read_text()
+    assert "abort_if_failed" in src
+    order = [src.index(m) for m in (
+        "abort_if_failed \"selection\"",
+        "select_method.py",
+        "abort_if_failed \"materialising test pixels\"",
+        "--post-lock",
+        "abort_if_failed \"the locked test evaluation\"",
+        "evaluate_locked.py")]
+    assert order == sorted(order), "a barrier is out of order relative to its phase"
+
+
+def test_skip_fit_verifies_provenance_before_reusing_a_spectrum():
+    """"The file exists" is not provenance: a spectrum from another commit, k, seed or
+    teacher architecture would otherwise be folded silently into the comparison."""
+    src = Path("scripts/compare_teachers.py").read_text()
+    assert "does not match this run" in src
+    for field in ("commit", "k", "seed", "teacher_arch"):
+        assert f'"{field}"' in src, field
+
+
+def test_cache_namespace_is_separate_from_the_artifact_namespace():
+    """A triage writes its artifacts under a fresh tag while reusing an existing image
+    cache; without the split, --tag triage1 would look for cache/triage1, which the
+    cache generator never writes."""
+    for script in ("train_coordinates.py", "fit_observability_spectrum.py",
+                   "evaluate_locked.py", "compare_teachers.py"):
+        assert '"--cache-tag"' in Path(f"scripts/{script}").read_text(), script
+    # the two that resolve inline fall back to the run tag; evaluate_locked resolves via
+    # the helper, which is unit-tested separately
+    for script in ("train_coordinates.py", "fit_observability_spectrum.py"):
+        assert "args.cache_tag or args.tag" in Path(f"scripts/{script}").read_text(), script
+    import importlib
+    assert importlib.import_module("evaluate_locked").resolve_cache_tag(
+        None, {}, "solo") == "solo"
+    driver = Path("scripts/run_triage.sh").read_text()
+    assert "CACHE_TAG=${CACHE_TAG:-pilot}" in driver
+    assert "--cache-tag" in driver
+
+
+def test_cache_namespace_is_locked_by_the_selection():
+    """Swapping to a different image cache after the lock would evaluate the frozen
+    checkpoints on different data."""
+    assert '"cache_tag": winner_runs[0].get("cache_tag"' in \
+        Path("scripts/select_method.py").read_text()
+    ev = Path("scripts/evaluate_locked.py").read_text()
+    assert "the lock names cache namespace" in ev
+
+
+def test_locked_cache_tag_is_resolved_before_anything_consumes_it():
+    """It was used a dozen lines before it was assigned, which would have raised
+    UnboundLocalError after selection had already completed -- in the post-lock stage."""
+    import importlib
+
+    el = importlib.import_module("evaluate_locked")
+    assert el.resolve_cache_tag(None, {"cache_tag": "pilot"}, "triage1") == "pilot"
+    assert el.resolve_cache_tag("pilot", {"cache_tag": "pilot"}, "triage1") == "pilot"
+    assert el.resolve_cache_tag(None, {}, "triage1") == "triage1"
+    with pytest.raises(SystemExit, match="cache namespace"):
+        el.resolve_cache_tag("other", {"cache_tag": "pilot"}, "triage1")
+    # debug mode may deviate, and its manifest is rejected by the gate anyway
+    assert el.resolve_cache_tag("other", {"cache_tag": "pilot"}, "t", debug=True) == "other"
+
+    src = Path("scripts/evaluate_locked.py").read_text()
+    assert src.index("cache_tag = resolve_cache_tag") < src.index("test_cache_manifest.json")
+
+
+def test_spectrum_reuse_requires_the_same_image_cache():
+    """Once the artifact tag and the cache tag can differ, the cache is part of what a
+    spectrum is: a fit over cache A must not be reused for a comparison over cache B."""
+    assert '"cache_tag": args.cache_tag or args.tag' in \
+        Path("scripts/fit_observability_spectrum.py").read_text()
+    assert '"cache_tag": args.cache_tag or args.tag' in \
+        Path("scripts/compare_teachers.py").read_text()

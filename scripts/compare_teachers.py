@@ -37,6 +37,7 @@ from fiber.spectrum import principal_cosines, subspace_alignment
 from fiber.spectrum.certified import subspace_certificate
 from fiber.utils.config import load_config
 from fiber.utils.logging import get_logger
+from fiber.utils.provenance import require_clean
 
 log = get_logger("teachers")
 
@@ -49,11 +50,15 @@ def main() -> int:
     ap.add_argument("--k", type=int, default=64)
     ap.add_argument("--epochs", type=int, default=None)
     ap.add_argument("--limit", type=int, default=0)
-    ap.add_argument("--skip-fit", action="store_true", help="reuse existing spectrum files")
+    ap.add_argument("--skip-fit", action="store_true",
+                    help="reuse existing spectrum files, after verifying their provenance")
+    ap.add_argument("--cache-tag", default=None)
+    ap.add_argument("--allow-dirty", action="store_true")
     ap.add_argument("--device", default="cuda:0")
     args = ap.parse_args()
 
     cfg = load_config(args.config)
+    prov = require_clean("a teacher comparison", allow_dirty=args.allow_dirty)
     spec_dir = Path(cfg["paths"]["data_root"]) / "spectrum"
     archs = [cfg["spectrum"].get("teacher_arch", "resnet18"),
              cfg["spectrum"].get("teacher_arch_control", "spatial_sharedtrunk")]
@@ -63,11 +68,26 @@ def main() -> int:
         stem = f"{args.tag}_seed{args.seed}" + ("" if arch == "resnet18" else f"_{arch}")
         paths[arch] = spec_dir / f"{stem}.pt"
         if args.skip_fit and paths[arch].exists():
-            log.info("%s: reusing %s", arch, paths[arch].name)
+            # Reuse only what this experiment actually produced. "The file exists" is not
+            # provenance: a spectrum from another commit, k, seed or teacher would be
+            # silently folded into this comparison.
+            blob = torch.load(paths[arch], map_location="cpu", weights_only=True)
+            # same code, same experiment, same image cache
+            want = {"commit": prov["git_commit_short"], "tag": args.tag,
+                    "cache_tag": args.cache_tag or args.tag, "k": args.k,
+                    "seed": args.seed, "teacher_arch": arch}
+            got = {kk: blob.get(kk) for kk in want}
+            if got != want:
+                raise SystemExit(
+                    f"{paths[arch].name} does not match this run: {got} != {want}. "
+                    "Drop --skip-fit to refit, or delete the stale artifact.")
+            log.info("%s: reusing %s (verified)", arch, paths[arch].name)
             continue
         cmd = [sys.executable, "scripts/fit_observability_spectrum.py",
                "--config", args.config, "--tag", args.tag, "--seed", str(args.seed),
                "--k", str(args.k), "--teacher", arch, "--device", args.device]
+        if args.cache_tag:
+            cmd += ["--cache-tag", args.cache_tag]
         if args.epochs:
             cmd += ["--epochs", str(args.epochs)]
         if args.limit:
@@ -113,8 +133,7 @@ def main() -> int:
         "tag": args.tag, "seed": args.seed, "k": k,
         "teachers": {arch: {
             "D_cert_subspace": summaries[arch].get("D_cert_subspace"),
-            "numerical_positive_rank": summaries[arch].get("numerical_positive_rank",
-                                                           summaries[arch].get("certified_positive_rank")),
+            "numerical_positive_rank": summaries[arch].get("numerical_positive_rank"),
             "validity_mean_abs_gap": summaries[arch].get("validity_mean_abs_gap"),
             "validity_pass": validity[arch],
             # capacity is a confound if left unreported; the two heads cannot be

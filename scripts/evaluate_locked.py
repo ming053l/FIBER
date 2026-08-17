@@ -45,6 +45,24 @@ from select_method import config_fingerprint, file_digest  # noqa: E402
 log = get_logger("locked-eval")
 
 
+def resolve_cache_tag(cli_tag: str | None, protocol: dict, run_tag: str,
+                      debug: bool = False) -> str:
+    """Which image cache this evaluation reads.
+
+    The cache namespace is part of the lock: swapping to a different cache afterwards
+    would evaluate the frozen checkpoints on different data. Resolved in one place, and
+    unit-tested, because the alternative -- an assignment somewhere in the middle of a
+    long main() -- is how it came to be used a dozen lines before it was defined.
+    """
+    locked = protocol.get("cache_tag")
+    tag = cli_tag or locked or run_tag
+    if locked and tag != locked and not debug:
+        raise SystemExit(
+            f"the lock names cache namespace {locked!r}, not {tag!r}: evaluating the "
+            "frozen checkpoints on a different image cache is a different experiment.")
+    return tag
+
+
 def verify(entry: dict, out_dir: Path) -> dict:
     """Every artifact the lock named must still be byte-identical."""
     stem = entry["stem"]
@@ -89,6 +107,9 @@ def main() -> int:
     ap.add_argument("--config", default="configs/linear_fiber.yaml")
     ap.add_argument("--tag", default="pilot")
     ap.add_argument("--selection", default=None)
+    ap.add_argument("--cache-tag", default=None,
+                    help="image cache namespace; defaults to --tag. A triage writes its "
+                         "artifacts under a fresh --tag while reusing an existing cache.")
     ap.add_argument("--results-dir", default=None)
     ap.add_argument("--out-dir", default=None)
     ap.add_argument("--device", default="cuda:0")
@@ -135,6 +156,7 @@ def main() -> int:
     protocol = sel.get("test_protocol", {"splits": ["test", "test_heldout_prompts"],
                                          "limit": 0})
     locked_attacks = protocol.get("attacks")
+    cache_tag = resolve_cache_tag(args.cache_tag, protocol, args.tag, args.debug)
     splits = args.splits if (args.debug and args.splits) else protocol["splits"]
     limit = args.limit if (args.debug and args.limit is not None) else int(protocol["limit"])
     now_fp = config_fingerprint(cfg)
@@ -156,7 +178,7 @@ def main() -> int:
 
     # Whether the test PIXELS were generated after the lock, or merely never read
     # before it. Both are defensible; only the first supports "no test sample existed".
-    cache_manifest = Path(cfg["paths"]["cache_dir"]) / args.tag / "test_cache_manifest.json"
+    cache_manifest = Path(cfg["paths"]["cache_dir"]) / cache_tag / "test_cache_manifest.json"
     test_cache_post_lock = False
     if cache_manifest.exists():
         tc = json.loads(cache_manifest.read_text())
@@ -168,7 +190,7 @@ def main() -> int:
     bank = ChannelBank(cfg)
     if locked_attacks:
         bank.eval = list(locked_attacks)
-    root = Path(cfg["paths"]["cache_dir"]) / args.tag
+    root = Path(cfg["paths"]["cache_dir"]) / cache_tag
 
     entries = (sel["selected_runs"] + sel["reference_runs"] + sel.get("context_runs", []))
     log.info("verifying %d locked runs against %s", len(entries), sel_path.name)
@@ -177,7 +199,8 @@ def main() -> int:
     manifest = {"tag": args.tag, "selection_sha": file_digest(sel_path),
                 "selection_commit": locked_commit, **prov,
                 "official": official, "config_fingerprint": now_fp,
-                "test_protocol": {"splits": list(splits), "limit": limit},
+                "test_protocol": {"splits": list(splits), "limit": limit,
+                                  "cache_tag": cache_tag},
                 "test_cache_post_lock": test_cache_post_lock,
                 "claim": ("no test image was materialised or accessed, and no test "
                           "corruption, prediction or metric computed, before the lock"

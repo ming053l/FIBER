@@ -296,7 +296,8 @@ def main() -> int:
         # The evaluated ATTACK set is part of the test protocol too: evaluating a
         # different set of channels after the lock would be a post-hoc choice.
         "test_protocol": {"splits": ["test", "test_heldout_prompts"], "limit": 0,
-                          "attacks": winner_runs[0].get("eval_attacks", bank.eval)},
+                          "attacks": winner_runs[0].get("eval_attacks", bank.eval),
+                          "cache_tag": winner_runs[0].get("cache_tag", args.tag)},
         "seed_completeness": {**completeness, "registered": registered,
                               "required_arms": sorted(registered),
                               "enforced": not args.allow_incomplete,
