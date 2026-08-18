@@ -14,9 +14,17 @@ Two questions, deliberately separated:
         selected here, so no inner cross-fit is needed and none is used -- the certificate
         is a sample mean and is bootstrapped directly, Bonferroni over the k coordinates.
 
-  P1-B  is there anything to select?  Top and bottom coordinates are chosen on the
-        DISCOVERY split and measured on the CERTIFICATION split. Choosing and measuring on
-        the same samples is exactly the rectification the inner cross-fit exists for.
+  P1-B  is there anything to select?  Top and bottom COORDINATES of the fixed frame are
+        chosen on the DISCOVERY split and measured on the CERTIFICATION split. Choosing
+        and measuring on the same samples is exactly the rectification the inner cross-fit
+        exists for.
+
+NOTE ON WHAT P1-B CAN AND CANNOT SHOW. It reads the DIAGONAL of the restricted operator in
+a fixed frame. A flat diagonal in a random basis does not imply an isotropic operator:
+r_j' C r_j = sum_m lambda_m (u_m . r_j)^2, and in high dimension (u_m . r_j)^2 concentrates
+near 1/d, so any spectrum is flattened by the basis. FIBER is an eigenspace framework, so
+ruling out coordinate ranking does not rule out a reproducible eigen-direction. That is a
+separate question (P1-C) on the same saved coordinates.
 
 A large BER gap says the receiver recovers something; it says nothing about where. A
 near-isotropic certificate would mean FIBER has no coordinate to select, and that is a
@@ -137,6 +145,14 @@ def main() -> int:
     D = lambda idx: float(np.clip(lam_c[idx], 0, None).sum())
     Dl = lambda idx: float(np.clip(lcb_c[idx], 0, None).sum())
 
+    # Saved so that operator-level questions can be asked without paying for inversion
+    # again: 793 inversions is 17 minutes, and c / chat are a few hundred kilobytes.
+    coord_path = (Path(cfg["paths"]["data_root"]) / "results" / args.tag
+                  / f"p1_coords_{args.attack}.npz")
+    coord_path.parent.mkdir(parents=True, exist_ok=True)
+    np.savez_compressed(coord_path, c_disc=Cd, chat_disc=CHd, c_cert=Cc, chat_cert=CHc,
+                        ids_disc=np.array(ids_d), ids_cert=np.array(ids_c))
+
     summary = {
         "tag": args.tag, "arm": args.arm, "seed": args.seed, "k": k,
         "attack": args.attack, "receiver": "ddim_inversion_prompt_assisted",
@@ -144,6 +160,7 @@ def main() -> int:
         "certification": {"split": "val", "n": len(ids_c)},
         "frame_rows_digest": hashlib.blake2s(rows.numpy().tobytes(),
                                              digest_size=16).hexdigest(),
+        "p1b_reads": "the DIAGONAL of the restricted operator in the fixed frame",
         "p1a_certified_positive_coordinates": certified, "p1a_of": k,
         "lambda_certification": lam_c.tolist(), "lcb_certification": lcb_c.tolist(),
         "lambda_discovery": lam_d.tolist(),
@@ -157,6 +174,7 @@ def main() -> int:
                        if lam_c.mean() else None},
         "bootstrap": args.bootstrap, "alpha": args.alpha,
         "bound_rule": "one-sided bootstrap percentile, Bonferroni over k, fixed frame",
+        "coordinates": str(coord_path),
         "seconds": round(time.time() - t0, 1), **prov,
     }
     out = Path(cfg["paths"]["reports_dir"]) / f"p1_inversion_{args.tag}_{args.attack}.json"

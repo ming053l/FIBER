@@ -104,3 +104,93 @@ encoder would re-measure a quantity already in hand.
 
 No new generator, no VAE-only channel, no additional teacher architecture, no error
 correction, no new frame search. One intervention: the receiver.
+
+
+---
+
+# P1 result — clean channel, commit `13aeb9a`
+
+Discovery `train/A_operator` $n=537$, certification `val` $n=256$, parent frame
+`C2_haar` seed 0 (digest `120239f1701fc9db`, the Phase A frame), 2000 bootstrap draws,
+Bonferroni over 64.
+
+## P1-A — PASS, decisively
+
+**64 of 64** fixed-frame coordinates have a one-sided bound above zero.
+
+| | min | mean | max |
+|---|---|---|---|
+| $\hat\lambda_j$ | 0.7094 | 0.8517 | 1.0593 |
+| $\mathrm{LCB}_j$ | **0.4727** | 0.5956 | 0.7414 |
+
+The lowest bound in the whole frame is $0.47$. On the same channel, the same frame and
+the same images, the learned CNN decoder certified $0/64$ and failed its validity gate.
+
+The supported statement is about the **estimator class**, not the population operator:
+
+> The amount of observability that can be certified changes dramatically with the
+> receiver and estimator class, even on the same frozen channel and the same fixed latent
+> frame.
+
+It is not a measurement of $\Cobs(\mathcal I_R)$ itself. Two different $\Ccert(f)$ are
+being compared, and the CNN side additionally failed teacher validity.
+
+## P1-B (coordinate ranking) — FAIL, and in the reverse direction
+
+Top-8 coordinates chosen on discovery, measured on certification:
+
+    D_top = 6.6206   <   D_bottom = 6.7040   <   D_random-8 = 6.8383
+
+The discovery-selected best coordinates are the **worst** of the three on fresh data. The
+mechanism is visible and measured:
+
+    corr(lambda_discovery, lambda_certification) = +0.0396
+    top-8:     0.9302 (disc) -> 0.8276 (cert)     shrinkage +0.1027
+    bottom-8:  0.7270 (disc) -> 0.8380 (cert)     shrinkage -0.1110
+
+Both extremes regress to the global mean $0.8517$. This is a winner's curse: the ranking
+carries almost no information across splits, so the discovery top-8 are simply the eight
+that fluctuated highest. Without the discovery/certification split, $D_{\rm top}$ would
+have been reported as $0.9302\times8\approx7.44$ --- clearly above the random subset --- and
+a practical claim would have rested entirely on selection bias.
+
+Supported: **no reproducible coordinate-level anisotropy in the preregistered Haar frame.**
+
+## What P1-B does NOT establish
+
+It reads the **diagonal** of the restricted operator in a fixed frame. A flat diagonal in
+a random basis does not imply an isotropic operator: $r_j^\top C r_j=\sum_m\lambda_m
+(u_m\!\cdot\! r_j)^2$, and in high dimension $(u_m\!\cdot\! r_j)^2$ concentrates near $1/d$,
+so any spectrum is flattened by the choice of basis. FIBER is an eigenspace framework, and
+ruling out a coordinate ranking does not rule out a reproducible eigen-direction.
+
+**P2 is not opened.** Its precondition was P1-A *and* P1-B, and P1-B failed as
+preregistered.
+
+---
+
+# P1-C — operator-level anisotropy diagnostic
+
+**Preregistered. A different question from P1-B, not a repair of it.** P1-B was defined in
+advance on the *coordinates* of the fixed parent frame and failed; that result is final and
+is not revisited. P1-C asks what P1-B is structurally unable to answer: whether the
+off-diagonal structure of the same restricted operator defines a reproducible
+**eigen-direction**.
+
+No new data: it runs on the coordinates saved by the P1 run, so it costs no further
+inversion.
+
+    discovery:      C_disc = eig -> U_disc, take the top-8 and bottom-8 eigenvectors
+    certification:  measure D_cert(U_top), D_cert(U_bottom), D_cert(U_random) on val
+                    WITHOUT re-selecting
+
+**Gate P1-C.** A reproducible eigenspace requires
+$D_{\rm cert}(U_{\rm top})>D_{\rm cert}(U_{\rm random})$ on the certification split, with
+the difference exceeding the spread over random 8-dimensional subspaces drawn in the same
+parent space. The random reference is drawn many times, not once, because a single draw
+cannot show that the top subspace beats a *typical* one.
+
+If this fails too, the honest conclusion is that at this scale the inversion receiver
+exposes broad recoverability with no reproducible directional structure to exploit --- and
+the coordinate-selection use case does not close, for a reason that is now measured at the
+operator level rather than assumed from a diagonal.
