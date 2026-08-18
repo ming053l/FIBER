@@ -58,6 +58,20 @@ needed to keep fitting noise out --- but the discovery/certification split still
 because choosing directions and measuring them on the same samples rectifies noise
 whatever produced the decoder.
 
+## Design decisions, fixed before running
+
+**Channel condition.** P1-A runs on the **clean** channel first. That is the inversion
+receiver's most favourable condition (BER $0.1287$, its best of ten), so a failure to
+certify there is decisive and cheap, while success there claims nothing yet about attacked
+channels. If P1-A fails on clean it will not pass under attack, and we stop.
+
+**Splits.** Discovery on `train / A_operator` ($n=537$), certification on `val` ($n=256$);
+disjoint by construction, neither is test, and the script asserts the sample ids do not
+intersect. Because the parent frame is fixed a priori, P1-A selects nothing and therefore
+needs no inner cross-fit --- the certificate is a sample mean, bootstrapped directly with
+a Bonferroni correction over the $64$ coordinates. P1-B *does* select, so top and bottom
+are chosen on discovery and measured on certification.
+
 ## Gates, fixed before running
 
 **P1-A --- can it certify?** At least some directions must satisfy
