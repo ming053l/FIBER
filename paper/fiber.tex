@@ -1,5 +1,5 @@
 \documentclass{article}
-\usepackage{iclr2026_conference,times}
+\usepackage{iclr2027_conference,times}
 \input{math_commands.tex}
 
 \usepackage{hyperref}
@@ -26,12 +26,12 @@
 \title{FIBER: Certified Observability and the Limits\\
 of Latent Recoverability in Frozen Generative Channels}
 
-\author{Anonymous}
+\author{Anonymous authors\\Paper under double-blind review}
 
 \newcommand{\fix}{\marginpar{FIX}}
 \newcommand{\new}{\marginpar{NEW}}
 
-\iclrfinalcopy
+% \iclrfinalcopy   % double blind: leave commented for submission
 
 \begin{document}
 \maketitle
@@ -97,45 +97,34 @@ and cannot say whether recoverability is concentrated in a few latent directions
 thin. \textbf{Operational recovery is not channel observability.}
 
 \paragraph{Each advance repairs a different layer.}
-The literature has addressed distinct failure modes at distinct layers of the transmission
-stack: Gaussian Shading removes training-induced quality costs
-\citep{yang2024gaussianshading}, T2SMark trades robustness against latent diversity
-\citep{t2smark2025}, MaxMark addresses limited payload capacity
-\citep{chang2026maxmark}, Gaussian Shannon adds coding for bit-exact transmission
-\citep{zhang2026gaussianshannon}, and GROW removes the computational cost of
-inversion-based extraction \citep{luo2026grow}. These are real improvements to
-watermarking systems. They also make a measured recovery rate a joint function of the
-latent embedding, the channel, the inversion procedure, the coding scheme and the
-receiver. \emph{Our inference, and not a claim made by those works}, is that a layer of
-abstraction is missing beneath them: before optimising the communication system, one
-should be able to characterise the information-carrying geometry of the frozen channel
-itself.
+Distinct failure modes have been addressed at distinct layers of the transmission stack
+--- quality cost, robustness against latent diversity, payload capacity, bit-exact
+coding, extraction cost \citep{yang2024gaussianshading,t2smark2025,chang2026maxmark,%
+zhang2026gaussianshannon,luo2026grow}. These are real improvements, and they also make a
+measured recovery rate a joint function of the embedding, the channel, the inversion, the
+coding scheme and the receiver. \emph{Our inference, and not a claim made by those works},
+is that a layer of abstraction is missing beneath them: before optimising the
+communication system one should be able to characterise the information-carrying geometry
+of the frozen channel itself.
 
 We formalise this through the \emph{Bayesian observability geometry}
-\[
-  \Cobs \;=\; \Cov\bigl(\Exp[Z\mid Y]\bigr).
-\]
-For an isotropic Gaussian latent and a unit direction $v$,
-$v^\top\Cobs v=1-\Exp[\Var(v^\top Z\mid Y)]$, so each quadratic form measures how much
-uncertainty about that latent direction the observation removes. The eigenspectrum
-separates highly observable directions from directions whose latent variation is largely
-lost: its trace summarises \emph{total explained latent variance}, while the full operator
-retains \emph{where} that observability lies. This posterior-mean covariance has classical
-connections to inverse regression, and in the linear--Gaussian setting it is a bounded
-global Bayesian counterpart of the local Fisher geometry.
+$\Cobs=\Cov(\Exp[Z\mid Y])$. For an isotropic Gaussian latent and a unit direction $v$,
+$v^\top\Cobs v=1-\Exp[\Var(v^\top Z\mid Y)]$: each quadratic form is how much uncertainty
+about that direction the observation removes. The trace summarises \emph{total explained
+latent variance}; the operator retains \emph{where} that observability lies. The object
+has classical connections to inverse regression, and in the linear--Gaussian case it is a
+bounded global Bayesian counterpart of the local Fisher geometry.
 
-The Bayes posterior mean is unavailable in a realistic generative channel, which makes the
-geometry impossible to compute directly, and replacing it by the output of a learned
-decoder is unsafe: $\Cov(f(Y))$ can reflect the decoder's own scaling and estimation error
+The Bayes posterior mean is unavailable in a realistic channel, and replacing it by a
+learned decoder is unsafe: $\Cov(f(Y))$ can reflect the decoder's own scaling and error
 rather than information the channel carries. We instead derive a \emph{decoder-certified
 observability operator}
 \[
   \Ccert(f)\;=\;\Cobs-\Cov(m-f)\;\preceq\;\Cobs,\qquad m(Y)=\Exp[Z\mid Y],
 \]
-so a decoder cannot certify observability beyond the Bayes quantity. This converts a
-learned observer from an optimistic proxy into a lower certificate, and motivates
-estimating it with disjoint fitting and evaluation data so that decoder fitting noise is
-not read back as channel structure.
+so a decoder cannot certify beyond the Bayes quantity. This converts a learned observer
+from an optimistic proxy into a lower certificate, and motivates estimating it on data
+disjoint from the fitting split.
 
 Finally, observability is not a property of the channel alone. A receiver that observes
 $Y$ and one that additionally knows side information $S$ solve different inference
@@ -150,12 +139,11 @@ pair.} We test this prediction in a frozen text-to-image diffusion channel with 
 preregistered four-arm intervention that separates the correct sample-specific
 conditioning from architectural capacity and from the conditioning marginal.
 
-Taken together, the three questions above are the same question asked of three different
-confounds, and they fix what this paper is for:
-\textbf{we separate channel observability from the choice of encoding, from the quality of
-the decoder, and from the knowledge of the receiver.} This is not another watermarking
-method; it is an attempt to decompose a quantity --- ``recoverability'' --- that is
-currently measured with all three folded in.
+The three questions above are one question asked of three confounds, which fixes what this
+paper is for: \textbf{we separate channel observability from the choice of encoding, from
+the quality of the decoder, and from the knowledge of the receiver.} This is not another
+watermarking method; it decomposes a quantity --- ``recoverability'' --- that is currently
+measured with all three folded in.
 
 \paragraph{Contributions.}
 \begin{itemize}
@@ -171,7 +159,11 @@ currently measured with all three folded in.
   the receiver's information set can only increase population observability, and prove why
   differences of learned decoder certificates do \emph{not} automatically inherit that
   guarantee.
-  \item \textbf{Evidence.} \textbf{[Phase A pending.]}
+  \item \textbf{Evidence, including where the framework finds nothing.} The estimator
+  recovers a known observability geometry in a channel built so that forward sensitivity
+  and observability disagree; on a frozen diffusion channel it certifies no positive
+  direction at the tested scale, and a preregistered receiver-information intervention
+  finds no operational benefit while both its placebo gates pass.
 \end{itemize}
 
 \section{Related work}
@@ -248,12 +240,11 @@ for $\|v\|=1$ and $Z\sim\mathcal N(0,I)$,
   v^\top\Cobs v \;=\; 1-\Exp\bigl[\Var(v^\top Z\mid Y)\bigr] \;\in\;[0,1].
   \label{eq:quadform}
 \end{equation}
-So $v^\top\Cobs v$ is the fraction of the prior uncertainty in direction $v$ that an
-observation removes: $1$ means $v^\top Z$ is recoverable, $0$ means the channel destroyed
-it. Writing $\Cobs=V\Lambda V^\top$, eigenvectors are observable latent directions,
-eigenvalues are direction-wise observability strengths, and the top-$k$ eigenspace is the
-most observable $k$-dimensional latent subspace. Figure~\ref{fig:geometry} is this
-definition and nothing else.
+So $v^\top\Cobs v$ is the fraction of direction $v$'s prior uncertainty that an
+observation removes: $1$ means recoverable, $0$ means destroyed. In
+$\Cobs=V\Lambda V^\top$ the eigenvectors are observable directions and the top-$k$
+eigenspace is the most observable $k$-dimensional subspace
+(Figure~\ref{fig:geometry}).
 
 \begin{figure}[t]
 \centering
@@ -389,17 +380,6 @@ information can only enlarge the observable geometry, and the gain
 $\Delta C_{\mathrm{side}}=\Exp[\Cov(m_s\mid Y)]$ has a direct reading: how much the
 posterior mean still moves once $Y$ is known.
 
-\begin{figure}[t]
-\centering
-\input{fig_receiver.tex}
-\caption{Observability is indexed by the receiver. (a) Adding side information can only
-enlarge the observable geometry, never narrow it in any direction --- the blind ellipsoid
-(dotted) is contained in the side-informed one. (b) A side receiver differs from a blind
-one in more than what it knows, so three further arms separate the architecture, the
-conditioning \emph{marginal}, and the \emph{pairing}; only the last is the quantity of
-interest.}
-\label{fig:receiver}
-\end{figure}
 
 \paragraph{The estimator does not inherit the ordering.}
 Theorem~\ref{thm:mono} is about Bayes quantities. With two \emph{approximate} decoders,
@@ -455,92 +435,23 @@ than a structured one.
 
 \section{Experiments}
 
-\subsection{Experimental setup}
+\subsection{Setup}
 \label{sec:setup}
 
-\paragraph{The channel.}
-The generator is Stable Diffusion v1.5 with all modules frozen; nothing is fine-tuned at
-any point. Sampling uses DDIM with $\eta=0$ and $25$ steps at guidance scale $3.0$ with an
-empty negative prompt, chosen because it is deterministic and because
-$\sigma_{\mathrm{init}}=1$ lets a supplied latent pass through unscaled, so the latent the
-UNet consumes is exactly the target the receiver is asked to recover. The latent is
-$Z\in\mathbb R^{4\times64\times64}$, i.e.\ $d=16{,}384$, drawn as $\mathcal N(0,I)$ on the
-CPU and rounded to the generator's dtype \emph{before} being stored, so the persisted $Z$
-is bit-exactly what the UNet saw. Images are $512\times512$. The guidance scale is a pilot
-value and is not tuned against any outcome: whether high guidance suppresses latent
-information is a hypothesis this framework can state, not a premise it assumes.
-
-\paragraph{Transmission channel.}
-$T$ is drawn from a fixed set of ten perturbations: identity, JPEG at quality
-$\{90,70,50\}$, bilinear down-and-up resizing at scale $\{0.75,0.50\}$, additive Gaussian
-noise at $\sigma\in\{0.05,0.10\}$, and Gaussian blur at $\sigma\in\{1.0,2.0\}$. A further
-four --- WebP-75, JPEG-30, blur-$3.0$, resize-$0.35$ --- are held out of training entirely
-and used only as an unseen-channel falsification test. Perturbations are \emph{not}
-cached: each is applied in the dataloader from a seed derived as
-$\mathrm{blake2s}(\text{sample id}\,|\,\text{attack}\,|\,\text{severity}\,|\,\text{split
-salt})$, so the realisation is reproducible without freezing the attack set or storing
-tens of gigabytes of redundant pixels. Cropping is deliberately absent: it introduces an
-alignment problem the receiver would have to solve simultaneously, confounding the
-coordinate result.
-
-\paragraph{Data and the one-sample-one-role rule.}
-Prompts are COCO captions, one per sample and drawn without replacement, with a
-held-out-prompt test split drawn from \texttt{val2017} while every other split draws from
-\texttt{train2017}; latent seeds are derived from (salt, split, index) so splits are
-disjoint in latent \emph{and} in prompt by construction. Each sample plays exactly one
-scientific role:
-
-\begin{center}
-\begin{tabular}{llr}
-\toprule
-role & used for & $n$ \\
-\midrule
-$A_{\mathrm{teacher}}$ & fitting the decoder $f$ & 535 \\
-$A_{\mathrm{operator}}$ & estimating $\Ccert$ and freezing $V_k$ & 537 \\
-$B$ & training a fresh receiver, every arm & 928 \\
-val & all model and hyperparameter selection & 256 \\
-test & locked evaluation only & 256 \\
-test (held-out prompts) & locked evaluation, unseen prompt domain & 256 \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-The teacher/operator split is what stops the operator reading the decoder's own fitting
-noise back as observability; the $A/B$ split is what stops the receiver inheriting the
-geometry's discovery data. All model selection happens on val, and the test splits are
-evaluated once, after the method is locked.
-
-\paragraph{Receiver.}
-The receiver is a ResNet-18 trained from scratch --- never ImageNet-initialised, which
-would be a semantic shortcut letting it read content rather than coordinates --- with two
-linear heads on the pooled feature: a regression head trained with MSE and a sign head
-trained with BCE. Sign bit error rate is the primary operational metric; the regression
-head supplies the continuous diagnostics. Training is AdamW, batch $16$, learning rate
-$2\times10^{-4}$, weight decay $10^{-4}$, cosine schedule with $500$ warmup steps,
-gradient clipping at $1.0$, for $40$ epochs, identical across every arm. We use $k=64$
-coordinates throughout.
-
-\paragraph{Side information.}
-$S$ is the sample-specific positive-CFG conditioning embedding, $77\times768$. It is not
-re-encoded from the prompt: the text encoder is not batch-composition invariant in fp16,
-and re-encoding a prompt outside its original chunk moves the embedding by up to
-$0.024$. $S$ is therefore obtained by \emph{replaying} the generation loop --- same index,
-same shard order, same chunking, same batch --- and the claim that this recovers what the
-generator consumed is verified rather than asserted: feeding the stored $S$ back through
-the UNet reproduces the cached pixels bit-identically across leading, partial-tail and
-later-shard chunks. The unconditional branch is excluded as part of the channel protocol
-rather than receiver knowledge; measured, it is constant within a batch but differs by
-$0.0156$ between batch sizes, so its text being fixed does not make its value fixed.
-
-\paragraph{Reporting.}
-Per-attack results are kept per sample so that arms can be differenced on the same
-$(z_i,\text{prompt}_i,\text{attack}_i)$ with a paired bootstrap ($10{,}000$ resamples).
-The linear explained variance $R^2_{\mathrm{lin}}=\frac1k\sum_j\rho_j^2$ is reported
-against an \emph{empirical} null obtained by permuting the pairing between predictions and
-targets, with one permutation per replicate shared across attacks --- a sample's latent is
-one object seen through ten perturbations, and permuting within each attack independently
-would destroy a dependence the observed statistic still has, narrowing the null and
-shrinking every $p$-value. $p$-values use $(1+\#\{T_\pi\ge T_{\mathrm{obs}}\})/(B+1)$.
+The channel is Stable Diffusion v1.5 with every module frozen, sampled with DDIM
+($\eta=0$, $25$ steps, guidance $3.0$) so that a supplied latent passes through unscaled
+and the target the receiver must recover is bit-exactly what the UNet consumed;
+$Z\in\mathbb R^{4\times64\times64}$, images $512^2$. Transmission is one of ten fixed
+perturbations (JPEG, resize, additive noise, blur, and identity), applied from a
+sample-derived seed rather than cached. Every sample plays exactly one role --- $535$
+fit the decoder, $537$ estimate the certificate, $928$ train a fresh receiver, $256$
+select, and two disjoint $256$-sample test splits are evaluated only after the method is
+locked. Receivers are ResNet-18 trained from scratch with a regression and a sign head,
+identical budget across arms, $k=64$. Side information $S$ is the sample-specific positive
+CFG conditioning embedding, obtained by replaying the generation loop and verified by
+feeding it back through the UNet to reproduce the cached pixels bit-identically.
+Appendix~\ref{app:setup} gives optimiser settings, the attack seed rule, the conditioning
+cache protocol and the artifact provenance audit.
 
 \subsection{Sensitivity--observability mismatch, and what the certificate recovers}
 \label{sec:synthetic}
@@ -597,12 +508,77 @@ is the one whose latent step is least recoverable ($r=-0.97$).}
 \label{fig:synthetic}
 \end{figure}
 
-\subsection{Is the observability of a real diffusion channel anisotropic?}
-Certified spectra of the frozen SD-v1.5 channel and their dependence on the decoder class.
-\textbf{[Pending.]}
+\subsection{The real channel certifies no positive direction}
+\label{sec:realspectrum}
 
-\subsection{Do certified directions predict held-out recoverability?}
-A direct test of \eqref{eq:hypothesis} against the Haar null. \textbf{[Pending.]}
+We fit the certified operator on the frozen SD-v1.5 channel with two decoder classes, a
+globally pooled ResNet-18 and a shared-trunk variant that keeps spatial position, on
+$A_{\mathrm{teacher}}$ and $A_{\mathrm{operator}}$ respectively, and report the spectrum
+on held-out data with the inner cross-fit and the bootstrap bound of
+\S\ref{sec:certificate}.
+
+\begin{center}
+\begin{tabular}{lrrrr}
+\toprule
+decoder & $\Dcert$ & bootstrap LCB & certified positive inertia & validity \\
+\midrule
+ResNet-18 (pooled)      & 0.047 & 0.005 & 0 / 64 & \textbf{fail} \\
+shared trunk (spatial)  & 7.348 & 6.619 & 0 / 64 & \textbf{fail} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Neither decoder certifies a single positive direction: the Weyl inertia bound clears zero
+nowhere, and both fail the validity gate (mean $|\lambda_{\mathrm{var}}-
+\lambda_{\mathrm{skill}}|$ of $1.30$ and $0.25$ against a tolerance of $0.10$), so their
+eigenspaces may be noise. The registered rule from \S\ref{sec:synthetic} applies: a
+positive point estimate, or a rank in an in-sample spectrum, does not make a direction
+observable. The honest statement is therefore that \emph{no empirically certified positive
+direction has been established}, which is different from having found weak ones.
+
+The decoder dependence is itself large: evaluating each decoder against the other's
+discovered subspace changes the certified mass by more than an order of magnitude, so at
+this scale the estimated geometry is a joint property of the channel and the decoder
+class. With both validity gates failing that comparison is inconclusive rather than a
+finding about the channel, and it is reported in full in Appendix~\ref{app:crossdecoder};
+the wording throughout this paper is ``decoder-certified observability geometry'', never
+``intrinsic''.
+
+\subsection{Certified geometry did not predict recoverability at this scale}
+\label{sec:gate}
+
+Equation~\eqref{eq:hypothesis} predicts an ordering, and we test it against the
+geometry-free Haar reference: a receiver trained on the spectral subspace against
+receivers trained on uniformly drawn subspaces, evaluated once on a locked test split
+whose pixels were generated only after the method was fixed.
+
+\begin{center}
+\begin{tabular}{lrrr}
+\toprule
+channel group & Haar & spectral & $\Delta$BER, CI95 \\
+\midrule
+identity & 0.4997 & 0.5016 & $-0.0019$\ \ $[-0.0087,+0.0049]$ \\
+JPEG     & 0.5008 & 0.5005 & $+0.0003$\ \ $[-0.0065,+0.0070]$ \\
+resize   & 0.5006 & 0.5031 & $-0.0025$\ \ $[-0.0097,+0.0047]$ \\
+noise    & 0.4991 & 0.4992 & $-0.0001$\ \ $[-0.0072,+0.0070]$ \\
+blur     & 0.5004 & 0.5029 & $-0.0025$\ \ $[-0.0096,+0.0044]$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The prediction is not confirmed in any of the five groups. It is also not a narrow miss:
+every arm sits at chance, the structured Hadamard control matches or beats the spectral
+arm in all five, and the Haar family's own spread across draws ($0.0008$ to $0.0029$)
+is of the same size as every difference in the table. An experiment in which no arm
+departs from chance cannot discriminate between arms, so this is a statement about
+resolving power as much as about ordering.
+
+Controlled diagnostics did not support either insufficient unique samples at fixed
+optimisation compute or excessive target dimensionality as the immediate explanation, and
+an empirical permutation null built from the frozen checkpoints leaves no run significant
+after correction --- the smallest $p$ belongs to the \emph{random} reference. Learning
+curves, the $k$ sweep and the permutation diagnostics are in
+Appendix~\ref{app:diagnostics}.
 
 \subsection{The receiver's information set did not change what was recovered}
 \label{sec:phasea}
@@ -646,14 +622,10 @@ chain, and although the primary interval happens to fall inside it, promoting a
 non-significant difference to an equivalence claim after the fact is exactly the move the
 preregistration exists to prevent.
 
-The aggregation across the ten channel perturbations was \emph{not} fixed in advance --- the
-registered primary says only ``paired across receiver seeds'' --- so we keep it as
-computed and report the breakdown rather than choose after the fact. It shows no
-heterogeneity: the per-attack means span $[-0.0031,-0.0014]$ with a standard deviation of
-$0.00054$, and no attack survives a Bonferroni correction (smallest $p=0.020$ against a
-threshold of $0.005$). All ten point the same way, but the ten perturbations are ten views
-of the same $256$ images decoded by the same receivers, so that agreement is not
-independent evidence; the receiver seed remains the unit, giving $4/6$ and $p=0.135$.
+The across-attack aggregation was not preregistered, so it is kept as computed and the
+per-attack breakdown reported in Appendix~\ref{app:diagnostics}: it shows no
+heterogeneity, and the ten perturbations are not independent evidence because they are ten
+views of the same images decoded by the same receivers.
 
 \paragraph{An observation we do not over-read.}
 Training loss falls across the three side arms --- $0.552$, $0.508$, $0.508$ for null,
@@ -686,16 +658,14 @@ all $64$ are unobservable. The certificate is one-sided by construction --- that
 makes it a certificate --- so it can only ever fail to find, never establish absence.
 
 \paragraph{Why the null is still informative.}
-The obvious deflationary reading is that the framework cannot detect anisotropic
-observability at all. The synthetic experiment rules that out: on a channel where the
-answer is known, the estimator tracks the analytic spectrum to a mean absolute error of
-$0.012$, its lower bound stays below the truth in $16$ of $16$ directions, and it
-correctly identifies observable directions in a channel deliberately built so that
-forward sensitivity runs \emph{opposite} to observability. What fails to appear is the
-corresponding certified phenomenon on the real channel. This does not license the stronger
-claim that the pipeline has power on a diffusion channel specifically --- the two settings
-differ in dimension, decoder class and sample size --- but it does remove the explanation
-that the machinery is blind by construction.
+The deflationary reading is that the framework cannot detect anisotropic observability at
+all. The synthetic experiment rules that out: where the answer is known, the estimator
+tracks the analytic spectrum to $0.012$, its bound holds in $16$ of $16$ directions, and
+it finds observable directions in a channel built so forward sensitivity runs
+\emph{opposite} to observability. That does not license the stronger claim that the
+pipeline has power on a diffusion channel specifically --- the settings differ in
+dimension, decoder class and sample size --- but it removes the explanation that the
+machinery is blind by construction.
 
 \paragraph{Information available is not information exploited.}
 Theorem~\ref{thm:mono} guarantees that additional receiver information cannot reduce
@@ -709,13 +679,13 @@ credible: the architecture step and the conditioning-marginal step were each sho
 practically negligible before the pairing step was read.
 
 \paragraph{What this means for latent communication.}
-Existing latent-space methods identify reliable regions, robust patterns and
-high-capacity subspaces, and they do so successfully. The distinction this paper draws is
-that reliability established through a particular embedding and extraction pipeline is not
-the same as a certified observability property of the channel. We do not claim FIBER tells
-a designer where to encode --- on a real channel it has not yet certified anywhere. We
-claim it supplies a test that should succeed before such a statement is justified, and a
-vocabulary in which ``reliable'' and ``observable'' are different words.
+Existing latent-space methods identify reliable regions and high-capacity subspaces, and
+do so successfully. The distinction here is that reliability established through a
+particular embedding and extraction pipeline is not a certified observability property of
+the channel. We do not claim FIBER tells a designer where to encode --- on a real channel
+it has certified nowhere. We claim it supplies a test that should succeed before such a
+statement is justified, and a vocabulary in which ``reliable'' and ``observable'' are
+different words.
 
 \paragraph{Limitations.}
 The certified spectra come from decoders that fail the teacher-validity gate, so the real
@@ -736,7 +706,183 @@ but that claims about \emph{where} it survives require separating the channel, t
 observer, and the information available to that observer. FIBER is one way to make those
 distinctions explicit --- and, when the evidence is insufficient, to say so.
 
-\bibliographystyle{iclr2026_conference}
+\subsection*{AI use statement}
+
+This work was carried out with an AI coding assistant used throughout for implementation,
+experiment orchestration, statistical analysis and manuscript drafting, under continuous
+human review. All scientific decisions --- the definition of the estimand, the
+preregistered hypotheses, margins, controls and stopping rules --- were made by the
+authors and recorded in the repository before the corresponding experiments were run. Two
+statistical errors introduced during AI-assisted analysis were caught by human review and
+are documented in the repository history: a rectified-statistic bootstrap that could not
+report zero under the null, and a permutation null drawn at the wrong level, which was
+anti-conservative by a factor of five. Every reported number is regenerated from committed
+code and versioned artifacts. We have reviewed all AI-assisted work and take
+responsibility for the final content, including all text, claims and artifacts.
+
+\subsection*{Reproducibility statement}
+
+Every experiment runs from committed scripts against a content-addressed cache. Each run
+records the full commit hash and refuses to produce an artifact from an edited working
+tree; the selection artifact is write-once; test-split pixels are generated only after the
+method is locked and each shard is bound to that lock's hash. The Phase A sweep additionally
+pins the commit at launch and refuses to report success if it moves. Preregistrations,
+their outcomes, and a mechanical audit of the reported runs are in the repository.
+
+\appendix
+\section{Full experimental setup}
+\label{app:setup}
+
+
+\subsection*{The channel.}
+The generator is Stable Diffusion v1.5 with all modules frozen; nothing is fine-tuned at
+any point. Sampling uses DDIM with $\eta=0$ and $25$ steps at guidance scale $3.0$ with an
+empty negative prompt, chosen because it is deterministic and because
+$\sigma_{\mathrm{init}}=1$ lets a supplied latent pass through unscaled, so the latent the
+UNet consumes is exactly the target the receiver is asked to recover. The latent is
+$Z\in\mathbb R^{4\times64\times64}$, i.e.\ $d=16{,}384$, drawn as $\mathcal N(0,I)$ on the
+CPU and rounded to the generator's dtype \emph{before} being stored, so the persisted $Z$
+is bit-exactly what the UNet saw. Images are $512\times512$. The guidance scale is a pilot
+value and is not tuned against any outcome: whether high guidance suppresses latent
+information is a hypothesis this framework can state, not a premise it assumes.
+
+\subsection*{Transmission channel.}
+$T$ is drawn from a fixed set of ten perturbations: identity, JPEG at quality
+$\{90,70,50\}$, bilinear down-and-up resizing at scale $\{0.75,0.50\}$, additive Gaussian
+noise at $\sigma\in\{0.05,0.10\}$, and Gaussian blur at $\sigma\in\{1.0,2.0\}$. A further
+four --- WebP-75, JPEG-30, blur-$3.0$, resize-$0.35$ --- are held out of training entirely
+and used only as an unseen-channel falsification test. Perturbations are \emph{not}
+cached: each is applied in the dataloader from a seed derived as
+$\mathrm{blake2s}(\text{sample id}\,|\,\text{attack}\,|\,\text{severity}\,|\,\text{split
+salt})$, so the realisation is reproducible without freezing the attack set or storing
+tens of gigabytes of redundant pixels. Cropping is deliberately absent: it introduces an
+alignment problem the receiver would have to solve simultaneously, confounding the
+coordinate result.
+
+\subsection*{Data and the one-sample-one-role rule.}
+Prompts are COCO captions, one per sample and drawn without replacement, with a
+held-out-prompt test split drawn from \texttt{val2017} while every other split draws from
+\texttt{train2017}; latent seeds are derived from (salt, split, index) so splits are
+disjoint in latent \emph{and} in prompt by construction. Each sample plays exactly one
+scientific role:
+
+\begin{center}
+\begin{tabular}{llr}
+\toprule
+role & used for & $n$ \\
+\midrule
+$A_{\mathrm{teacher}}$ & fitting the decoder $f$ & 535 \\
+$A_{\mathrm{operator}}$ & estimating $\Ccert$ and freezing $V_k$ & 537 \\
+$B$ & training a fresh receiver, every arm & 928 \\
+val & all model and hyperparameter selection & 256 \\
+test & locked evaluation only & 256 \\
+test (held-out prompts) & locked evaluation, unseen prompt domain & 256 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The teacher/operator split is what stops the operator reading the decoder's own fitting
+noise back as observability; the $A/B$ split is what stops the receiver inheriting the
+geometry's discovery data. All model selection happens on val, and the test splits are
+evaluated once, after the method is locked.
+
+\subsection*{Receiver.}
+The receiver is a ResNet-18 trained from scratch --- never ImageNet-initialised, which
+would be a semantic shortcut letting it read content rather than coordinates --- with two
+linear heads on the pooled feature: a regression head trained with MSE and a sign head
+trained with BCE. Sign bit error rate is the primary operational metric; the regression
+head supplies the continuous diagnostics. Training is AdamW, batch $16$, learning rate
+$2\times10^{-4}$, weight decay $10^{-4}$, cosine schedule with $500$ warmup steps,
+gradient clipping at $1.0$, for $40$ epochs, identical across every arm. We use $k=64$
+coordinates throughout.
+
+\subsection*{Side information.}
+$S$ is the sample-specific positive-CFG conditioning embedding, $77\times768$. It is not
+re-encoded from the prompt: the text encoder is not batch-composition invariant in fp16,
+and re-encoding a prompt outside its original chunk moves the embedding by up to
+$0.024$. $S$ is therefore obtained by \emph{replaying} the generation loop --- same index,
+same shard order, same chunking, same batch --- and the claim that this recovers what the
+generator consumed is verified rather than asserted: feeding the stored $S$ back through
+the UNet reproduces the cached pixels bit-identically across leading, partial-tail and
+later-shard chunks. The unconditional branch is excluded as part of the channel protocol
+rather than receiver knowledge; measured, it is constant within a batch but differs by
+$0.0156$ between batch sizes, so its text being fixed does not make its value fixed.
+
+\subsection*{Reporting.}
+Per-attack results are kept per sample so that arms can be differenced on the same
+$(z_i,\text{prompt}_i,\text{attack}_i)$ with a paired bootstrap ($10{,}000$ resamples).
+The linear explained variance $R^2_{\mathrm{lin}}=\frac1k\sum_j\rho_j^2$ is reported
+against an \emph{empirical} null obtained by permuting the pairing between predictions and
+targets, with one permutation per replicate shared across attacks --- a sample's latent is
+one object seen through ten perturbations, and permuting within each attack independently
+would destroy a dependence the observed statistic still has, narrowing the null and
+shrinking every $p$-value. $p$-values use $(1+\#\{T_\pi\ge T_{\mathrm{obs}}\})/(B+1)$.
+
+
+
+\begin{figure}[t]
+\centering
+\input{fig_receiver.tex}
+\caption{Observability is indexed by the receiver. (a) Adding side information can only
+enlarge the observable geometry, never narrow it in any direction --- the blind ellipsoid
+(dotted) is contained in the side-informed one. (b) A side receiver differs from a blind
+one in more than what it knows, so three further arms separate the architecture, the
+conditioning \emph{marginal}, and the \emph{pairing}; only the last is the quantity of
+interest.}
+\label{fig:receiver}
+\end{figure}
+
+\section{Cross-decoder certificates}
+\label{app:crossdecoder}
+
+The decoder dependence is itself large. Evaluating each decoder against the other's
+discovered subspace gives
+\[
+  \begin{array}{l|rr}
+     & f[\text{ResNet-18}] & f[\text{spatial}] \\\hline
+    V[\text{ResNet-18}] & 0.047 & 1.445 \\
+    V[\text{spatial}]   & 0.203 & 7.348
+  \end{array}
+\]
+so the spatial decoder certifies $31\times$ more mass in the pooled decoder's own subspace
+than the pooled decoder does. The two subspaces overlap far above chance
+($\cos^2$ alignment $0.060$ against $1/256=0.0039$, a factor of $15$) yet are far from
+coincident. With both validity gates failing this comparison is \emph{inconclusive} rather
+than a finding about the channel --- an eigenspace from a decoder that fails its own
+consistency check may be noise --- but it does establish that at this scale the estimated
+geometry is a joint property of the channel and the decoder class, and the wording
+throughout is ``decoder-certified observability geometry'', never ``intrinsic''.
+
+
+
+\section{Falsification diagnostics}
+\label{app:diagnostics}
+
+\subsection*{Aggregation across channel perturbations}
+
+The aggregation across the ten channel perturbations was \emph{not} fixed in advance --- the
+registered primary says only ``paired across receiver seeds'' --- so we keep it as
+computed and report the breakdown rather than choose after the fact. It shows no
+heterogeneity: the per-attack means span $[-0.0031,-0.0014]$ with a standard deviation of
+$0.00054$, and no attack survives a Bonferroni correction (smallest $p=0.020$ against a
+threshold of $0.005$). All ten point the same way, but the ten perturbations are ten views
+of the same $256$ images decoded by the same receivers, so that agreement is not
+independent evidence; the receiver seed remains the unit, giving $4/6$ and $p=0.135$.
+
+Two candidate explanations were falsified under controlled diagnostics before we accepted
+that reading. Increasing the number of unique training samples from $100$ to $928$ at
+fixed optimisation compute produced no reproducible improvement --- monotone in $0$ of $3$
+and $1$ of $3$ subset seeds, with the $N{=}928$ minus $N{=}100$ change in mean correlation
+\emph{negative} for both arms --- and the entire curve reproduced to the precision of the
+recorded table when re-run. Reducing the number of simultaneous targets from $64$ to $8$,
+using the top-ranked directions of the same fit, left $R^2_{\mathrm{lin}}$ at $0.83\times$
+its null rather than above it, with no monotone trend in $k$. Against an empirical
+permutation null built from the frozen checkpoints, $3$ of $36$ runs fall below $p=0.05$
+where $1.8$ are expected, none survives a Bonferroni correction, and the smallest $p$
+belongs to the \emph{random} reference.
+
+
+\bibliographystyle{iclr2027_conference}
 \bibliography{refs}
 
 \end{document}
