@@ -9,7 +9,7 @@ implemented; no Phase A outcome observed.** Scope boundary: `reports/scope_v1.md
 |---|---|---|
 | sample count is the limiter | out, at fixed compute | `reports/powercurve.md`: 100 -> 928 gives no reproducible improvement, monotone in 0/3 and 1/3 seeds |
 | 64 simultaneous targets is too hard | out | same report: k=8 on the top-8 directions sits at 0.825x the null |
-| the receiver's information set is the limiter | **untested** | prompt-assisted DDIM inversion reached sign BER 0.119 on the same images where the prompt-free extractor sits at 0.50 |
+| the receiver's information set is the limiter | **tested, and refined** | measured in this project after Phase A: a prompt-assisted DDIM inversion receiver reaches sign BER 0.2017 where the same-frame learned receiver sits at 0.4986, but it differs in estimator class as well as information set --- see `reports/practical_p1.md` |
 
 That last row has been carried since Phase 0 as a "prompt-assisted reference that violates
 the receiver protocol" — a footnote to a number that failed. If the two hypotheses above
